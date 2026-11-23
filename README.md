@@ -4,7 +4,7 @@ Social-Media-Posts für den [Attraktor](https://attraktor.org) ohne Social-Media
 
 Ein Mitglied schreibt einfach _„Ich will am Freitag einen Lötkurs machen“_ oder _„Ich habe eine Nixie-Uhr gebaut“_. Postomat erkennt, was daraus werden soll (Meetup-Event, Instagram-Post, Website-Eintrag …), fragt nach fehlenden Infos und Bildern und schickt den fertigen Entwurf zur Freigabe ans Medienteam in Matrix. Ein 👍 genügt.
 
-➡️ **Planung und Konzept: [`docs/`](./docs/README.md)**
+➡️ **Planung und Konzept: [`docs/`](./docs/README.md)** · **Klickbarer Prototyp: [`docs/prototyp/index.html`](./docs/prototyp/index.html)**
 
 ## Entwicklung
 

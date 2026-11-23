@@ -4,3 +4,5 @@
 /.nx/cache
 /.nx/workspace-data
 .nx/self-healing
+# Prototype is exported from the planning artifact, keep as is
+/docs/prototyp

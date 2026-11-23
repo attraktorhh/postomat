@@ -1,37 +1,31 @@
-# Roadmap (Vorschlag)
+# Roadmap
 
 ## Stufe 0: Grundgerüst ✅
 
-- Repo, Nx-Monorepo, Doku
+- Repo, Nx-Monorepo, Doku, klickbarer Prototyp
 
-## Stufe 1: Ende-zu-Ende ohne KI
+## Stufe 1: Pilot
 
-- Matrix-Bot nimmt Freitext und Bilder an
-- Geführte Fragen mit fester Reihenfolge (Postart, Datum, Titel …)
-- Entwurf landet im Medienteam-Raum, 👍 = freigegeben
-- Noch **keine** automatische Veröffentlichung: Der Bot liefert fertige Texte und Bilder zum Rauskopieren
-- Alle Uploads landen in der Bibliothek
+Ein Mitglied kann per Matrix ein Event oder Projekt einreichen. Das Medienteam gibt per 👍 frei. Website und Wiki werden automatisch befüllt, alle anderen Kanäle per Kopierhilfe. Details: [06-stufe-1.md](./06-stufe-1.md).
 
-**Ziel:** Prüfen, ob der Ablauf im Verein angenommen wird, bevor wir in APIs und KI investieren.
+**Ziel:** Mit 3–5 Mitgliedern und dem Medienteam vier Wochen testen, ob der Ablauf angenommen wird.
 
-## Stufe 2: KI-Unterstützung
+## Stufe 2: Mehr Automatik
 
-- LLM erkennt Postart und Felder aus dem Freitext
-- LLM schreibt Texte pro Kanal
-- Austauschbarer Anbieter (lokal oder extern)
+- Instagram-API (nach Umstellung auf professionelles Konto) und Mastodon
+- Redaktionskalender mit Regeln und geplanten Posts
+- Erinnerung vor dem Event, Fotoanfrage danach, Rückblick-Entwürfe
+- Monatsübersicht aus Meetup- und Wiki-Kalender, Abweichungen melden
 
-## Stufe 3: Automatische Veröffentlichung
+## Stufe 3: Intelligente Bibliothek
 
-- Adapter für WordPress (am einfachsten), dann Meetup, dann Instagram/Facebook
-- Nach Freigabe wird automatisch veröffentlicht, die Links gehen zurück an das Mitglied
+- Bildsuche nach Inhalt (Embeddings)
+- Bildvorschläge, wenn kein eigenes Foto da ist
+- Import vorhandener Fotos
 
-## Stufe 4: Intelligente Fotobibliothek
+## Stufe 4: Komfort
 
-- Embeddings für Bilder, Suche nach Inhalt („Löten“, „Lasercutter“)
-- Vorschläge passender Bilder, wenn keine eigenen vorhanden sind
-- Einwilligungs- bzw. Freigabestatus pro Bild
-
-## Stufe 5: Komfort
-
-- Admin-Web-Oberfläche
-- Erinnerungen, Rückblick-Posts, Serien-Events
+- Lokale KI statt externem Anbieter
+- Regeltermine als eigener Ablauf
+- Veröffentlichte Posts bearbeiten oder löschen
+- Facebook über die Graph-API

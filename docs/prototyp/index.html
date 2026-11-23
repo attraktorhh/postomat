@@ -1,0 +1,1191 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Postomat Planning Board</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: sticky tab bar → four views (Overview, Flows, Prototype, Decisions). Prototype = persona switcher + device-ish frame. */
+:root{
+  --bg:#eceff3; --surface:#ffffff; --surface-2:#f5f7fa; --ink:#15203a; --muted:#5d687b; --line:#d3d9e2;
+  --accent:#f0561d; --accent-soft:#fde3d7; --blue:#2c56d6; --blue-soft:#dfe7fc;
+  --matrix:#0b9e74; --matrix-soft:#d7f3ea;
+  --ok:#1e8a4c; --ok-soft:#dcf2e4; --warn:#a66d00; --warn-soft:#fbefcf; --bad:#c43c3c; --bad-soft:#f9dede;
+  --tape:#1b2438; --tape-ink:#f4f6fa;
+  --f-display:"Space Grotesk", system-ui, sans-serif; --f-body:"Inter", system-ui, sans-serif; --f-mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e131b; --surface:#161d28; --surface-2:#1c2533; --ink:#e7ecf3; --muted:#98a4b6; --line:#2b3545;
+  --accent:#ff7440; --accent-soft:#41241a; --blue:#7b9cff; --blue-soft:#1f2a4a; --matrix:#2fd3a2; --matrix-soft:#123a30;
+  --ok:#4cc982; --ok-soft:#163525; --warn:#e3b04a; --warn-soft:#3a2f14; --bad:#ff7d7d; --bad-soft:#3d1c1c;
+  --tape:#e7ecf3; --tape-ink:#121926; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e131b; --surface:#161d28; --surface-2:#1c2533; --ink:#e7ecf3; --muted:#98a4b6; --line:#2b3545;
+  --accent:#ff7440; --accent-soft:#41241a; --blue:#7b9cff; --blue-soft:#1f2a4a; --matrix:#2fd3a2; --matrix-soft:#123a30;
+  --ok:#4cc982; --ok-soft:#163525; --warn:#e3b04a; --warn-soft:#3a2f14; --bad:#ff7d7d; --bad-soft:#3d1c1c;
+  --tape:#e7ecf3; --tape-ink:#121926; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.5}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;letter-spacing:-.01em}
+h1{font-size:1.9rem} h2{font-size:1.35rem} h3{font-size:1.05rem}
+p{margin:0}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--surface);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;align-items:center;gap:20px;padding-block:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:700;font-size:1.1rem}
+.brand .slot{width:26px;height:26px;border-radius:6px;background:var(--accent);display:grid;place-items:center;color:#fff;font-family:var(--f-mono);font-size:.8rem}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;min-width:0}
+nav.tabs a{padding:6px 12px;border-radius:999px;color:var(--muted);text-decoration:none;font-weight:500}
+nav.tabs a[aria-current="page"]{background:var(--ink);color:var(--bg)}
+nav.tabs a:hover:not([aria-current]){background:var(--surface-2);color:var(--ink)}
+main .wrap{padding-block:28px 64px;display:grid;gap:28px}
+.lede{color:var(--muted);max-width:68ch;font-size:1.02rem}
+.eyebrow{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.tape{display:inline-block;font-family:var(--f-mono);font-weight:700;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;background:var(--tape);color:var(--tape-ink);padding:3px 8px 2px;border-radius:2px;white-space:nowrap;box-shadow:inset 0 -1px 0 rgba(255,255,255,.12)}
+.tape.ok{background:var(--ok);color:#fff}.tape.warn{background:var(--warn);color:#fff}.tape.bad{background:var(--bad);color:#fff}.tape.acc{background:var(--accent);color:#fff}.tape.blue{background:var(--blue);color:#fff}.tape.mx{background:var(--matrix);color:#fff}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 10px;font-size:.8rem;white-space:nowrap}
+.chip.mx{border-color:var(--matrix);color:var(--matrix)} .chip.web{border-color:var(--blue);color:var(--blue)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr))}
+.scroll-x{overflow-x:auto}
+.mono{font-family:var(--f-mono)}
+.muted{color:var(--muted)}
+.small{font-size:.82rem}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;font-weight:500}
+.btn:hover{background:var(--surface-2)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.ghost{background:transparent}
+.note{border-left:3px solid var(--accent);padding:6px 12px;background:var(--accent-soft);border-radius:0 8px 8px 0;font-size:.88rem}
+.view{display:grid;gap:28px}
+
+main .wrap > *, .view > *, .story > *, .annot > *, .scene > *{min-width:0}
+/* Overview */
+.roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:12px}
+.role{display:grid;gap:8px;align-content:start}
+.role .who{display:flex;align-items:center;gap:10px}
+.avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-mono);font-weight:700;font-size:.78rem;color:#fff;flex:none}
+.role ul{margin:0;padding-left:18px;color:var(--muted);font-size:.86rem;display:grid;gap:2px}
+table.matrix{border-collapse:separate;border-spacing:0;width:100%;min-width:720px;font-size:.86rem}
+table.matrix th,table.matrix td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:center}
+table.matrix th:first-child,table.matrix td:first-child{text-align:left}
+table.matrix thead th{font-weight:600;vertical-align:bottom}
+table.matrix thead th .chip{font-size:.7rem}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%}
+.dot.full{background:var(--ink)} .dot.half{border:2px solid var(--ink)} .dot.none{width:10px;height:2px;border-radius:1px;background:var(--line)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.8rem;color:var(--muted)}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+svg text{font-family:var(--f-body)}
+.diagram{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px}
+.diagram svg{display:block;width:100%;min-width:760px;height:auto}
+
+/* Flows */
+.flowpick{display:flex;gap:6px;flex-wrap:wrap}
+.flowpick button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px}
+.flowpick button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.lanes{display:grid;gap:0;min-width:860px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.lane-head{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;padding:12px;background:var(--surface-2);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;border-right:1px solid var(--line)}
+.lane-cell{border-bottom:1px solid var(--line);padding:8px;min-height:84px;position:relative}
+.lane-cell:nth-last-child(-n+99){}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.82rem;display:grid;gap:4px;box-shadow:0 1px 0 var(--line)}
+.step .n{font-family:var(--f-mono);font-size:.66rem;color:var(--muted)}
+.step.mem{border-top:3px solid var(--blue)} .step.bot{border-top:3px solid var(--accent)} .step.team{border-top:3px solid var(--matrix)} .step.chan{border-top:3px solid var(--ink)}
+.step .where{font-size:.68rem;color:var(--muted);font-family:var(--f-mono)}
+.states{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.states .arrow{color:var(--muted)}
+
+/* Prototype */
+.personas{display:flex;gap:8px;flex-wrap:wrap}
+.persona{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:6px 12px 6px 6px;text-align:left}
+.persona small{display:block;color:var(--muted);font-size:.72rem}
+.persona[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.persona .avatar{width:28px;height:28px;font-size:.68rem}
+.frame{border:1px solid var(--line);border-radius:14px;background:var(--surface);overflow:hidden}
+.frame-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--surface-2);font-size:.78rem;color:var(--muted)}
+.frame-bar .lights{display:flex;gap:5px}.frame-bar .lights i{width:9px;height:9px;border-radius:50%;background:var(--line);display:block}
+.frame-bar .url{font-family:var(--f-mono);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 10px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.annot{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px;align-items:start}
+@media (max-width:900px){.annot{grid-template-columns:minmax(0,1fr)}}
+.callouts{display:grid;gap:10px}
+.callout{font-size:.84rem;background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:4px}
+.callout b{font-family:var(--f-display)}
+
+/* Matrix client mock */
+.mxc{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:560px}
+@media (max-width:700px){.mxc{grid-template-columns:minmax(0,1fr)}.mxc .rooms{display:none}}
+.rooms{border-right:1px solid var(--line);background:var(--surface-2);padding:10px;display:grid;gap:2px;align-content:start;font-size:.84rem}
+.rooms .r{padding:6px 8px;border-radius:6px;display:flex;justify-content:space-between;gap:6px}
+.rooms .r.on{background:var(--surface);font-weight:600}
+.rooms .badge{background:var(--matrix);color:#fff;border-radius:999px;font-size:.68rem;padding:0 6px}
+.chat{display:flex;flex-direction:column;min-width:0}
+.chat-head{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+.chat-body{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;max-height:520px;min-height:420px}
+.msg{display:flex;gap:10px;align-items:flex-start;max-width:640px}
+.msg .avatar{width:30px;height:30px;font-size:.66rem}
+.msg .bubble{display:grid;gap:6px;min-width:0}
+.msg .name{font-weight:600;font-size:.82rem}.msg .name span{color:var(--muted);font-weight:400;margin-left:6px;font-size:.74rem}
+.msg .text{white-space:pre-line}
+.msg.me{align-self:flex-end;flex-direction:row-reverse}
+.msg.me .bubble{background:var(--blue-soft);padding:8px 12px;border-radius:12px 12px 2px 12px}
+.sys{align-self:center;font-family:var(--f-mono);font-size:.72rem;color:var(--muted);border:1px dashed var(--line);border-radius:999px;padding:2px 10px}
+.replies{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);background:var(--surface-2)}
+.replies button{border:1px solid var(--blue);color:var(--blue);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:.84rem}
+.replies .hint{font-size:.76rem;color:var(--muted);align-self:center}
+.thumbs{display:grid;grid-template-columns:repeat(4,minmax(0,92px));gap:6px;max-width:100%}
+.thumb{aspect-ratio:1;border-radius:6px;position:relative;overflow:hidden;display:flex;align-items:flex-end;max-width:100%}
+.thumb span{font-family:var(--f-mono);font-size:.6rem;background:rgba(0,0,0,.55);color:#fff;padding:1px 4px;margin:4px;border-radius:3px}
+.thumb .num{position:absolute;top:4px;left:4px;background:#fff;color:#111;border-radius:50%;width:18px;height:18px;display:grid;place-items:center;font-size:.66rem;font-weight:700;margin:0}
+.ph-solder{background:radial-gradient(circle at 30% 40%,#ffcf6b 0 8%,transparent 9%),linear-gradient(135deg,#2e4d3a,#86a36a)}
+.ph-laser{background:repeating-linear-gradient(45deg,#2a2a33 0 6px,#33333f 6px 12px),#222;box-shadow:inset 0 0 0 999px rgba(240,86,29,.15)}
+.ph-people{background:radial-gradient(circle at 30% 55%,#e3b99a 0 13%,transparent 14%),radial-gradient(circle at 65% 50%,#c99772 0 14%,transparent 15%),linear-gradient(160deg,#5d6f95,#2d3654)}
+.ph-pcb{background:linear-gradient(90deg,transparent 47%,#d9b44a 47% 53%,transparent 53%),linear-gradient(0deg,transparent 47%,#d9b44a 47% 53%,transparent 53%),#1f6b48;background-size:24px 24px}
+.ph-space{background:linear-gradient(180deg,#f0561d 0 18%,#2c3650 18%),#2c3650}
+.ph-nixie{background:radial-gradient(ellipse at 50% 50%,#ff9a3c 0 12%,#6a2b10 30%,#140b08 70%)}
+.ph-repair{background:conic-gradient(from 30deg,#4a6f8f,#a4c4da,#4a6f8f)}
+.ph-print{background:repeating-linear-gradient(0deg,#3b82c4 0 3px,#2f6aa3 3px 6px)}
+.mxcard{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface);max-width:560px}
+.mxcard .hd{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:8px 12px;background:var(--surface-2);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.mxcard .bd{padding:12px;display:grid;gap:10px}
+.mxcard .ft{padding:8px 12px;border-top:1px solid var(--line);font-size:.78rem;color:var(--muted)}
+.mini{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px;align-items:start}
+.mini .thumb{width:110px}
+.checks{display:flex;gap:6px;flex-wrap:wrap;font-size:.76rem}
+.checks span{padding:1px 8px;border-radius:999px;background:var(--ok-soft);color:var(--ok)}
+.checks span.w{background:var(--warn-soft);color:var(--warn)}
+.reacts{display:flex;gap:6px;flex-wrap:wrap}
+.reacts button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:2px 10px;font-size:.86rem}
+.reacts button.on{border-color:var(--matrix);background:var(--matrix-soft)}
+.thread{border-left:2px solid var(--line);margin-left:40px;padding-left:12px;display:grid;gap:10px}
+
+/* Web app mock */
+.app{display:grid;grid-template-columns:190px minmax(0,1fr);min-height:600px}
+@media (max-width:760px){.app{grid-template-columns:minmax(0,1fr)}.app .side{display:none}}
+.side{border-right:1px solid var(--line);background:var(--surface-2);padding:14px 10px;display:grid;gap:2px;align-content:start;font-size:.86rem}
+.side .lbl{font-family:var(--f-mono);font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:10px 8px 4px}
+.side a{padding:6px 8px;border-radius:6px;color:inherit;text-decoration:none;display:flex;justify-content:space-between}
+.side a.on{background:var(--surface);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.side a .cnt{font-family:var(--f-mono);font-size:.72rem;color:var(--muted)}
+.pane{padding:18px;display:grid;gap:16px;align-content:start;min-width:0}
+.composer{display:grid;gap:10px}
+.composer textarea{width:100%;min-height:80px;border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;background:var(--surface);color:var(--ink);resize:vertical}
+.detect{display:grid;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px}
+.field{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--surface);font-size:.82rem}
+.field small{display:block;color:var(--muted);font-family:var(--f-mono);font-size:.64rem;text-transform:uppercase;letter-spacing:.06em}
+.field.missing{border-style:dashed;border-color:var(--warn);color:var(--warn)}
+.mypost{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;align-items:center}
+.mypost .thumb{width:64px}
+.stepper{display:flex;gap:0;align-items:center;flex-wrap:wrap;font-size:.72rem;font-family:var(--f-mono)}
+.stepper span{padding:2px 8px;border:1px solid var(--line);color:var(--muted);background:var(--surface)}
+.stepper span:first-child{border-radius:999px 0 0 999px}.stepper span:last-child{border-radius:0 999px 999px 0}
+.stepper span+span{border-left:none}
+.stepper span.done{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.stepper span.cur{background:var(--accent);color:#fff;border-color:var(--accent)}
+.redax{display:grid;grid-template-columns:250px minmax(0,1fr) 230px;gap:0;min-height:560px}
+@media (max-width:1000px){.redax{grid-template-columns:minmax(0,1fr)}.queue,.editor{border-right:none;border-bottom:1px solid var(--line)}}
+.queue{border-right:1px solid var(--line);display:grid;align-content:start}
+.queue .grp{font-family:var(--f-mono);font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:12px 12px 4px}
+.qitem{display:grid;gap:3px;padding:9px 12px;border:none;border-left:3px solid transparent;background:none;text-align:left;border-bottom:1px solid var(--line)}
+.qitem:hover{background:var(--surface-2)}
+.qitem.on{background:var(--surface-2);border-left-color:var(--accent)}
+.qitem .t{font-weight:600;font-size:.86rem}
+.qitem .m{font-size:.74rem;color:var(--muted)}
+.editor{padding:14px;display:grid;gap:12px;align-content:start;min-width:0;border-right:1px solid var(--line)}
+.ctabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.ctabs button{border:none;background:none;padding:6px 10px;border-bottom:2px solid transparent;color:var(--muted);font-weight:500}
+.ctabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.ctabs .st{font-size:.65rem;margin-left:4px}
+.preview-ig{max-width:330px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.preview-ig .h{display:flex;gap:8px;align-items:center;padding:8px;font-size:.8rem;font-weight:600}
+.preview-ig .thumb{border-radius:0;width:100%}
+.preview-ig .c{padding:8px 10px;font-size:.8rem}
+.preview-meetup{max-width:420px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.preview-meetup .thumb{aspect-ratio:16/7;border-radius:0;width:100%}
+.preview-meetup .b{padding:10px 12px;display:grid;gap:4px}
+.preview-meetup .date{color:var(--bad);font-weight:600;font-size:.78rem;font-family:var(--f-mono)}
+.editbox{width:100%;min-height:110px;border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit;font-size:.84rem;background:var(--surface);color:var(--ink);resize:vertical}
+.ed-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:1180px){.ed-grid{grid-template-columns:minmax(0,1fr)}}
+.aside{padding:14px;display:grid;gap:14px;align-content:start}
+.checklist{display:grid;gap:6px;font-size:.82rem}
+.checklist div{display:flex;gap:8px;align-items:flex-start}
+.ck{flex:none;width:16px;height:16px;border-radius:4px;display:grid;place-items:center;font-size:.66rem;color:#fff;margin-top:2px}
+.ck.y{background:var(--ok)} .ck.n{background:var(--warn)}
+.hist{display:grid;gap:6px;font-size:.78rem;color:var(--muted)}
+.hist b{color:var(--ink);font-weight:500}
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;min-width:620px}
+.day{border:1px solid var(--line);border-radius:8px;padding:6px;min-height:84px;display:grid;gap:4px;align-content:start;background:var(--surface)}
+.day .d{font-family:var(--f-mono);font-size:.68rem;color:var(--muted)}
+.day.today{border-color:var(--accent)}
+.slot{font-size:.7rem;border-radius:4px;padding:2px 5px;display:flex;gap:4px;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot.ig{background:#f6dbe8;color:#8a1f55}.slot.mu{background:var(--bad-soft);color:var(--bad)}.slot.wp{background:var(--blue-soft);color:var(--blue)}.slot.fb{background:#dde6f7;color:#2a4a8a}.slot.ma{background:#e5e0fa;color:#4a3aa8}
+:root[data-theme="dark"] .slot.ig{background:#3d1a2c;color:#ff9fcf} :root[data-theme="dark"] .slot.fb{background:#1b2742;color:#9fb8ff} :root[data-theme="dark"] .slot.ma{background:#2a2350;color:#bcb0ff}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .slot.ig{background:#3d1a2c;color:#ff9fcf}:root:not([data-theme="light"]) .slot.fb{background:#1b2742;color:#9fb8ff}:root:not([data-theme="light"]) .slot.ma{background:#2a2350;color:#bcb0ff}}
+.lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.libitem{display:grid;gap:6px;font-size:.78rem}
+.libitem .thumb{width:100%}
+.libitem .tags{color:var(--muted);font-size:.72rem}
+.consent{font-size:.68rem;padding:1px 7px;border-radius:999px;justify-self:start}
+.consent.free{background:var(--ok-soft);color:var(--ok)} .consent.ask{background:var(--warn-soft);color:var(--warn)} .consent.int{background:var(--bad-soft);color:var(--bad)}
+.input{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--surface);color:var(--ink);font:inherit;min-width:0}
+.settings{display:grid;gap:10px}
+.setrow{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+@media (max-width:640px){.setrow{grid-template-columns:minmax(0,1fr)}}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:none;background:var(--surface);padding:5px 10px;font-size:.8rem}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+
+
+/* Walkthrough */
+.story{display:grid;grid-template-columns:270px minmax(0,1fr);gap:16px;align-items:start}
+
+@media (max-width:700px){header.top{position:static}}
+.tl{display:grid;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px;max-height:760px;overflow-y:auto;position:sticky;top:calc(env(safe-area-inset-top,0px) + 70px)}
+.tl button{display:grid;grid-template-columns:10px minmax(0,1fr);gap:10px;text-align:left;border:none;background:none;padding:7px 8px;border-radius:8px;align-items:start}
+.tl button:hover{background:var(--surface-2)}
+.tl button[aria-current="step"]{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line)}
+.tl .pip{width:10px;height:10px;border-radius:50%;margin-top:5px;background:var(--line)}
+.tl button.past .pip{opacity:.45}
+.tl .when{font-family:var(--f-mono);font-size:.66rem;color:var(--muted);display:block}
+.tl .what{font-size:.82rem;display:block}
+.tl button.future .what{color:var(--muted)}
+.scene{display:grid;gap:12px;min-width:0}
+.cap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start}
+@media (max-width:640px){.cap{grid-template-columns:minmax(0,1fr)}}
+.cap .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cap h2{font-size:1.2rem}
+.cap .why{font-size:.84rem;color:var(--muted);max-width:70ch}
+.ctrl{display:flex;gap:6px;align-items:center}
+.ctrl .count{font-family:var(--f-mono);font-size:.74rem;color:var(--muted);min-width:46px;text-align:center}
+.progress{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--accent);transition:width .3s}
+.hl{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
+@media (prefers-reduced-motion:no-preference){.hl{animation:hl 1.6s ease-in-out 2}@keyframes hl{50%{outline-color:transparent}}}
+.newtag{font-family:var(--f-mono);font-size:.6rem;background:var(--accent);color:#fff;border-radius:3px;padding:0 4px;margin-left:6px;vertical-align:middle}
+.phone{width:300px;max-width:100%;margin:16px auto;border:8px solid var(--tape);border-radius:28px;overflow:hidden;background:var(--surface)}
+.notif{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:.8rem;margin:10px}
+.chstat{display:grid;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.chstat div{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);font-size:.84rem}
+.chstat div:last-child{border-bottom:none}
+@media (max-width:500px){.chstat div{grid-template-columns:76px minmax(0,1fr) auto;padding:8px}}
+@media (max-width:900px){.story{grid-template-columns:minmax(0,1fr)}
+  .tl{position:static;display:flex;overflow-x:auto;max-height:none;scroll-snap-type:x proximity;padding:4px}
+  .tl button{flex:0 0 180px;scroll-snap-align:start}}
+@media (max-width:700px){.chat-body{min-height:240px;max-height:none}.mxc{min-height:0}}
+.kc{display:flex;gap:8px;align-items:center;font-size:.76rem;color:var(--muted)}
+
+/* Attraktor post template (derived from @attraktor_org) */
+.bp{position:relative;aspect-ratio:4/5;overflow:hidden;display:flex;flex-direction:column;width:100%;max-width:100%;container-type:inline-size;background:#222}
+.bp .ph{flex:1;border-radius:0;width:100%;aspect-ratio:auto}
+.bp .stk{position:absolute;top:8%;left:8%;display:grid;gap:2px;transform:rotate(-6deg)}
+.bp .stk span{font-family:var(--f-display);font-weight:700;font-size:5cqw;background:#f06bc8;color:#fff;padding:0 4px;justify-self:start}
+.bp .stk span:nth-child(2){background:#8ff0cf;color:#14213d;margin-left:10px}
+.bp .band{position:relative;margin-top:-6cqw;padding:7cqw 5cqw 4cqw;background:var(--band,#8ff0cf);color:var(--band-ink,#14213d);border-top-left-radius:55% 6cqw;border-top-right-radius:45% 4cqw;display:grid;gap:1cqw}
+.bp .ttl{font-family:var(--f-display);font-weight:700;text-transform:uppercase;font-size:7cqw;line-height:1.05;padding-right:26cqw}
+.bp .ln{font-size:3.6cqw;font-weight:600;display:flex;gap:1.5cqw;align-items:center;line-height:1.2}
+.bp .logo{position:absolute;right:4cqw;top:3cqw;font-family:"Kaushan Script",cursive;color:#fff;font-size:6.4cqw;line-height:.9;text-align:right;text-shadow:0 1px 2px rgba(0,0,0,.35)}
+.bp .logo small{display:block;font-family:var(--f-display);font-size:2.6cqw;font-weight:700}
+.bp.blue{--band:#3d7fc4;--band-ink:#fff}.bp.red{--band:#b8322b;--band-ink:#fff}.bp.mint{--band:#8ff0cf;--band-ink:#14213d}.bp.sky{--band:#a9cdea;--band-ink:#17325c}
+.swatches{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sw{width:26px;height:26px;border-radius:6px;border:2px solid transparent;padding:0}
+.sw[aria-pressed="true"]{border-color:var(--ink)}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:14px;align-items:start}
+.formula{display:grid;gap:6px;font-size:.84rem}
+.formula div{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:start}
+.formula .k{font-family:var(--f-mono);font-size:.66rem;color:#fff;background:var(--ink);border-radius:4px;text-align:center;padding:1px 0;margin-top:2px}
+:root[data-theme="dark"] .formula .k{color:var(--bg)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .formula .k{color:var(--bg)}}
+/* Decisions */
+.dec{display:grid;gap:10px}
+.dec .opts{display:grid;gap:6px}
+.opt{display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--surface)}
+.opt .radio{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);margin-top:2px}
+.opt[aria-pressed="true"]{border-color:var(--ink)}
+.opt[aria-pressed="true"] .radio{border:5px solid var(--ink)}
+.opt .rec{font-family:var(--f-mono);font-size:.64rem;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-left:6px}
+.opt small{display:block;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.msg,.mxcard,.sys{animation:pop .25s ease-out}@keyframes pop{from{transform:translateY(4px);opacity:.4}to{transform:none;opacity:1}}}
+</style>
+<style>[hidden]{display:none!important}body{margin:0}img{max-width:100%}</style>
+</head>
+<body>
+
+<header class="top"><div class="wrap">
+  <div class="brand"><div class="slot">P</div>Postomat <span class="muted small" style="font-family:var(--f-body);font-weight:400">· planning board v0.1</span></div>
+  <nav class="tabs" aria-label="Sections">
+    <a href="#overview">Who sees what</a>
+    <a href="#walkthrough">Walkthrough</a>
+    <a href="#flows">Flows</a>
+    <a href="#prototype">Prototype</a>
+    <a href="#decisions">Decisions</a>
+  </nav>
+</div></header>
+
+<main><div class="wrap">
+
+<!-- ================= OVERVIEW ================= -->
+<section class="view" id="v-overview">
+  <div style="display:grid;gap:8px">
+    <div class="eyebrow">The big idea</div>
+    <h1>Matrix is where you talk, the web is where you look.</h1>
+    <p class="lede">Everyone starts in a chat they already use. The web app opens only when something needs a big screen: previews, the calendar, the photo library. Nobody creates an account. The existing Attraktor login (Keycloak) and its groups decide what you can do, in Matrix and on the web.</p>
+  </div>
+
+  <div class="roles">
+    <div class="card role">
+      <div class="who"><div class="avatar" style="background:var(--blue)">MI</div><div><h3>Mitglied</h3><div class="small muted">any member, ~90% of users</div></div></div>
+      <ul><li>DMs the bot one sentence</li><li>answers a few questions</li><li>gets “ist online” + links</li><li>sees own posts in “Meine Beiträge”</li></ul>
+      <div class="row"><span class="chip mx">Matrix DM</span><span class="chip web">Web: Meine Beiträge</span></div>
+    </div>
+    <div class="card role">
+      <div class="who"><div class="avatar" style="background:var(--accent)">HO</div><div><h3>Host</h3><div class="small muted">a member running an event</div></div></div>
+      <ul><li>same as Mitglied, plus:</li><li>reminder 3 days before</li><li>asked for photos afterwards</li><li>a heads-up when the event shows up in Meetup</li></ul>
+      <div class="row"><span class="chip mx">Matrix DM</span></div>
+    </div>
+    <div class="card role">
+      <div class="who"><div class="avatar" style="background:var(--matrix)">MT</div><div><h3>Medienteam</h3><div class="small muted">2–3 people, all in Matrix</div></div></div>
+      <ul><li>👍 in the team room to approve</li><li>thread reply to request changes</li><li>edits texts, plans dates</li><li>keeps the calendar balanced</li></ul>
+      <div class="row"><span class="chip mx">Matrix room</span><span class="chip web">Web: Redaktion</span></div>
+    </div>
+    <div class="card role">
+      <div class="who"><div class="avatar" style="background:var(--ink);color:var(--bg)">AD</div><div><h3>Admin</h3><div class="small muted">1–2 people, rarely</div></div></div>
+      <ul><li>connects channels (tokens)</li><li>edits style guide &amp; templates</li><li>sets approval rules</li><li>moderates the library</li></ul>
+      <div class="row"><span class="chip web">Web: Einstellungen</span></div>
+    </div>
+  </div>
+
+  <div class="card" style="display:grid;gap:12px">
+    <div class="row" style="justify-content:space-between"><h2>Surfaces per role</h2>
+      <div class="legend"><span><i class="dot full"></i> main place</span><span><i class="dot half"></i> optional / read-only</span><span><i class="dot none"></i> not shown</span></div></div>
+    <div class="scroll-x">
+    <table class="matrix">
+      <thead><tr><th></th>
+        <th><span class="chip mx">Matrix</span><br>DM with bot</th>
+        <th><span class="chip mx">Matrix</span><br>#medienteam</th>
+        <th><span class="chip web">Web</span><br>Neuer Beitrag</th>
+        <th><span class="chip web">Web</span><br>Meine Beiträge</th>
+        <th><span class="chip web">Web</span><br>Redaktion + Kalender</th>
+        <th><span class="chip web">Web</span><br>Fotobibliothek</th>
+        <th><span class="chip web">Web</span><br>Einstellungen</th></tr></thead>
+      <tbody>
+        <tr><td><b>Mitglied</b></td><td><i class="dot full"></i></td><td><i class="dot none"></i></td><td><i class="dot half"></i></td><td><i class="dot full"></i></td><td><i class="dot none"></i></td><td><i class="dot half"></i></td><td><i class="dot none"></i></td></tr>
+        <tr><td><b>Host</b></td><td><i class="dot full"></i></td><td><i class="dot none"></i></td><td><i class="dot half"></i></td><td><i class="dot full"></i></td><td><i class="dot none"></i></td><td><i class="dot half"></i></td><td><i class="dot none"></i></td></tr>
+        <tr><td><b>Medienteam</b></td><td><i class="dot half"></i></td><td><i class="dot full"></i></td><td><i class="dot half"></i></td><td><i class="dot half"></i></td><td><i class="dot full"></i></td><td><i class="dot full"></i></td><td><i class="dot half"></i></td></tr>
+        <tr><td><b>Admin</b></td><td><i class="dot half"></i></td><td><i class="dot half"></i></td><td><i class="dot none"></i></td><td><i class="dot none"></i></td><td><i class="dot half"></i></td><td><i class="dot full"></i></td><td><i class="dot full"></i></td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">Roles come from Keycloak groups: <span class="mono">mitglieder</span> → Mitglied, <span class="mono">medienteam</span> → Medienteam, <span class="mono">postomat-admin</span> → Admin. The same groups can drive who is invited to <span class="mono">#medienteam</span>. Nothing to maintain in Postomat itself.</p>
+  </div>
+
+  <div style="display:grid;gap:10px">
+    <div class="row" style="justify-content:space-between"><h2>How it plugs into what already exists</h2>
+      <div class="legend"><span><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="currentColor" stroke-width="2"/></svg> planned</span><span><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"/></svg> idea, to discuss</span></div></div>
+    <div class="diagram scroll-x">
+    <svg viewBox="0 0 980 445" role="img" aria-label="Integration diagram">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" style="fill:var(--muted)"/></marker></defs>
+      <style>
+        .bx{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+        .bx-mx{fill:var(--matrix-soft);stroke:var(--matrix)}
+        .bx-core{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.6}
+        .bx-dash{fill:var(--surface);stroke:var(--muted);stroke-dasharray:5 4}
+        .t{fill:var(--ink);font-size:13px;font-weight:600}
+        .s{fill:var(--muted);font-size:11px}
+        .ln{stroke:var(--muted);stroke-width:1.4;fill:none}
+        .ln-d{stroke:var(--muted);stroke-width:1.4;fill:none;stroke-dasharray:5 4}
+        .lbl{fill:var(--muted);font-size:10.5px;font-family:var(--f-mono)}
+        .hd{fill:var(--muted);font-size:10.5px;font-family:var(--f-mono);letter-spacing:.08em}
+      </style>
+      <text x="20" y="22" class="hd">IN</text><text x="400" y="22" class="hd">POSTOMAT (Coolify)</text><text x="790" y="22" class="hd">OUT</text>
+      <!-- inputs -->
+      <rect x="20" y="380" width="200" height="38" rx="8" class="bx"/><text x="34" y="404" class="t">Keycloak</text><text x="102" y="404" class="s">login + roles</text><path d="M220 399 H300 V372" class="ln" marker-end="url(#ar)"/>
+      <rect x="20" y="40" width="200" height="56" rx="8" class="bx bx-mx"/><text x="34" y="64" class="t">Matrix DM @postomat</text><text x="34" y="82" class="s">sentence, photos, answers</text>
+      <rect x="20" y="112" width="200" height="56" rx="8" class="bx"/><text x="34" y="136" class="t">Web: Neuer Beitrag</text><text x="34" y="154" class="s">for people avoiding Matrix</text>
+      <rect x="20" y="184" width="200" height="56" rx="8" class="bx"/><text x="34" y="208" class="t">Nextcloud: Postomat-Fotos</text><text x="34" y="226" class="s">file storage + phone upload</text>
+      <rect x="20" y="300" width="200" height="70" rx="8" class="bx bx-mx"/><text x="34" y="324" class="t">Matrix #medienteam</text><text x="34" y="342" class="s">👍 approve · thread = change</text><text x="34" y="358" class="s">daily digest of waiting drafts</text>
+      <!-- core -->
+      <rect x="300" y="40" width="380" height="330" rx="12" class="bx bx-core"/>
+      <rect x="320" y="62" width="160" height="50" rx="8" class="bx"/><text x="334" y="84" class="t">Dialog</text><text x="334" y="100" class="s">asks max. 1 question / msg</text>
+      <rect x="500" y="62" width="160" height="50" rx="8" class="bx"/><text x="514" y="84" class="t">KI (optional)</text><text x="514" y="100" class="s">Ollama / OpenAI-kompatibel</text>
+      <rect x="320" y="128" width="340" height="50" rx="8" class="bx"/><text x="334" y="150" class="t">Entwürfe + Freigabe-Logik</text><text x="334" y="166" class="s">1 Beitrag → n Kanal-Posts · Status · Verlauf</text>
+      <rect x="320" y="194" width="160" height="50" rx="8" class="bx"/><text x="334" y="216" class="t">Redaktionskalender</text><text x="334" y="232" class="s">schedules, spreads posts</text>
+      <rect x="500" y="194" width="160" height="50" rx="8" class="bx"/><text x="514" y="216" class="t">Fotobibliothek</text><text x="514" y="232" class="s">tags, consent, search</text>
+      <rect x="320" y="260" width="340" height="50" rx="8" class="bx"/><text x="334" y="282" class="t">Kanal-Adapter</text><text x="334" y="298" class="s">auto-publish OR “Kopiervorlage” per channel</text>
+      <rect x="320" y="320" width="340" height="38" rx="8" class="bx"/><text x="334" y="344" class="t">Web-App</text><text x="420" y="344" class="s">Meine Beiträge · Redaktion · Bibliothek · Einstellungen</text>
+      <!-- outputs -->
+      <rect x="760" y="40" width="200" height="44" rx="8" class="bx"/><text x="774" y="60" class="t">Meetup</text><text x="774" y="75" class="s">no API: copy + detect via iCal</text>
+      <rect x="760" y="94" width="200" height="44" rx="8" class="bx"/><text x="774" y="114" class="t">Instagram @attraktor_org</text><text x="774" y="129" class="s">post, story · DE + EN</text>
+      <rect x="760" y="148" width="200" height="44" rx="8" class="bx"/><text x="774" y="168" class="t">Facebook attraktoreV</text><text x="774" y="183" class="s">page post</text>
+      <rect x="760" y="202" width="200" height="44" rx="8" class="bx"/><text x="774" y="222" class="t">blog.attraktor.org</text><text x="774" y="237" class="s">WordPress post, cat. Termine</text>
+      <rect x="760" y="256" width="200" height="44" rx="8" class="bx"/><text x="774" y="276" class="t">Mastodon</text><text x="774" y="291" class="s">new account, easy API</text>
+      <rect x="760" y="310" width="200" height="44" rx="8" class="bx"/><text x="774" y="330" class="t">wiki.attraktor.org</text><text x="774" y="345" class="s">{{Termin}} page · Calendar.ics</text>
+      <!-- arrows -->
+      <path d="M220 68 H320" class="ln" marker-end="url(#ar)"/>
+      <path d="M220 140 H300 V100 H320" class="ln" marker-end="url(#ar)"/>
+      <path d="M220 212 H498" class="ln" marker-end="url(#ar)"/><text x="232" y="250" class="lbl">WebDAV</text>
+      <path d="M320 152 H260 V320 H220" class="ln" marker-end="url(#ar)"/><text x="232" y="290" class="lbl">preview</text>
+      <path d="M220 350 H270 V160 H318" class="ln" marker-end="url(#ar)"/><text x="232" y="390" class="lbl">👍 / ✏️</text>
+      <path d="M660 285 H720 V62 H758" class="ln" marker-end="url(#ar)"/>
+      <path d="M720 116 H758" class="ln" marker-end="url(#ar)"/>
+      <path d="M720 170 H758" class="ln" marker-end="url(#ar)"/>
+      <path d="M720 224 H758" class="ln" marker-end="url(#ar)"/>
+      <path d="M720 224 V278 H758" class="ln" marker-end="url(#ar)"/>
+      <path d="M720 278 V332 H758" class="ln" marker-end="url(#ar)"/><path d="M860 354 V420 H680 V372" class="ln-d" marker-end="url(#ar)"/><text x="700" y="434" class="lbl">read Meetup + wiki iCal → Monatsübersicht</text>
+      <path d="M760 70 H740 V30 H140 V38" class="ln-d" marker-end="url(#ar)"/><text x="520" y="26" class="lbl" text-anchor="middle">links back to the member</text>
+    </svg></div>
+  </div>
+
+  <div class="card" style="display:grid;gap:12px">
+    <div class="row" style="justify-content:space-between"><h2>What exists today</h2><span class="small muted">checked 23.11.2026 from public pages</span></div>
+    <div class="scroll-x"><table class="matrix" style="min-width:680px"><thead><tr><th>Channel</th><th style="text-align:left">What I found</th><th style="text-align:left">How Postomat posts</th><th>Mode</th></tr></thead><tbody>
+      <tr><td><b>Meetup</b><br><span class="small muted">1,459 members</span></td><td style="text-align:left">No API access (Pro is paid). Public iCal feed <span class="mono small">meetup.com/attraktor/events/ical/</span> works. German texts, emoji section headings, address block at the end</td><td style="text-align:left">Copy helper with one copy button per field. Postomat watches the iCal feed and links the new event by itself</td><td><span class="tape">Kopieren</span></td></tr>
+      <tr><td><b>Website</b><br><span class="small muted">blog.attraktor.org</span></td><td style="text-align:left">WordPress 7.1, REST API with application passwords. No events plugin: events are normal posts in category “Termine”. Last post 15.09.2026</td><td style="text-align:left">Creates the post via REST: header image, “Wo / Wann / Was” block, Meetup link, DE + EN</td><td><span class="tape blue">Auto</span></td></tr>
+      <tr><td><b>Wiki</b><br><span class="small muted">wiki.attraktor.org</span></td><td style="text-align:left">MediaWiki 1.43 with Semantic MediaWiki and Page Forms. Each event is a page <span class="mono small">Termin:Name_YYYY-MM-DD</span> using the <span class="mono small">{{Termin}}</span> template. Feeds the main page and Calendar.ics. Login through OIDC</td><td style="text-align:left">Creates the Termin page with a bot account. Write access via the API still needs testing</td><td><span class="tape blue">Auto</span></td></tr>
+      <tr><td><b>Instagram</b><br><span class="small muted">@attraktor_org · 345 followers</span></td><td style="text-align:left">60 posts, roughly 2–4 a month. Branded graphics (see style guide below), German captions, reels and carousels too. No category label on the profile, so it is probably a personal account</td><td style="text-align:left">Free Instagram API once switched to a professional account (free, 2 minutes)</td><td><span class="tape warn">Umstellen</span></td></tr>
+      <tr><td><b>Facebook</b></td><td style="text-align:left">Page facebook.com/attraktoreV exists</td><td style="text-align:left">Graph API if linked to Instagram, otherwise copy</td><td><span class="tape">Kopieren</span></td></tr>
+      <tr><td><b>Mastodon</b></td><td style="text-align:left">No account yet</td><td style="text-align:left">Create the account (e.g. chaos.social), then the API is trivial</td><td><span class="tape blue">Auto</span></td></tr>
+    </tbody></table></div>
+    <p class="note">Side finding: the Basteldonnerstag starts at <b>19:00</b> on Meetup and <b>19:30</b> in the wiki. Postomat can flag mismatches like this, because it reads both feeds anyway.</p>
+  </div>
+  <div class="card" style="display:grid;gap:14px">
+    <div class="row" style="justify-content:space-between"><h2>Style guide, derived from @attraktor_org</h2><span class="small muted">from 6 screenshots, 23.11.2026</span></div>
+    <div class="sg">
+      <div style="display:grid;gap:6px"><div id="sg1"></div><span class="small muted">Event banner: photo, mint band, title in capitals, 🕓 + 📍, logo. Like the Codeweek Lötworkshop</span></div>
+      <div style="display:grid;gap:6px"><div id="sg2"></div><span class="small muted">Same template in blue. Like “Bald ist wieder Maker Faire!”</span></div>
+      <div style="display:grid;gap:6px"><div id="sg3"></div><span class="small muted">Red. Like the Muttertags-Lötworkshop</span></div>
+      <div style="display:grid;gap:10px;align-content:start">
+        <h3>Caption formula</h3>
+        <div class="formula">
+          <div><span class="k">1</span><span><b>Hook</b> as a question or exclamation: “Du wärst gerne kreativ, weißt aber nicht, wie und wo du anfangen sollst…”</span></div>
+          <div><span class="k">2</span><span><b>✨ Body</b>, 2–3 short sentences, always “du”</span></div>
+          <div><span class="k">3</span><span><b>🕓 Date</b> as “Sonntag, den 18.10.26 | 11 – 13 Uhr” and <b>📍 Eschelsweg 4</b></span></div>
+          <div><span class="k">4</span><span><b>🇬🇧 English</b> short version (new, so far German only)</span></div>
+          <div><span class="k">5</span><span>Few hashtags, location tag “Hamburg”</span></div>
+        </div>
+        <h3>Stays handmade</h3>
+        <p class="small muted">Illustrated campaign posts (the hooded mascot, Linkshändertag, Cosplay) and reels with music. Postomat can schedule them but doesn’t design them.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= WALKTHROUGH ================= -->
+<section class="view" id="v-walkthrough" hidden>
+  <div style="display:grid;gap:8px">
+    <div class="eyebrow">One real example, start to finish · UI copy in German</div>
+    <h1>Lena's Lötkurs, from one sentence to the recap post</h1>
+    <p class="lede">Three weeks squeezed into 17 steps. Every screen is what the person would actually see at that moment. Use the arrow keys or ▶ to play it.</p>
+  </div>
+  <div class="story">
+    <div class="tl" id="tl" aria-label="Timeline"></div>
+    <div class="scene">
+      <div class="card cap" id="cap"></div>
+      <div class="progress"><i id="prog"></i></div>
+      <div class="frame" id="sstage"></div>
+      <div class="row" style="justify-content:space-between"><button class="btn" id="sprev2">◀ Zurück</button><span class="count mono small muted" id="scount2"></span><button class="btn pri" id="snext2">Weiter ▶</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FLOWS ================= -->
+<section class="view" id="v-flows" hidden>
+  <div style="display:grid;gap:8px">
+    <div class="eyebrow">Swimlanes</div>
+    <h1>What happens, who does it, where</h1>
+    <p class="lede">Pick a flow. Each card is one step. The colored edge shows who acts, the small line shows on which surface.</p>
+  </div>
+  <div class="flowpick" id="flowpick"></div>
+  <div class="scroll-x"><div class="lanes" id="lanes"></div></div>
+  <div class="card" style="display:grid;gap:12px">
+    <h2>Life of a Beitrag</h2>
+    <div class="states">
+      <span class="tape">Sammeln</span><span class="arrow">→</span>
+      <span class="tape blue">Zur Freigabe</span><span class="arrow">→</span>
+      <span class="tape acc">Geplant</span><span class="arrow">→</span>
+      <span class="tape ok">Online</span><span class="arrow">→</span>
+      <span class="tape mx">Rückblick?</span>
+    </div>
+    <div class="states small muted">
+      <span class="tape warn">Änderung gewünscht</span><span>loops back to</span><span class="tape blue">Zur Freigabe</span>
+      <span style="margin-left:14px">·</span><span class="tape bad">Verworfen</span><span>from any state, with a reason sent to the member</span>
+    </div>
+    <p class="small muted">One Beitrag fans out into several channel posts. Each one has its own little status (e.g. Meetup online, Instagram scheduled for Friday). The member only sees the overall status.</p>
+  </div>
+</section>
+
+<!-- ================= PROTOTYPE ================= -->
+<section class="view" id="v-prototype" hidden>
+  <div style="display:grid;gap:8px">
+    <div class="eyebrow">Clickable prototype · UI copy in German</div>
+    <h1>Try it as each person</h1>
+    <p class="lede">Free play. For a guided example, see the <a href="#walkthrough">Walkthrough</a>. Everything is fake but clickable. Start with <b>Lena in Matrix</b>, then switch to the Medienteam and approve her Lötkurs.</p>
+  </div>
+  <div class="personas" id="personas"></div>
+  <div class="annot">
+    <div class="frame" id="stage"></div>
+    <div class="callouts" id="callouts"></div>
+  </div>
+</section>
+
+<!-- ================= DECISIONS ================= -->
+<section class="view" id="v-decisions" hidden>
+  <div style="display:grid;gap:8px">
+    <div class="eyebrow">Your call</div>
+    <h1>Decisions that shape the flows</h1>
+    <p class="lede">My recommendation is marked. Your picks are saved in this browser only. Tell me in chat what you chose, or what's missing.</p>
+  </div>
+  <div class="grid g2" id="decs"></div>
+</section>
+
+</div></main>
+
+<script>
+const $ = (s, el=document) => el.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const store = { get(k,d){try{const v=localStorage.getItem('postomat:'+k);return v?JSON.parse(v):d}catch{return d}}, set(k,v){try{localStorage.setItem('postomat:'+k,JSON.stringify(v))}catch{}} };
+
+/* ---------- routing ---------- */
+const views = ['overview','walkthrough','flows','prototype','decisions'];
+function route(){
+  const h = location.hash.replace('#','');
+  const v = views.includes(h) ? h : 'overview';
+  views.forEach(x => { $('#v-'+x).hidden = x!==v; });
+  document.querySelectorAll('nav.tabs a').forEach(a => a.toggleAttribute('aria-current', a.getAttribute('href')==='#'+v) || a.removeAttribute('aria-current'));
+  document.querySelectorAll('nav.tabs a').forEach(a => { if(a.getAttribute('href')==='#'+v) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
+}
+addEventListener('hashchange', () => { route(); scrollTo(0,0); }); route();
+
+/* ---------- flows ---------- */
+const LANES = [
+  {k:'mem', n:'Mitglied / Host', c:'var(--blue)'},
+  {k:'bot', n:'Postomat', c:'var(--accent)'},
+  {k:'team', n:'Medienteam', c:'var(--matrix)'},
+  {k:'chan', n:'Kanäle', c:'var(--ink)'},
+];
+const FLOWS = {
+  event: {name:'Event ankündigen', steps:[
+    ['mem','„Ich will am Fr einen Lötkurs machen“','Matrix DM'],
+    ['bot','erkennt Event, fragt Uhrzeit, Plätze, Kosten (1 Frage pro Nachricht)','Matrix DM'],
+    ['mem','antwortet, schickt Foto oder wählt eins aus der Bibliothek','Matrix DM'],
+    ['bot','baut Texte DE + EN: Meetup, Website, Wiki, IG, Mastodon; zeigt Kurz-Vorschau','Matrix DM + Web-Link'],
+    ['team','Karte im Raum, 👍 = frei, Thread = Änderung','#medienteam'],
+    ['team','legt Meetup-Event per Kopierhilfe an (2 Min.), Postomat findet es im iCal-Feed','Web + Meetup'],
+    ['chan','Website, Wiki, Mastodon sofort, IG im Kalender-Slot','WP · Wiki · IG · Masto'],
+    ['mem','„Ist online“ + Links, 3 Tage vorher: „Findet alles statt?“','Matrix DM'],
+  ]},
+  showcase: {name:'Projekt zeigen', steps:[
+    ['mem','schickt 3 Fotos + „Nixie-Uhr gebaut!“','Matrix DM'],
+    ['bot','erkennt Showcase, fragt: „Was war das Kniffligste?“ (macht den Text lebendig)','Matrix DM'],
+    ['bot','fragt Einwilligung: „Sind Personen erkennbar?“','Matrix DM'],
+    ['team','👍 in #medienteam','#medienteam'],
+    ['bot','findet freien Slot (max. 1 IG-Post/Tag)','Kalender'],
+    ['chan','Instagram + Mastodon','IG · Mastodon'],
+    ['mem','„Online, 42 Likes nach 1 Tag“ (optional)','Matrix DM'],
+  ]},
+  change: {name:'Änderung gewünscht', steps:[
+    ['team','antwortet im Thread: „Bitte Lötkolben-Hinweis rein“','#medienteam'],
+    ['bot','ändert Text (KI oder Medienteam editiert im Web)','Web: Redaktion'],
+    ['bot','fragt Mitglied nur, wenn Fakten fehlen: „Bringen Leute eigene Lötkolben mit?“','Matrix DM'],
+    ['mem','„Nein, wir haben 8 Stationen“','Matrix DM'],
+    ['team','Karte wird aktualisiert (v2), erneut 👍','#medienteam'],
+    ['chan','wie gehabt','—'],
+  ]},
+  after: {name:'Nach dem Event', steps:[
+    ['bot','3 Tage vorher: „Alles noch aktuell? 6/8 angemeldet“','Matrix DM'],
+    ['mem','„Ja“ oder „Fällt aus“ → Absage-Post wird vorbereitet','Matrix DM'],
+    ['bot','Tag danach: „Wie war’s? Schick 2–3 Fotos“','Matrix DM'],
+    ['mem','schickt Fotos, beantwortet Einwilligung','Matrix DM'],
+    ['bot','Fotos landen in der Bibliothek, Rückblick-Entwurf entsteht','Bibliothek'],
+    ['team','👍','#medienteam'],
+    ['chan','Rückblick auf IG + Website','IG · WP'],
+  ]},
+  monthly: {name:'Monatsübersicht', steps:[
+    ['bot','am 25. jedes Monats: liest Meetup- und Wiki-iCal','automatisch'],
+    ['bot','findet Regeltermine + Einzel-Events, meldet Widersprüche (19:00 vs 19:30)','—'],
+    ['bot','baut „Dezember im Attraktor / December at Attraktor“: IG-Karussell + Blogpost','Web: Redaktion'],
+    ['team','prüft Liste, 👍','#medienteam'],
+    ['chan','IG-Karussell, Website, Mastodon','IG · WP · Masto'],
+  ]},
+  series: {name:'Neuer Regeltermin', steps:[
+    ['mem','„Ab Januar jeden 2. Montag Meshtastic-Stammtisch“','Matrix DM'],
+    ['bot','erkennt Serie, fragt Uhrzeit, Dauer, Kontakt','Matrix DM'],
+    ['team','👍','#medienteam'],
+    ['bot','legt Wiki-Seite mit [[Category:…Repeat]] an','Wiki'],
+    ['team','legt Serie in Meetup per Kopierhilfe an (Meetup-Wiederholung)','Meetup'],
+    ['bot','1 Ankündigungs-Post, danach nur noch in der Monatsübersicht','IG · WP · Masto'],
+  ]},
+  noai: {name:'Ohne KI (Stufe 1)', steps:[
+    ['mem','schreibt irgendwas','Matrix DM'],
+    ['bot','„Was möchtest du? 1️⃣ Event 2️⃣ Projekt 3️⃣ Rückblick 4️⃣ News“','Matrix DM'],
+    ['mem','reagiert mit 1️⃣','Matrix DM'],
+    ['bot','feste Fragen: Titel → Datum → Uhrzeit → Ort → Foto','Matrix DM'],
+    ['bot','füllt Textvorlage pro Kanal','—'],
+    ['team','👍 → bekommt Kopiervorlage pro Kanal','#medienteam + Web'],
+    ['team','postet von Hand, trägt Link ein','Web: Redaktion'],
+    ['mem','„Ist online“ + Links','Matrix DM'],
+  ]},
+};
+let curFlow = 'event';
+function renderFlows(){
+  $('#flowpick').innerHTML = Object.entries(FLOWS).map(([k,f]) => `<button aria-pressed="${k===curFlow}" data-f="${k}">${esc(f.name)}</button>`).join('');
+  const steps = FLOWS[curFlow].steps; const n = steps.length;
+  const lanes = $('#lanes');
+  lanes.style.gridTemplateColumns = `150px repeat(${n}, minmax(130px,1fr))`;
+  let html = '';
+  LANES.forEach(l => {
+    html += `<div class="lane-head"><i class="dot" style="background:${l.c}"></i>${l.n}</div>`;
+    steps.forEach((s,i) => {
+      html += `<div class="lane-cell">${s[0]===l.k ? `<div class="step ${l.k}"><span class="n">${String(i+1).padStart(2,'0')}</span>${esc(s[1])}<span class="where">${esc(s[2])}</span></div>`:''}</div>`;
+    });
+  });
+  lanes.innerHTML = html;
+}
+$('#flowpick').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; curFlow = b.dataset.f; renderFlows(); });
+renderFlows();
+
+/* ---------- prototype ---------- */
+const PERSONAS = [
+  {k:'mmx', n:'Lena · Matrix', d:'Mitglied, chattet mit dem Bot', av:'LE', c:'var(--blue)'},
+  {k:'mweb', n:'Lena · Web', d:'Meine Beiträge', av:'LE', c:'var(--blue)'},
+  {k:'tmx', n:'Kai · #medienteam', d:'Medienteam in Matrix', av:'KA', c:'var(--matrix)'},
+  {k:'tweb', n:'Kai · Redaktion', d:'Medienteam im Web', av:'KA', c:'var(--matrix)'},
+  {k:'lib', n:'Fotobibliothek', d:'alle Mitglieder', av:'FB', c:'var(--warn)'},
+  {k:'adm', n:'Admin', d:'Kanäle & Regeln', av:'AD', c:'var(--ink)'},
+];
+const shared = { approved:false, changeReq:false };
+let persona = store.get('persona','mmx');
+function renderPersonas(){
+  $('#personas').innerHTML = PERSONAS.map(p => `<button class="persona" data-p="${p.k}" aria-pressed="${p.k===persona}"><span class="avatar" style="background:${p.c};${p.k==='adm'?'color:var(--bg)':''}">${p.av}</span><span>${esc(p.n)}<small>${esc(p.d)}</small></span></button>`).join('');
+}
+$('#personas').addEventListener('click', e => { const b=e.target.closest('.persona'); if(!b) return; persona=b.dataset.p; store.set('persona',persona); renderPersonas(); renderStage();
+ });
+
+const CALLOUTS = {
+  mmx:[['One question at a time','The bot never shows a form. It asks for the next missing field only. Quick-reply buttons are just suggestions; typing works too.'],['Photos are optional','No photo? The library suggests 4 matching images that have consent.'],['Big screen when needed','“Im Browser ansehen” opens the preview with the normal Attraktor login (Keycloak). Already logged in? One click.'],['The loop closes','Links come back, plus a check 3 days before, plus the request for photos after the event. That is what fills the library.']],
+  mweb:[['Status like a parcel tracker','Members see 4 simple steps, not internal states.'],['Same brain as the bot','Typing here shows live what Postomat understood and what is still missing. Try editing the text.'],['Read-only previews','Members can see the channel texts but editing is for the Medienteam. They can comment instead.']],
+  tmx:[['One card per Beitrag','The bot edits the card in place when the status changes. No message spam.'],['👍 approves everything','Per-channel tweaks happen in the web editor. ✏️ or a thread reply asks for changes.'],['Digest instead of pings','Once a day: what is waiting. With 2–3 reviewers, a draft waiting more than 24 h pings the others by name.'],['No self-approval','Kai’s own posts need Mira or Jo. The 👍 from the author is ignored and the bot says so.']],
+  tweb:[['Queue + editor + checks','Left: what needs attention. Middle: one tab per channel with a real-looking preview. Right: automatic checks and history.'],['The calendar prevents clumps','A week view shows all scheduled posts across channels.'],['Copy mode for stage 1','Channels without API show “Text kopieren” + “Link eintragen” instead of “Veröffentlichen”.']],
+  lib:[['Every upload ends up here','From the bot, the web form, and post-event photos.'],['Consent is a first-class field','Only green photos get suggested to members automatically.'],['Nextcloud underneath','Files live in a Nextcloud folder, so photos can also arrive via the Nextcloud phone app. Tags and consent live in Postomat.'],['Search by words first','Tags at upload are enough to start. Image embeddings (CLIP) come later.']],
+  adm:[['Per-channel mode','Each channel is Automatisch, Kopiervorlage or Aus. This lets stage 1 ship without any API keys.'],['Rules, not people','Approvals needed, self-approval, quiet hours, max posts per day.'],['Roles come from Keycloak','Groups mitglieder / medienteam / postomat-admin. No user management in Postomat.']],
+};
+
+function renderStage(){
+  const st = $('#stage');
+  ({mmx:stageMemberMatrix, mweb:stageMemberWeb, tmx:stageTeamMatrix, tweb:stageTeamWeb, lib:stageLibrary, adm:stageAdmin})[persona](st);
+  $('#callouts').innerHTML = (CALLOUTS[persona]||[]).map(([t,d]) => `<div class="callout"><b>${esc(t)}</b><span class="muted">${esc(d)}</span></div>`).join('');
+}
+
+/* --- shared bits --- */
+const LIBRARY = [
+  {id:1, cls:'ph-solder', t:'Lötstation', tags:'löten, workshop, elektronik', c:'free', by:'@tom', when:'03/2025'},
+  {id:2, cls:'ph-people', t:'Lötkurs 2024', tags:'löten, workshop, personen', c:'free', by:'@lena', when:'11/2024'},
+  {id:3, cls:'ph-pcb', t:'Platine Nahaufnahme', tags:'elektronik, platine', c:'free', by:'@max', when:'08/2025'},
+  {id:4, cls:'ph-space', t:'Werkstatt Panorama', tags:'raum, werkstatt', c:'free', by:'@kai', when:'01/2025'},
+  {id:5, cls:'ph-laser', t:'Lasercutter', tags:'laser, maschine', c:'free', by:'@kai', when:'06/2025'},
+  {id:6, cls:'ph-repair', t:'Repair Café', tags:'repair, personen, event', c:'ask', by:'@jo', when:'10/2025'},
+  {id:7, cls:'ph-nixie', t:'Nixie-Uhr', tags:'projekt, elektronik, nixie', c:'free', by:'@sam', when:'11/2025'},
+  {id:8, cls:'ph-print', t:'3D-Druck Layer', tags:'3d-druck, projekt', c:'free', by:'@max', when:'09/2025'},
+  {id:9, cls:'ph-people', t:'Offener Abend', tags:'event, personen, raum', c:'int', by:'@tom', when:'07/2025'},
+];
+const consentLabel = {free:'frei verwendbar', ask:'Personen – Einwilligung fehlt', int:'nur intern'};
+const thumb = (cls, label, num) => `<div class="thumb ${cls}">${num?`<span class="num">${num}</span>`:''}${label?`<span>${esc(label)}</span>`:''}</div>`;
+const av = (txt,c) => `<span class="avatar" style="background:${c}">${txt}</span>`;
+const BOT_AV = av('P','var(--accent)');
+const brandPost = ({cls='ph-people', title='Lötworkshop', when='Freitag, den 11.12.26 | 18 – 21 Uhr', where='Attraktor e.V. Eschelsweg 4, 22767 Hamburg', color='mint', sticker=false}={}) =>
+  `<div class="bp ${color}"><div class="thumb ph ${cls}"></div>${sticker?'<div class="stk"><span>COME</span><span>MEET</span><span>US</span></div>':''}<div class="band"><div class="logo">attraktor<small>e.V. Hamburg</small></div><div class="ttl">${esc(title)}</div>${when?`<div class="ln">🕓 ${esc(when)}</div>`:''}${where?`<div class="ln">📍 ${esc(where)}</div>`:''}</div></div>`;
+const IG_DE = 'Du wolltest schon immer mal löten? 🔥\n\n✨ Am Freitag zeigen wir dir an einem Abend, wie aus ein paar Bauteilen ein blinkendes Abzeichen wird. Keine Vorkenntnisse nötig, Lötstationen sind da.\n\n🕓 Freitag, den 11.12.26 | 18 – 21 Uhr\n📍 Attraktor e.V., Eschelsweg 4, 22767 Hamburg\n🎟️ 8 Plätze, 5 € Material, Anmeldung über Meetup (Link in Bio)';
+const IG_EN = '🇬🇧 Always wanted to learn soldering? On Friday, 11 Dec (6–9 pm) we show you how to build your own blinking badge. No experience needed, 8 spots, sign up via Meetup.';
+const IG_TAGS = '#makerspace #hamburg #altona #löten #soldering #attraktor';
+const igCaption = (likes) => `${likes?likes+'<br>':''}<b>attraktor_org</b> ${esc(IG_DE).replace(/\n/g,'<br>')}<br><br>${esc(IG_EN)}<br><br><span style="color:var(--blue)">${IG_TAGS}</span>`;
+
+/* --- 1. Member in Matrix --- */
+let chatLog = null, chatStep = 0, chatPhoto = null;
+const SCRIPT = [
+  {bot:'Hi Lena! Erzähl einfach, was du vorhast oder gemacht hast. Ein Satz reicht.', replies:['Ich will am Freitag, 11.12. einen Lötkurs für Anfänger machen']},
+  {bot:'Cool, ein Workshop! Ich hab verstanden:\n• Lötkurs für Anfänger\n• Freitag, 11.12.\n\nUm wie viel Uhr geht es los?', replies:['18 Uhr','19 Uhr']},
+  {bot:'Und wie viele Leute können mitmachen?', replies:['8 Plätze','egal, offen für alle']},
+  {bot:'Kostet es etwas? Zum Beispiel Material.', replies:['5 € Material','kostenlos']},
+  {bot:'Hast du ein Foto dazu? Schick es einfach hier rein.', replies:['📎 Foto senden','Nein, hab keins'], branch:true},
+  {bot:'Kein Problem. Die hier aus der Vereins-Bibliothek passen. Welches nehmen wir?', lib:[1,2,3,4], replies:['1','2','3','4'], onlyIfNoPhoto:true},
+  {card:true, replies:['Passt, abschicken','Text ändern']},
+  {bot:'Ist beim Medienteam 🙌 Ich melde mich, sobald es online ist.', replies:['⏩ 2 Stunden später']},
+  {bot:'✅ Dein Lötkurs ist online!\n• Meetup: meetup.com/attraktor/events/3021…\n• Website: blog.attraktor.org/loetkurs-anfaenger\n• Wiki: Termin:Lötkurs_für_Anfänger_2026-12-11\n• Instagram: geplant für Fr 04.12., 10:00', replies:['⏩ 8. Dezember']},
+  {bot:'Kurzer Check zum Lötkurs am Freitag: Findet alles statt wie geplant? Die Anmeldungen siehst du auf Meetup: meetup.com/attraktor/events/3021…', replies:['Ja, alles gut','Muss leider ausfallen']},
+  {bot:'Super, dann viel Spaß! 🔥', replies:['⏩ 12. Dezember']},
+  {bot:'Wie war der Lötkurs? Wenn du 2–3 Fotos schickst, mache ich einen Rückblick draus. Die Fotos landen auch in der Bibliothek für spätere Posts.', replies:['📎 3 Fotos senden','Lieber nicht']},
+  {bot:'Danke! Sind auf den Fotos Personen erkennbar?', replies:['Ja, alle waren einverstanden','Ja, aber nicht gefragt','Nein']},
+  {bot:'Alles klar, ist notiert. Der Rückblick geht jetzt ans Medienteam. Bis zum nächsten Mal! 👋', replies:[]},
+];
+function chatReset(){ chatLog=[]; chatStep=0; chatPhoto=null; pushBot(0); }
+function pushBot(i){
+  let s = SCRIPT[i];
+  if(!s) return;
+  if(s.onlyIfNoPhoto && chatPhoto){ chatStep=i+1; return pushBot(i+1); }
+  chatStep = i;
+  if(s.card) chatLog.push({type:'card'});
+  else chatLog.push({type:'bot', text:s.bot, lib:s.lib});
+}
+function chatAnswer(text){
+  if(text.startsWith('⏩')){ chatLog.push({type:'sys', text:text.replace('⏩ ','— ')+' —'}); }
+  else if(text.startsWith('📎')){ chatLog.push({type:'me', photo:true, text: text.includes('3')?'3 Fotos':'1 Foto'}); }
+  else chatLog.push({type:'me', text});
+  const s = SCRIPT[chatStep];
+  if(s.branch){ chatPhoto = text.startsWith('📎') ? 'own' : null; }
+  if(s.lib){ chatPhoto = 'lib'+text; }
+  if(text==='Muss leider ausfallen'){ chatLog.push({type:'bot', text:'Schade! Ich bereite einen kurzen Absage-Hinweis vor und sage dem Medienteam Bescheid. Meetup-Teilnehmer bekommen eine Nachricht.'}); chatStep = SCRIPT.length-1; chatLog.push({type:'sys', text:'— Ende der Demo —'}); return; }
+  if(text==='Text ändern'){ chatLog.push({type:'bot', text:'Was soll anders sein? Schreib es einfach, z. B. „bitte erwähnen, dass Lötkolben da sind“. Oder bearbeite es im Browser ↗'}); return; }
+  pushBot(chatStep+1);
+}
+function stageMemberMatrix(st){
+  if(!chatLog) chatReset();
+  const pick = chatPhoto && chatPhoto.startsWith('lib') ? LIBRARY[+chatPhoto.slice(3)-1] : (chatPhoto==='own' ? {cls:'ph-solder', t:'dein Foto'} : LIBRARY[0]);
+  const body = chatLog.map(m => {
+    if(m.type==='sys') return `<div class="sys">${esc(m.text)}</div>`;
+    if(m.type==='me') return `<div class="msg me">${av('LE','var(--blue)')}<div class="bubble">${m.photo?`<div class="thumbs" style="grid-template-columns:repeat(${m.text.startsWith('3')?3:1},64px)">${(m.text.startsWith('3')?['ph-people','ph-solder','ph-pcb']:['ph-solder']).map(c=>thumb(c)).join('')}</div>`:`<div class="text">${esc(m.text)}</div>`}</div></div>`;
+    if(m.type==='card') return `<div class="msg">${BOT_AV}<div class="bubble"><div class="name">Postomat <span>Bot</span></div>
+      <div class="text">So würde ich es ans Medienteam schicken:</div>
+      <div class="mxcard"><div class="hd"><b>Lötkurs für Anfänger</b><span class="tape">Event</span></div>
+      <div class="bd"><div class="mini">${thumb(pick.cls, pick.t)}<div class="small"><b>Fr 11.12. · ${esc(findAns(['18 Uhr','19 Uhr'])||'18 Uhr')}</b> · Attraktor, Eschelsweg 4<br>${esc(findAns(['8 Plätze','egal, offen für alle'])||'8 Plätze')} · ${esc(findAns(['5 € Material','kostenlos'])||'5 € Material')}<br><span class="muted">„Du wolltest schon immer mal löten? Bei uns lernst du an einem Abend, wie aus Bauteilen ein blinkendes Abzeichen wird …“</span></div></div>
+      <div class="row"><span class="chip">Meetup-Event</span><span class="chip">Instagram-Post</span><span class="chip">Story am Vortag</span><span class="chip">Website</span></div></div>
+      <div class="ft">Alle Texte ansehen: <u>postomat.attraktor.org/b/42</u> ↗</div></div></div></div>`;
+    return `<div class="msg">${BOT_AV}<div class="bubble"><div class="name">Postomat <span>Bot</span></div><div class="text">${esc(m.text)}</div>${m.lib?`<div class="thumbs">${m.lib.map((id,i)=>{const L=LIBRARY[id-1];return thumb(L.cls,L.t,i+1)}).join('')}</div>`:''}</div></div>`;
+  }).join('');
+  const s = SCRIPT[chatStep];
+  const replies = (s && s.replies && !chatLog.at(-1)?.text?.includes('Ende der Demo')) ? s.replies : [];
+  st.innerHTML = `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">Element · @postomat:attraktor.org</span></div>
+  <div class="mxc"><div class="rooms"><div class="eyebrow" style="padding:4px 8px">Räume</div>
+    <div class="r on">Postomat <span class="badge">1</span></div><div class="r">#attraktor-mitglieder</div><div class="r">#elektronik</div><div class="r">#lasercutter</div><div class="r">#offtopic</div></div>
+  <div class="chat"><div class="chat-head">${BOT_AV}<div><b>Postomat</b><div class="small muted">Direktnachricht · Bot des Attraktor</div></div><span style="flex:1"></span><button class="btn ghost small" id="restart">↺ Neu starten</button></div>
+  <div class="chat-body" id="chatbody">${body}</div>
+  <div class="replies">${replies.length?replies.map(r=>`<button data-r="${esc(r)}">${esc(r)}</button>`).join('')+'<span class="hint">oder frei tippen</span>':'<span class="hint">Demo zu Ende. ↺ Neu starten oder Persona wechseln.</span>'}</div></div></div>`;
+  const cb = $('#chatbody'); cb.scrollTop = cb.scrollHeight;
+  st.querySelector('.replies').onclick = e => { const b=e.target.closest('button'); if(!b) return; chatAnswer(b.dataset.r); stageMemberMatrix(st); };
+  $('#restart').onclick = () => { chatReset(); stageMemberMatrix(st); };
+}
+function findAns(opts){ const m = chatLog.filter(x=>x.type==='me').map(x=>x.text).find(t=>opts.includes(t)); return m; }
+
+/* --- 2. Member web --- */
+function classify(t){
+  const s = t.toLowerCase();
+  const f = {};
+  let type = 'Unklar';
+  if(/(will|möchte|mache|machen|hosten|veranstalt|kurs|workshop|treffen|abend)/.test(s) && /(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|morgen|\d{1,2}\.\d{1,2}|nächste)/.test(s)) type='Event';
+  else if(/(gebaut|gemacht|fertig|projekt|gedruckt|gelasert)/.test(s)) type='Projekt-Showcase';
+  else if(/(gestern|war |waren|leute da)/.test(s)) type='Rückblick';
+  else if(/(neu|neuer|neue|haben jetzt|angeschafft)/.test(s)) type='Vereinsnews';
+  const d = s.match(/(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)(,? ?\d{1,2}\.\d{1,2}\.?)?|\d{1,2}\.\d{1,2}\.?/); if(d) f.Datum = d[0];
+  const u = s.match(/(\d{1,2}) ?(uhr|:\d\d)/); if(u) f.Uhrzeit = u[0];
+  const k = s.match(/(lötkurs|löt\w*|laser\w*|3d-druck\w*|nixie[- ]?\w*|repair café|näh\w*|arduino\w*|workshop)/); if(k) f.Thema = k[0];
+  const p = s.match(/(\d+) (leute|plätze|personen)/); if(p) f.Plätze = p[1];
+  if(/anfänger/.test(s)) f.Zielgruppe='Anfänger';
+  const need = {Event:['Datum','Uhrzeit','Plätze','Foto'], 'Projekt-Showcase':['Thema','Foto'], 'Rückblick':['Foto'], 'Vereinsnews':['Thema','Foto'], 'Unklar':[]}[type];
+  const channels = {Event:['Meetup','Instagram','Website'], 'Projekt-Showcase':['Instagram','Mastodon'], 'Rückblick':['Instagram','Website'], 'Vereinsnews':['Instagram','Facebook','Website','Mastodon'], 'Unklar':[]}[type];
+  return {type, f, missing: need.filter(n=>!f[n]), channels};
+}
+let mwText = store.get('mwText','Ich will am Freitag, 11.12. einen Lötkurs für Anfänger machen, 18 Uhr');
+function stageMemberWeb(st){
+  const status = shared.approved ? 2 : 1;
+  const posts = [
+    {cls:'ph-solder', t:'Lötkurs für Anfänger', sub:'Event · Fr 11.12.', step:status, note: shared.approved?'Meetup + Website online · Instagram geplant Fr 10:00':'Beim Medienteam seit 2 Std.'},
+    {cls:'ph-nixie', t:'Nixie-Uhr', sub:'Projekt · 18.11.', step:3, note:'Online auf Instagram und Mastodon · 42 ♥'},
+    {cls:'ph-repair', t:'Rückblick Repair Café', sub:'Rückblick · 02.11.', step:0, note:'Wartet auf dich: Einwilligung für 1 Foto fehlt', warn:true},
+  ];
+  const steps = ['Eingereicht','Beim Medienteam','Geplant','Online'];
+  st.innerHTML = `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">postomat.attraktor.org/meine-beitraege</span></div>
+  <div class="app"><div class="side"><div class="row" style="padding:4px 8px 10px">${av('LE','var(--blue)')}<div class="small"><b>Lena</b><br><span class="muted">Mitglied</span></div></div>
+    <a class="on" href="javascript:void 0">Meine Beiträge <span class="cnt">3</span></a><a href="javascript:void 0">Fotobibliothek</a>
+    <div class="lbl">Hilfe</div><a href="javascript:void 0">Was passiert mit meinem Beitrag?</a></div>
+  <div class="pane">
+    <div class="composer card"><h3>Neuer Beitrag</h3>
+      <label for="mwtext" class="small muted">Was hast du vor oder was hast du gemacht?</label>
+      <textarea id="mwtext">${esc(mwText)}</textarea>
+      <div class="row small"><span class="muted">Beispiele:</span>${['Ich habe eine Nixie-Uhr gebaut','Gestern war Repair Café, 20 Leute da','Wir haben einen neuen Lasercutter','Ich will am Samstag einen Arduino-Workshop machen'].map(x=>`<button class="chip ex">${esc(x)}</button>`).join('')}</div>
+      <div class="detect" id="detect"></div>
+    </div>
+    <div style="display:grid;gap:10px"><h3>Meine Beiträge</h3>
+    ${posts.map(p=>`<div class="card mypost">${thumb(p.cls)}<div style="display:grid;gap:6px;min-width:0"><div class="row" style="justify-content:space-between"><div><b>${esc(p.t)}</b> <span class="muted small">${esc(p.sub)}</span></div>${p.warn?'<span class="tape warn">Du bist dran</span>':''}</div>
+      <div class="stepper">${steps.map((s,i)=>`<span class="${i<p.step?'done':i===p.step?'cur':''}">${s}</span>`).join('')}</div>
+      <div class="small ${p.warn?'':'muted'}" style="${p.warn?'color:var(--warn)':''}">${esc(p.note)}</div></div></div>`).join('')}
+    </div>
+  </div></div>`;
+  const draw = () => {
+    const r = classify(mwText);
+    $('#detect').innerHTML = `<div class="row"><span class="eyebrow">Postomat versteht</span><span class="tape ${r.type==='Unklar'?'warn':'acc'}">${esc(r.type)}</span>${r.channels.map(c=>`<span class="chip">${c}</span>`).join('')}</div>
+      <div class="fields">${Object.entries(r.f).map(([k,v])=>`<div class="field"><small>${k}</small>${esc(v)}</div>`).join('')}${r.missing.map(k=>`<div class="field missing"><small>${k}</small>fragt nach</div>`).join('')}</div>
+      <div class="row"><button class="btn pri">Weiter</button><span class="small muted">${r.type==='Unklar'?'Ohne Treffer fragt Postomat: Event, Projekt, Rückblick oder News?':'Fehlendes fragt Postomat als Nächstes, eins nach dem anderen.'}</span></div>`;
+  };
+  draw();
+  $('#mwtext').addEventListener('input', e => { mwText = e.target.value; store.set('mwText', mwText); draw(); });
+  st.querySelectorAll('.ex').forEach(b => b.onclick = () => { mwText = b.textContent; $('#mwtext').value = mwText; store.set('mwText', mwText); draw(); });
+}
+
+/* --- 3. Team in Matrix --- */
+function stageTeamMatrix(st){
+  const approved = shared.approved, chg = shared.changeReq;
+  const card = `<div class="mxcard"><div class="hd"><div><b>Lötkurs für Anfänger</b> <span class="muted small">von @lena · v${chg?2:1}</span></div>${approved?'<span class="tape ok">Freigegeben · @kai</span>':chg?'<span class="tape blue">v2 · Zur Freigabe</span>':'<span class="tape blue">Zur Freigabe</span>'}</div>
+    <div class="bd"><div class="mini">${thumb('ph-solder','Lötstation')}<div class="small"><b>Event · Fr 11.12. · 18:00 · 8 Plätze · 5 €</b><br><span class="muted">IG: „Du wolltest schon immer mal löten? Bei uns lernst du an einem Abend, wie aus Bauteilen ein blinkendes Abzeichen wird. ${chg?'Lötkolben sind da, du brauchst nichts mitzubringen. ':''}Anmeldung über Meetup 🔧 #makerspace #hamburg #löten“</span></div></div>
+    <div class="row"><span class="chip">Meetup: sofort</span><span class="chip">IG: Fr 04.12. 10:00</span><span class="chip">Story: Do 10.12.</span><span class="chip">Website: sofort</span></div>
+    <div class="checks"><span>✓ Datum in der Zukunft</span><span>✓ Foto frei verwendbar</span><span>✓ Ort bekannt</span><span class="w">! Kein Englisch-Text</span></div></div>
+    <div class="ft">👍 freigeben · ✏️ oder im Thread antworten = Änderung · <u>Im Browser bearbeiten ↗</u></div></div>`;
+  const reacts = `<div class="reacts"><button data-a="ok" class="${approved?'on':''}">👍 ${approved?'1':''}</button><button data-a="chg" class="${chg?'on':''}">✏️ ${chg?'1':''}</button><button data-a="cal">🗓</button></div>`;
+  const thread = chg ? `<div class="thread"><div class="msg">${av('KA','var(--matrix)')}<div class="bubble"><div class="name">Kai <span>im Thread</span></div><div class="text">Bitte erwähnen, dass Lötkolben vorhanden sind.</div></div></div>
+     <div class="msg">${BOT_AV}<div class="bubble"><div class="name">Postomat <span>im Thread</span></div><div class="text">Hab @lena kurz gefragt: „Wir haben 8 Stationen.“ Text ist angepasst, Karte oben zeigt v2.</div></div></div></div>` : '';
+  const after = approved ? `<div class="msg">${BOT_AV}<div class="bubble"><div class="name">Postomat <span>Bot</span></div><div class="text">Freigegeben von @kai. Meetup ✓ online, Website ✓ online, Instagram geplant für Fr 04.12. 10:00. @lena ist informiert.</div></div></div>` : '';
+  st.innerHTML = `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">Element · #medienteam:attraktor.org</span></div>
+  <div class="mxc"><div class="rooms"><div class="eyebrow" style="padding:4px 8px">Räume</div>
+    <div class="r on">#medienteam <span class="badge">${approved?0:2}</span></div><div class="r">Postomat</div><div class="r">#attraktor-mitglieder</div><div class="r">#vorstand</div></div>
+  <div class="chat"><div class="chat-head">${av('#','var(--matrix)')}<div><b>#medienteam</b><div class="small muted">3 Mitglieder · Postomat schreibt hier</div></div><span style="flex:1"></span><button class="btn ghost small" id="treset">↺</button></div>
+  <div class="chat-body">
+    <div class="msg">${BOT_AV}<div class="bubble"><div class="name">Postomat <span>gestern 09:00</span></div><div class="text">☀️ Tagesüberblick: 1 Entwurf wartet seit über 24 Std. (Neuer Lasercutter von @kai, braucht @mira oder @jo). Diese Woche geplant: 3 Posts.</div></div></div>
+    <div class="msg">${BOT_AV}<div class="bubble"><div class="name">Postomat <span>vor 18 Min.</span></div><div class="mxcard"><div class="hd"><div><b>Nixie-Uhr</b> <span class="muted small">von @sam</span></div><span class="tape ok">Online</span></div><div class="ft">Instagram ✓ · Mastodon ✓ · freigegeben von @mira</div></div></div></div>
+    <div class="msg">${BOT_AV}<div class="bubble"><div class="name">Postomat <span>vor 2 Min.</span></div>${card}${reacts}</div></div>
+    ${thread}${after}
+  </div>
+  <div class="replies"><span class="hint">Probier: 👍 zum Freigeben oder ✏️ für eine Änderung. Danach Persona „Lena · Web“ ansehen.</span></div></div></div>`;
+  st.querySelector('.reacts').onclick = e => { const b=e.target.closest('button'); if(!b) return;
+    if(b.dataset.a==='ok') shared.approved = !shared.approved;
+    if(b.dataset.a==='chg') shared.changeReq = !shared.changeReq;
+    if(b.dataset.a==='cal'){ persona='tweb'; renderPersonas(); return renderStage(); }
+    stageTeamMatrix(st); };
+  $('#treset').onclick = () => { shared.approved=false; shared.changeReq=false; stageTeamMatrix(st); };
+}
+
+/* --- 4. Team web: Redaktion --- */
+const DRAFTS = [
+  {id:42, t:'Lötkurs für Anfänger', by:'@lena', type:'Event', when:'Fr 11.12. 18:00', grp:'Zur Freigabe', cls:'ph-solder', age:'2 Std.',
+   ch:{Meetup:{st:'auto', txt:'Lötkurs für Anfänger\n\nDu wolltest schon immer mal löten? An diesem Abend lernst du die Grundlagen und baust dein eigenes blinkendes Abzeichen.\n\n• Keine Vorkenntnisse nötig\n• 8 Plätze, 5 € Material\n• Lötstationen sind vorhanden'},
+       Instagram:{st:'auto', txt:'Du wolltest schon immer mal löten? 🔥\n\n✨ Am Freitag zeigen wir dir an einem Abend, wie aus ein paar Bauteilen ein blinkendes Abzeichen wird. Keine Vorkenntnisse nötig.\n\n🕓 Freitag, den 11.12.26 | 18 – 21 Uhr\n📍 Attraktor e.V., Eschelsweg 4, 22767 Hamburg\n🎟️ 8 Plätze, Anmeldung über Meetup (Link in Bio)\n\n🇬🇧 Always wanted to learn soldering? Fri 11 Dec, 6–9 pm …\n\n#makerspace #hamburg #löten #soldering'},
+       Website:{st:'auto', txt:'Am Freitag, 11. Dezember, um 18 Uhr findet im Attraktor ein Lötkurs für Anfänger statt …'},
+       Facebook:{st:'copy', txt:'Lötkurs für Anfänger am Fr 11.12. um 18 Uhr – Anmeldung über Meetup.'}},
+   checks:[[1,'Datum liegt in der Zukunft'],[1,'Foto: frei verwendbar'],[1,'Ort: Attraktor (Standard)'],[0,'Meetup-Kategorie nicht gesetzt'],[1,'Kein Konflikt im Kalender']]},
+  {id:41, t:'Rückblick Repair Café', by:'@jo', type:'Rückblick', when:'—', grp:'Wartet auf Mitglied', cls:'ph-repair', age:'3 Tage',
+   ch:{Instagram:{st:'auto', txt:'Gestern war wieder Repair Café: 20 Leute, 14 reparierte Geräte, 1 sehr glücklicher Toaster. Danke an alle Helfer:innen! 🔧'}, Website:{st:'auto', txt:'Rückblick: Repair Café im November …'}},
+   checks:[[0,'Foto: Personen erkennbar, Einwilligung fehlt'],[1,'Text vorhanden']]},
+  {id:40, t:'Neuer Lasercutter', by:'@kai', type:'Vereinsnews', when:'Mo 07.12. 10:00', grp:'Geplant', cls:'ph-laser', age:'',
+   ch:{Instagram:{st:'auto', txt:'Neu im Space: unser 100-W-Lasercutter! Einweisungen jeden Mittwoch. #lasercutter'}, Mastodon:{st:'auto', txt:'Neu im Attraktor: ein 100-W-Lasercutter. Einweisungen mittwochs.'}, Website:{st:'auto', txt:'Wir haben einen neuen Lasercutter …'}},
+   checks:[[1,'alles ok']]},
+  {id:39, t:'Nixie-Uhr', by:'@sam', type:'Projekt', when:'18.11.', grp:'Online', cls:'ph-nixie', age:'',
+   ch:{Instagram:{st:'done', txt:'Nixie-Röhren, 170 V und viel Geduld: @sam hat eine Uhr gebaut …'}, Mastodon:{st:'done', txt:'Nixie-Uhr von Sam …'}}, checks:[[1,'veröffentlicht']]},
+];
+let curDraft = 42, curCh = 'Instagram';
+function stageTeamWeb(st){
+  const d = DRAFTS.find(x=>x.id===curDraft);
+  if(!d.ch[curCh]) curCh = Object.keys(d.ch)[0];
+  if(d.id===42 && shared.approved) d.grp='Geplant'; else if(d.id===42) d.grp='Zur Freigabe';
+  const groups = ['Zur Freigabe','Wartet auf Mitglied','Geplant','Online'];
+  const c = d.ch[curCh];
+  const stLabel = {auto:'<span class="st tape blue">auto</span>', copy:'<span class="st tape">kopieren</span>', done:'<span class="st tape ok">online</span>'};
+  let preview = '';
+  if(curCh==='Instagram') preview = `<div class="preview-ig"><div class="h">${av('A','var(--accent)')} attraktor_org</div>${brandPost({cls:d.cls, title: d.id===42?'Lötworkshop für Anfänger':d.t, when: d.id===42?'Freitag, den 11.12.26 | 18 – 21 Uhr':(d.id===40?'Einweisung jeden Mittwoch':''), where: d.id===42||d.id===40?'Attraktor e.V. Eschelsweg 4, 22767 Hamburg':'', color: d.id===42?'mint':d.id===41?'sky':d.id===40?'blue':'red'})}<div class="c"><b>attraktor_org</b> ${esc(c.txt).replace(/\n/g,'<br>')}</div></div>`;
+  else if(curCh==='Meetup') preview = `<div class="preview-meetup">${thumb(d.cls)}<div class="b"><span class="date">FR, 11. DEZ. · 18:00 MEZ</span><b>${esc(d.t)}</b><span class="small muted">Attraktor e.V. · Eschelsweg 4, 1. Stock, Hamburg</span><span class="small">8 Plätze · 5 €</span></div></div>`;
+  else preview = `<div class="card small" style="max-width:420px"><div class="eyebrow">${esc(curCh)} Vorschau</div><b>${esc(d.t)}</b><p class="muted">${esc(c.txt).replace(/\n/g,'<br>')}</p></div>`;
+  const days = ['Mo 07','Di 08','Mi 09','Do 10','Fr 11','Sa 12','So 13'];
+  const cal = {0:[['ig','Lasercutter'],['ma','Lasercutter']],1:[['wp','Lasercutter']],3:[['ig','Story Lötkurs']],4:[['mu','Lötkurs 18:00']],5:[['ig','Repair Café?']]};
+  const primary = c.st==='copy'
+    ? `<button class="btn" id="copy">Text kopieren</button><button class="btn">Link eintragen</button>`
+    : (d.grp==='Zur Freigabe' ? `<button class="btn ok" id="approve">Freigeben</button><button class="btn">Änderung anfragen</button>` : d.grp==='Geplant' ? `<button class="btn" id="unapprove">Freigabe zurückziehen</button><button class="btn">Jetzt veröffentlichen</button>` : `<button class="btn">Mitglied erinnern</button>`);
+  st.innerHTML = `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">postomat.attraktor.org/redaktion/${d.id}</span></div>
+  <div style="padding:12px;border-bottom:1px solid var(--line);display:grid;gap:8px"><div class="row" style="justify-content:space-between"><b>Redaktionskalender · KW 50</b><span class="small muted">Regel: max. 1 Instagram-Post pro Tag</span></div>
+    <div class="scroll-x"><div class="week">${days.map((x,i)=>`<div class="day ${i===4?'today':''}"><span class="d">${x}</span>${(cal[i]||[]).map(([k,t])=>`<span class="slot ${k}">${{ig:'IG',mu:'MU',wp:'WP',fb:'FB',ma:'MA'}[k]} ${esc(t)}</span>`).join('')}</div>`).join('')}</div></div></div>
+  <div class="redax">
+    <div class="queue">${groups.map(g=>{const items=DRAFTS.filter(x=>x.grp===g); return `<div class="grp">${g} · ${items.length}</div>`+items.map(x=>`<button class="qitem ${x.id===curDraft?'on':''}" data-id="${x.id}"><span class="t">${esc(x.t)}</span><span class="m">${esc(x.type)} · ${esc(x.by)}${x.age?' · seit '+x.age:''}</span></button>`).join('')}).join('')}</div>
+    <div class="editor">
+      <div class="row" style="justify-content:space-between"><div><h3>${esc(d.t)}</h3><span class="small muted">${esc(d.type)} · ${esc(d.when)} · von ${esc(d.by)}</span></div><span class="tape ${d.grp==='Online'?'ok':d.grp==='Geplant'?'acc':d.grp==='Zur Freigabe'?'blue':'warn'}">${d.grp}</span></div>
+      <div class="ctabs" role="tablist">${Object.entries(d.ch).map(([k,v])=>`<button role="tab" aria-selected="${k===curCh}" data-ch="${k}">${k}${stLabel[v.st]}</button>`).join('')}<button class="muted" disabled>+ Kanal</button></div>
+      <div class="ed-grid"><div style="display:grid;gap:6px;align-content:start"><label class="small muted" for="edtxt">Text für ${esc(curCh)}</label><textarea class="editbox" id="edtxt">${esc(c.txt)}</textarea>
+        <div class="row small"><button class="chip">↻ neu formulieren</button><button class="chip">kürzer</button><button class="chip">+ English</button><span class="muted">${c.txt.length} Zeichen</span></div></div>
+        <div>${preview}</div></div>
+    </div>
+    <div class="aside">
+      <div class="row">${primary}</div>
+      <div><div class="eyebrow" style="margin-bottom:6px">Automatische Checks</div><div class="checklist">${d.checks.map(([ok,t])=>`<div><span class="ck ${ok?'y':'n'}">${ok?'✓':'!'}</span>${esc(t)}</div>`).join('')}</div></div>
+      <div><div class="eyebrow" style="margin-bottom:6px">Verlauf</div><div class="hist">
+        <div><b>@lena</b> eingereicht über Matrix · 14:02</div><div><b>Postomat</b> 4 Kanal-Texte erstellt · 14:05</div>${shared.changeReq?'<div><b>@kai</b> Änderung im Thread · 14:20</div><div><b>Postomat</b> v2 · 14:24</div>':''}${shared.approved?'<div><b>@kai</b> 👍 in #medienteam · 14:31</div>':''}</div></div>
+    </div>
+  </div>`;
+  st.querySelector('.queue').onclick = e => { const b=e.target.closest('.qitem'); if(!b) return; curDraft=+b.dataset.id; stageTeamWeb(st); };
+  st.querySelector('.ctabs').onclick = e => { const b=e.target.closest('button[data-ch]'); if(!b) return; curCh=b.dataset.ch; stageTeamWeb(st); };
+  $('#edtxt').addEventListener('input', e => { c.txt = e.target.value; });
+  $('#edtxt').addEventListener('change', () => stageTeamWeb(st));
+  const ap = $('#approve'); if(ap) ap.onclick = () => { shared.approved = true; stageTeamWeb(st); };
+  const un = $('#unapprove'); if(un) un.onclick = () => { shared.approved = false; stageTeamWeb(st); };
+  const cp = $('#copy'); if(cp) cp.onclick = async () => { try{ await navigator.clipboard.writeText(c.txt); cp.textContent='Kopiert'; }catch{ $('#edtxt').select(); cp.textContent='Markiert, jetzt ⌘C'; } };
+}
+
+/* --- 5. Library --- */
+let libQ = '', libOnlyFree = false;
+function stageLibrary(st){
+  const items = LIBRARY.filter(x => (!libOnlyFree || x.c==='free') && (!libQ || (x.t+' '+x.tags).toLowerCase().includes(libQ.toLowerCase())));
+  st.innerHTML = `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">postomat.attraktor.org/bibliothek</span></div>
+  <div class="pane">
+    <div class="row" style="justify-content:space-between"><h3>Fotobibliothek <span class="muted small">${LIBRARY.length} Bilder</span></h3><div class="row"><span class="small muted">oder in Nextcloud: <span class="mono">/Postomat-Fotos/Eingang</span></span><button class="btn pri">+ Fotos hochladen</button></div></div>
+    <div class="row"><input class="input" id="libq" placeholder="Suchen: löten, laser, personen …" value="${esc(libQ)}" style="flex:1;max-width:360px">
+      <button class="chip" id="libfree" aria-pressed="${libOnlyFree}" style="${libOnlyFree?'border-color:var(--ok);color:var(--ok)':''}">${libOnlyFree?'✓ ':''}nur frei verwendbare</button></div>
+    <div class="legend"><span><span class="consent free">frei verwendbar</span> wird Mitgliedern vorgeschlagen</span><span><span class="consent ask">Einwilligung fehlt</span> nur nach Rückfrage</span><span><span class="consent int">nur intern</span> nie öffentlich</span></div>
+    <div class="lib">${items.map(x=>`<div class="libitem">${thumb(x.cls)}<b>${esc(x.t)}</b><span class="consent ${x.c}">${consentLabel[x.c]}</span><span class="tags">${esc(x.tags)}<br>${esc(x.by)} · ${x.when}</span></div>`).join('') || '<p class="muted">Nichts gefunden. Andere Wörter probieren.</p>'}</div>
+  </div>`;
+  const q = $('#libq'); q.oninput = e => { libQ = e.target.value; const pos=q.selectionStart; stageLibrary(st); const q2=$('#libq'); q2.focus(); q2.setSelectionRange(pos,pos); };
+  $('#libfree').onclick = () => { libOnlyFree = !libOnlyFree; stageLibrary(st); };
+}
+
+/* --- 6. Admin --- */
+const ADMIN = store.get('admin3', {Meetup:'copy', Instagram:'auto', Facebook:'copy', Website:'auto', Wiki:'auto', Mastodon:'auto', lang:'both', approvals:'1', self:'no', ai:'local', tone:'du'});
+function stageAdmin(st){
+  const chans = [['Meetup','Keine API (Pro kostet). Kopierhilfe + Erkennung über iCal-Feed'],['Website','blog.attraktor.org · WordPress, Application Password · Kategorie Termine'],['Wiki','wiki.attraktor.org · Bot-Konto · Vorlage {{Termin}}'],['Instagram','@attraktor_org · Profi-Konto nötig (kostenlos)'],['Facebook','attraktoreV · Kopiervorlage, bis Meta-App steht'],['Mastodon','Account noch anlegen, z. B. auf chaos.social']];
+  const seg = (key, opts) => `<div class="seg" data-k="${key}">${opts.map(([v,l])=>`<button data-v="${v}" aria-pressed="${ADMIN[key]===v}">${l}</button>`).join('')}</div>`;
+  st.innerHTML = `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">postomat.attraktor.org/einstellungen</span></div>
+  <div class="pane settings">
+    <h3>Kanäle</h3>
+    ${chans.map(([k,d])=>`<div class="setrow"><div><b>${k}</b></div><div class="small muted">${d}</div>${seg(k,[['auto','Automatisch'],['copy','Kopiervorlage'],['off','Aus']])}</div>`).join('')}
+    <h3 style="margin-top:10px">Freigabe-Regeln</h3>
+    <div class="setrow"><b>Benötigte 👍</b><span class="small muted">Wie viele aus #medienteam müssen zustimmen?</span>${seg('approvals',[['1','1'],['2','2']])}</div>
+    <div class="setrow"><b>Eigene Beiträge</b><span class="small muted">Darf jemand aus dem Medienteam den eigenen Beitrag freigeben?</span>${seg('self',[['yes','Ja'],['no','Nein']])}</div>
+    <h3 style="margin-top:10px">Stil &amp; KI</h3>
+    <div class="setrow"><b>Sprache</b><span class="small muted">Jeder Text auf Deutsch und Englisch. IG: EN unter DE · Mastodon: EN als Antwort</span>${seg('lang',[['de','DE'],['both','DE + EN']])}</div>
+    <div class="setrow"><b>Monatsübersicht</b><span class="small muted">am 25.: Entwurf aus Meetup- und Wiki-Kalender</span><span class="tape blue">an</span></div>
+    <div class="setrow"><b>Anrede</b><span class="small muted">gilt für alle generierten Texte</span>${seg('tone',[['du','Du'],['sie','Sie']])}</div>
+    <div class="setrow"><b>KI-Anbieter</b><span class="small muted">ohne KI: geführte Fragen + Textvorlagen</span>${seg('ai',[['none','Keine'],['local','Lokal (Ollama)'],['ext','Extern']])}</div>
+    <div class="setrow"><b>Rollen</b><span class="small muted">Keycloak-Gruppen: <span class="mono">mitglieder</span> · <span class="mono">medienteam</span> · <span class="mono">postomat-admin</span></span><span class="tape">Keycloak</span></div>
+  </div>`;
+  st.querySelectorAll('.seg').forEach(s => s.onclick = e => { const b=e.target.closest('button'); if(!b) return; ADMIN[s.dataset.k]=b.dataset.v; store.set('admin3',ADMIN); stageAdmin(st); });
+}
+
+renderPersonas(); renderStage();
+
+$('#sg1').innerHTML = brandPost({title:'Lötworkshop', when:'Sonntag, den 18.10.26 | 11 – 13 Uhr', sticker:true});
+$('#sg2').innerHTML = brandPost({cls:'ph-space', title:'Bald ist wieder Maker Faire!', when:'15. – 16. August 2026 in Hannover', where:'', color:'blue'});
+$('#sg3').innerHTML = brandPost({cls:'ph-solder', title:'Muttertags-Lötworkshop', when:'9.05.2026 Sa. | 14:00 Uhr', where:'', color:'red'});
+
+/* ---------- walkthrough ---------- */
+const PEOPLE = {
+  lena:{n:'Lena', role:'Mitglied', av:'LE', c:'var(--blue)'},
+  bot:{n:'Postomat', role:'Bot', av:'P', c:'var(--accent)'},
+  mira:{n:'Mira', role:'Medienteam', av:'MI', c:'var(--matrix)'},
+  kai:{n:'Kai', role:'Medienteam', av:'KA', c:'var(--matrix)'},
+  world:{n:'Öffentlichkeit', role:'Follower', av:'@', c:'var(--ink)'},
+};
+const STORY = [
+  {id:'start', t:'Mo 23.11. · 14:02', who:'lena', where:'Matrix · DM', title:'Lena writes one sentence', why:'No form, no menu. She opens the DM with @postomat like any other chat.', scr:'dm'},
+  {id:'ask', t:'Mo 23.11. · 14:02', who:'bot', where:'Matrix · DM', title:'Postomat says what it understood and asks for the time', why:'It repeats what it understood so mistakes show up early. Only one question per message.', scr:'dm'},
+  {id:'answer', t:'Mo 23.11. · 14:03', who:'lena', where:'Matrix · DM', title:'Lena corrects the date and answers more than was asked', why:'“Nächsten Freitag” was ambiguous, and the summary made that visible. The correction, time, places and price come in one message. Postomat takes all of it and skips the questions it would have asked.', scr:'dm'},
+  {id:'photo', t:'Mo 23.11. · 14:04', who:'bot', where:'Matrix · DM', title:'No photo? The library offers four', why:'Only photos marked “frei verwendbar” are suggested. A plain number is enough as an answer.', scr:'dm'},
+  {id:'pick', t:'Mo 23.11. · 14:04', who:'bot', where:'Matrix · DM', title:'A short summary and a link', why:'The chat shows only the key facts. Postomat has already turned the photo into the usual Attraktor banner (photo, colored band, title, 🕓 date, 📍 address, logo). The full texts are one click away in the browser.', scr:'dm'},
+  {id:'web', t:'Mo 23.11. · 14:05', who:'lena', where:'Web · Beitrag ansehen', title:'Lena checks the texts and adds a note', why:'She is already logged in through Keycloak. She can read every channel text but not edit it. A note to the team is enough.', scr:'webMember'},
+  {id:'sent', t:'Mo 23.11. · 14:06', who:'bot', where:'Matrix · #medienteam', title:'The card lands in the media team room', why:'One card per Beitrag. Kai and Mira get a normal Matrix notification. Lena gets a short “ist beim Medienteam”.', scr:'room'},
+  {id:'review', t:'Mo 23.11. · 15:40', who:'mira', where:'Web · Redaktion', title:'Mira polishes it in the editor', why:'The automatic checks flag the missing Meetup category. She adds Lena’s note to the text and keeps the slot suggested by the calendar.', scr:'redax'},
+  {id:'approve', t:'Mo 23.11. · 15:44', who:'mira', where:'Matrix · #medienteam', title:'👍 and it’s approved', why:'One 👍 from someone who isn’t the author is enough. The bot updates the same card, so the room doesn’t fill up with messages.', scr:'room'},
+  {id:'meetup', t:'Mo 23.11. · 15:46', who:'mira', where:'Web · Kopierhilfe + Meetup', title:'Mira creates the Meetup event with the copy helper', why:'There is no free Meetup API. So Postomat prepares every field with its own copy button and the image to download. Mira pastes them into Meetup (about 2 minutes). Postomat then spots the new event in Meetup’s public iCal feed and links it everywhere by itself, so nobody has to paste a link back.', scr:'meetupCopy'},
+  {id:'publish', t:'Mo 23.11. · 15:49', who:'bot', where:'Web · Status', title:'Postomat publishes or schedules each channel', why:'Website, Wiki and Mastodon go out right away, in German and English. Instagram waits for its calendar slot. Meetup was found in the feed. Facebook stays in copy mode for now.', scr:'status'},
+  {id:'notify', t:'Mo 23.11. · 15:50', who:'bot', where:'Matrix · DM', title:'Lena gets the links', why:'This message is the payoff that makes her come back next time.', scr:'dm'},
+  {id:'iglive', t:'Fr 04.12. · 10:00', who:'world', where:'Instagram', title:'The Instagram post goes live in its slot', why:'Posted a week before the event, on a day with no other Instagram post.', scr:'ig'},
+  {id:'remind', t:'Di 08.12. · 18:00', who:'bot', where:'Matrix · DM', title:'Check three days before', why:'Without the Meetup API there is no sign-up count, so the bot links to the Meetup page instead. If Lena answered “fällt aus”, a cancellation notice would be prepared.', scr:'dm'},
+  {id:'recap', t:'Sa 12.12. · 11:00', who:'bot', where:'Matrix · DM', title:'The day after: “Wie war’s?”', why:'Three photos and one consent answer are all it takes to make a recap post.', scr:'dm'},
+  {id:'library', t:'Sa 12.12. · 11:05', who:'bot', where:'Web · Fotobibliothek', title:'The photos go into the library (in Nextcloud)', why:'Tagged automatically from the event, consent stored with each photo. The next soldering course can reuse them.', scr:'lib'},
+  {id:'done', t:'Mo 14.12. · 09:30', who:'lena', where:'Web · Meine Beiträge', title:'Both posts are online', why:'Lena sees the whole story in one place. Effort for her: 9 chat messages and 1 click. Effort for Mira: about 6 minutes.', scr:'mine'},
+];
+const SI = Object.fromEntries(STORY.map((x,i)=>[x.id,i]));
+let sStep = 0, sTimer = null;
+
+const DM = [
+  {s:'start', me:1, text:'Ich will nächsten Freitag einen Lötkurs für Anfänger machen'},
+  {s:'ask', text:'Cool, ein Workshop! Ich habe verstanden:\n• Lötkurs für Anfänger\n• Freitag, 27.11.\n\nUm wie viel Uhr geht’s los?'},
+  {s:'answer', me:1, text:'Nee, den Freitag danach, also 11.12.! 18 Uhr, max. 8 Leute, 5 € fürs Material'},
+  {s:'answer', text:'Alles klar, Freitag 11.12. · 18:00 · 8 Plätze · 5 € Material.\nHast du ein Foto dazu? Schick es einfach hier rein.'},
+  {s:'photo', me:1, text:'nö'},
+  {s:'photo', text:'Kein Problem. Die hier aus der Vereins-Bibliothek passen. Welches nehmen wir?', lib:[1,2,3,4]},
+  {s:'pick', me:1, text:'2'},
+  {s:'pick', card:1},
+  {s:'sent', text:'Ist beim Medienteam 🙌 Ich melde mich, sobald es online ist.'},
+  {s:'notify', text:'✅ Dein Lötkurs ist online!\n• Meetup: meetup.com/attraktor/events/31207…\n• Website: attraktor.org/events/loetkurs-anfaenger\n• Mastodon: chaos.social/@attraktor/1134…\n• Wiki: Termin:Lötkurs_für_Anfänger_2026-12-11\n• Instagram: kommt am Fr 04.12. um 10:00'},
+  {s:'remind', text:'Kurzer Check zum Lötkurs am Freitag: Findet alles statt wie geplant?\nDie Anmeldungen siehst du hier: meetup.com/attraktor/events/31207…'},
+  {s:'remind', me:1, text:'Ja, alles gut!'},
+  {s:'remind', text:'Super, viel Spaß! 🔥'},
+  {s:'recap', text:'Wie war der Lötkurs? Wenn du 2–3 Fotos schickst, mache ich einen Rückblick draus.'},
+  {s:'recap', me:1, photos:['ph-people','ph-solder','ph-pcb']},
+  {s:'recap', me:1, text:'War super, alle 8 haben ein blinkendes Abzeichen mit nach Hause genommen'},
+  {s:'recap', text:'Klingt toll! Eine Frage noch: Sind auf den Fotos Personen erkennbar?\n1️⃣ Ja, alle waren einverstanden\n2️⃣ Ja, aber nicht gefragt\n3️⃣ Nein'},
+  {s:'recap', me:1, text:'1'},
+  {s:'recap', text:'Danke! Der Rückblick geht ans Medienteam, die Fotos landen in der Bibliothek.'},
+];
+function msgHtml(m, isNew){
+  const nw = isNew ? '<span class="newtag">NEU</span>' : '';
+  if(m.me){
+    const inner = m.photos ? `<div class="thumbs" style="grid-template-columns:repeat(${m.photos.length},64px)">${m.photos.map(c=>thumb(c)).join('')}</div>` : `<div class="text">${esc(m.text)}</div>`;
+    return `<div class="msg me ${isNew?'hl':''}">${av('LE','var(--blue)')}<div class="bubble">${inner}</div></div>`;
+  }
+  if(m.card) return `<div class="msg ${isNew?'hl':''}">${BOT_AV}<div class="bubble"><div class="name">Postomat${nw}</div><div class="text">Super, so schicke ich es ans Medienteam:</div>
+    <div class="mxcard"><div class="hd"><b>Lötkurs für Anfänger</b><span class="tape">Event</span></div>
+    <div class="bd"><div class="mini"><div style="width:110px">${brandPost({title:'Lötworkshop für Anfänger'})}</div><div class="small"><b>Fr 11.12. · 18:00</b> · Attraktor<br>8 Plätze · 5 € Material<br><span class="muted">„Du wolltest schon immer mal löten? An einem Abend lernst du, wie aus Bauteilen ein blinkendes Abzeichen wird …“</span></div></div>
+    <div class="row"><span class="chip">Meetup</span><span class="chip">Website</span><span class="chip">Wiki</span><span class="chip">Instagram</span><span class="chip">Mastodon</span><span class="chip">Facebook</span><span class="chip">DE + EN</span></div></div>
+    <div class="ft">Ansehen &amp; abschicken: <u>postomat.attraktor.org/b/42</u> ↗</div></div></div></div>`;
+  return `<div class="msg ${isNew?'hl':''}">${BOT_AV}<div class="bubble"><div class="name">Postomat${nw}</div><div class="text">${esc(m.text)}</div>${m.lib?`<div class="thumbs">${m.lib.map((id,i)=>{const L=LIBRARY[id-1];return thumb(L.cls,L.t,i+1)}).join('')}</div>`:''}</div></div>`;
+}
+function chatShell(url, rooms, head, body){
+  return `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">${url}</span></div>
+  <div class="mxc"><div class="rooms"><div class="eyebrow" style="padding:4px 8px">Räume</div>${rooms}</div>
+  <div class="chat"><div class="chat-head">${head}</div><div class="chat-body" id="sbody">${body}</div></div></div>`;
+}
+const SCREENS = {
+  dm(i){
+    const id = STORY[i].id;
+    const shown = DM.filter(m => SI[m.s] <= i);
+    const body = shown.map((m,k) => { const prev = k>0 ? SI[shown[k-1].s] : -1; const gap = SI[m.s] - prev; const sep = (k>0 && STORY[SI[m.s]].t.slice(0,9) !== STORY[prev].t.slice(0,9) && m.s!==shown[k-1].s) ? `<div class="sys">— ${STORY[SI[m.s]].t.slice(0,9)} —</div>` : ''; return sep + msgHtml(m, m.s===id); }).join('');
+    return chatShell('Element · @postomat:attraktor.org',
+      `<div class="r on">Postomat <span class="badge">1</span></div><div class="r">#attraktor-mitglieder</div><div class="r">#elektronik</div><div class="r">#offtopic</div>`,
+      `${BOT_AV}<div><b>Postomat</b><div class="small muted">Direktnachricht · eingeloggt als @lena</div></div>`, body);
+  },
+  room(i){
+    const approved = i >= SI.approve;
+    const card = `<div class="mxcard ${STORY[i].id==='sent'?'hl':''}"><div class="hd"><div><b>Lötkurs für Anfänger</b> <span class="muted small">von @lena</span></div>${approved?'<span class="tape ok">Freigegeben · @mira</span>':'<span class="tape blue">Zur Freigabe</span>'}</div>
+      <div class="bd"><div class="mini"><div style="width:110px">${brandPost({title:'Lötworkshop für Anfänger'})}</div><div class="small"><b>Event · Fr 11.12. · 18:00 · 8 Plätze · 5 €</b><br><span class="muted">IG: „Du wolltest schon immer mal löten? 🔥 Am Fr 11.12. zeigen wir dir, wie aus Bauteilen ein blinkendes Abzeichen wird…“</span></div></div>
+      <div class="row"><span class="chip">Meetup: Kopierhilfe</span><span class="chip">Website + Wiki: sofort</span><span class="chip">Mastodon: sofort</span><span class="chip">IG: Fr 04.12. 10:00</span><span class="chip">FB: Kopiervorlage</span></div>
+      <div class="note" style="font-size:.8rem">Notiz von @lena: „Lötstationen sind da, niemand muss etwas mitbringen.“</div>
+      <div class="checks"><span>✓ Datum in der Zukunft</span><span>✓ Foto frei verwendbar</span><span class="${i>=SI.review?'':'w'}">${i>=SI.review?'✓ Meetup-Kategorie':'! Meetup-Kategorie fehlt'}</span></div></div>
+      <div class="ft">👍 freigeben · im Thread antworten = Änderung · <u>Im Browser bearbeiten ↗</u></div></div>
+      <div class="reacts"><button class="${approved?'on':''} ${STORY[i].id==='approve'?'hl':''}">👍 ${approved?'1':''}</button><button>✏️</button></div>`;
+    let thread = '';
+    if(i >= SI.review) thread += `<div class="thread"><div class="msg">${av('MI','var(--matrix)')}<div class="bubble"><div class="name">Mira <span>im Thread · 15:38</span></div><div class="text">Ich übernehm das 👀</div></div></div></div>`;
+    let after = '';
+    if(approved) after = `<div class="msg ${STORY[i].id==='approve'?'hl':''}">${BOT_AV}<div class="bubble"><div class="name">Postomat${STORY[i].id==='approve'?'<span class="newtag">NEU</span>':''}</div><div class="text">Freigegeben von @mira. Website, Wiki und Mastodon sind online, Instagram ist für Fr 04.12. 10:00 geplant.\n@mira: Meetup und Facebook brauchen dich kurz 👉 <u>Kopierhilfe öffnen</u></div></div></div>`;
+    return chatShell('Element · #medienteam:attraktor.org',
+      `<div class="r on">#medienteam <span class="badge">${approved?0:1}</span></div><div class="r">Postomat</div><div class="r">#attraktor-mitglieder</div>`,
+      `${av('#','var(--matrix)')}<div><b>#medienteam</b><div class="small muted">Kai, Mira, Jo · eingeloggt als @mira</div></div>`,
+      `<div class="msg">${BOT_AV}<div class="bubble"><div class="name">Postomat <span>Mo 09:00</span></div><div class="text">☀️ Diese Woche geplant: 2 Posts. Nichts wartet.</div></div></div>
+       <div class="msg">${BOT_AV}<div class="bubble"><div class="name">Postomat <span>14:06</span>${STORY[i].id==='sent'?'<span class="newtag">NEU</span>':''}</div>${card}</div></div>${thread}${after}`);
+  },
+  webMember(){
+    return `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">postomat.attraktor.org/b/42</span></div>
+    <div class="pane">
+      <div class="kc">🔒 Angemeldet über Attraktor-Login (Keycloak) als <b>lena</b></div>
+      <div class="row" style="justify-content:space-between"><div><h3>Lötkurs für Anfänger</h3><span class="small muted">Event · Fr 11.12. · 18:00 · 8 Plätze · 5 €</span></div><span class="tape">Entwurf</span></div>
+      <div class="ctabs"><button aria-selected="true">Alle Kanäle</button><button>Meetup</button><button>Instagram</button><button>Website</button><button>Mastodon</button><button>Facebook</button></div>
+      <div class="row" style="align-items:flex-start;gap:16px">
+        <div class="preview-ig" style="flex:1;min-width:220px"><div class="h">${av('A','var(--accent)')} attraktor_org</div>${brandPost({title:'Lötworkshop für Anfänger'})}<div class="c">${igCaption()}</div></div>
+        <div class="preview-meetup" style="flex:1;min-width:220px">${thumb('ph-people')}<div class="b"><span class="date">FR, 11. DEZ. · 18:00 MEZ</span><b>Lötkurs für Anfänger</b><span class="small muted">Attraktor e.V. · Hamburg</span><span class="small">Keine Vorkenntnisse nötig. Du baust dein eigenes blinkendes Abzeichen. 8 Plätze, 5 € Material.</span></div></div>
+      </div>
+      <div class="card hl" style="display:grid;gap:8px"><label for="lnote" class="small"><b>Notiz fürs Medienteam</b> <span class="muted">(optional)</span></label>
+        <textarea class="editbox" id="lnote" style="min-height:54px">Lötstationen sind da, niemand muss etwas mitbringen.</textarea>
+        <div class="row"><button class="btn pri">Ans Medienteam schicken</button><span class="small muted">Texte ändern kann das Medienteam. Fehlt etwas Inhaltliches, schreib es einfach in die Notiz.</span></div></div>
+    </div>`;
+  },
+  redax(){
+    return `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">postomat.attraktor.org/redaktion/42</span></div>
+    <div style="padding:12px;border-bottom:1px solid var(--line);display:grid;gap:8px"><div class="row" style="justify-content:space-between"><b>Redaktionskalender · KW 49</b><span class="small muted">Vorschlag für Instagram: Fr 04.12. 10:00 (freier Tag, 7 Tage vorher)</span></div>
+      <div class="scroll-x"><div class="week">${['Mo 30','Di 01','Mi 02','Do 03','Fr 04','Sa 05','So 06'].map((x,k)=>`<div class="day">${'<span class="d">'+x+'</span>'}${k===1?'<span class="slot ig">IG Lasercutter</span>':''}${k===4?'<span class="slot ig hl">IG Lötkurs</span>':''}${k===2?'<span class="slot wp">WP Vereinsnews</span>':''}</div>`).join('')}</div></div></div>
+    <div class="redax">
+      <div class="queue"><div class="grp">Zur Freigabe · 1</div><button class="qitem on"><span class="t">Lötkurs für Anfänger</span><span class="m">Event · @lena · seit 1 Std.</span></button><div class="grp">Geplant · 1</div><button class="qitem"><span class="t">Neuer Lasercutter</span><span class="m">Vereinsnews · @kai</span></button></div>
+      <div class="editor">
+        <div class="row" style="justify-content:space-between"><div><h3>Lötkurs für Anfänger</h3><span class="small muted">Event · Fr 11.12. 18:00 · von @lena</span></div><span class="tape blue">Zur Freigabe</span></div>
+        <div class="note">Notiz von @lena: „Lötstationen sind da, niemand muss etwas mitbringen.“</div>
+        <div class="ctabs"><button aria-selected="true">Meetup<span class="st tape blue">auto</span></button><button>Instagram<span class="st tape blue">auto</span></button><button>Website<span class="st tape blue">auto</span></button><button>Mastodon<span class="st tape blue">auto</span></button><button>Facebook<span class="st tape">kopieren</span></button></div>
+        <div class="ed-grid"><div style="display:grid;gap:8px;align-content:start">
+          <div class="row" style="justify-content:space-between"><label class="small muted" for="mtxt">Beschreibung</label><div class="seg hl"><button aria-pressed="true">DE</button><button aria-pressed="false">EN</button><button aria-pressed="false">DE + EN nebeneinander</button></div></div><textarea class="editbox" id="mtxt">Du wolltest schon immer mal löten? An diesem Abend lernst du die Grundlagen und baust dein eigenes blinkendes Abzeichen.
+
+• Keine Vorkenntnisse nötig
+• Lötstationen sind vorhanden, bring einfach dich mit
+• 8 Plätze, 5 € Material</textarea>
+          <div class="row" style="padding:4px"><b class="small">Bild-Vorlage</b><div class="swatches"><button class="sw" style="background:#8ff0cf" aria-pressed="true" aria-label="Mint"></button><button class="sw" style="background:#3d7fc4" aria-pressed="false" aria-label="Blau"></button><button class="sw" style="background:#b8322b" aria-pressed="false" aria-label="Rot"></button><button class="sw" style="background:#a9cdea" aria-pressed="false" aria-label="Hellblau"></button></div><span class="small muted">Banner unten · Titel · 🕓 · 📍 · Logo</span></div>
+          <div class="row hl" style="padding:4px"><label class="small" for="mcat"><b>Meetup-Kategorie</b></label><select id="mcat" class="input"><option>Bildung &amp; Workshops</option><option>Technik</option></select></div></div>
+          <div class="preview-meetup">${thumb('ph-people')}<div class="b"><span class="date">FR, 11. DEZ. · 18:00 MEZ</span><b>Lötkurs für Anfänger</b><span class="small muted">Attraktor e.V. · Bildung &amp; Workshops</span></div></div></div>
+      </div>
+      <div class="aside"><div class="row"><button class="btn ok">Freigeben</button><button class="btn">Änderung anfragen</button></div>
+        <div><div class="eyebrow" style="margin-bottom:6px">Automatische Checks</div><div class="checklist"><div><span class="ck y">✓</span>Datum in der Zukunft</div><div><span class="ck y">✓</span>Foto frei verwendbar</div><div><span class="ck y">✓</span>Meetup-Kategorie gesetzt</div><div><span class="ck y">✓</span>Kein zweiter IG-Post am Fr 04.12.</div><div><span class="ck y">✓</span>Autorin ≠ Freigebende</div><div><span class="ck y">✓</span>EN-Text vorhanden</div></div></div>
+        <div><div class="eyebrow" style="margin-bottom:6px">Verlauf</div><div class="hist"><div><b>@lena</b> über Matrix eingereicht · 14:02</div><div><b>@lena</b> Notiz ergänzt, abgeschickt · 14:06</div><div><b>@mira</b> Meetup-Text bearbeitet · 15:42</div></div></div></div>
+    </div>`;
+  },
+  meetupCopy(){
+    const f = [['Titel','Lötkurs für Anfänger / Soldering for beginners'],['Datum','11.12.2026'],['Uhrzeit','18:00 – 21:00'],['Ort','Attraktor e.V., Eschelsweg 4, 1. Stock, 22767 Hamburg'],['Teilnehmer max.','8'],['Beschreibung','🔧 Was dich erwartet\nDu wolltest schon immer mal löten? An diesem Abend lernst du die Grundlagen und baust dein eigenes blinkendes Abzeichen.\n\n✅ Keine Vorkenntnisse nötig\n🔥 Lötstationen sind vorhanden\n💶 5 € Material\n\n🇬🇧 Always wanted to learn soldering? …']];
+    return `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">postomat.attraktor.org/redaktion/42/meetup</span></div>
+    <div class="pane"><div class="row" style="justify-content:space-between"><h3>Meetup-Kopierhilfe</h3><a class="btn pri" href="https://www.meetup.com/attraktor/" target="_blank" rel="noopener">Meetup öffnen ↗</a></div>
+      <p class="small muted">Tipp: In Meetup „Event kopieren“ beim letzten Lötworkshop wählen, dann nur die Felder unten ersetzen.</p>
+      <div class="chstat">${f.map(([k,v])=>`<div><b>${k}</b><span class="small" style="white-space:pre-line;min-width:0;overflow-wrap:anywhere">${esc(v)}</span><button class="btn small">Kopieren</button></div>`).join('')}<div><b>Bild</b><span>${thumb('ph-people')}</span><button class="btn small">Laden</button></div></div>
+      <div class="card hl" style="display:grid;gap:4px"><div class="row"><span class="tape ok">Gefunden</span><b>meetup.com/attraktor/events/31207…</b></div><span class="small muted">Im iCal-Feed von Meetup erkannt (Titel + Datum passen) · 15:48. Der Link ist jetzt in Website, Wiki, Instagram und bei Lena eingetragen.</span></div>
+    </div>`;
+  },
+  status(){
+    const rows = [['Meetup','ok','Gefunden','meetup.com/attraktor/events/31207… · von @mira angelegt, im iCal-Feed erkannt'],['Website','ok','Online','blog.attraktor.org/loetkurs-anfaenger · Kategorie Termine · DE + EN'],['Wiki','ok','Online','Termin:Lötkurs_für_Anfänger_2026-12-11 · erscheint auf der Startseite'],['Mastodon','ok','Online','chaos.social/@attraktor/1134… · DE, EN als Antwort'],['Instagram','acc','Geplant','Fr 04.12. 10:00 · Story Do 10.12. 17:00'],['Facebook','warn','Kopieren','@mira postet von Hand und trägt den Link ein']];
+    return `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">postomat.attraktor.org/redaktion/42</span></div>
+    <div class="pane"><div class="row" style="justify-content:space-between"><h3>Lötkurs für Anfänger</h3><span class="tape acc">Geplant</span></div>
+      <div class="chstat hl">${rows.map(([k,c,st,d])=>`<div><b>${k}</b><span class="small muted" style="min-width:0;overflow-wrap:anywhere">${d}</span><span class="tape ${c}">${st}</span></div>`).join('')}</div>
+      <div class="card small" style="display:grid;gap:6px"><b>Facebook-Kopiervorlage</b><span class="muted">Lötkurs für Anfänger am Fr 11.12. um 18 Uhr im Attraktor. Keine Vorkenntnisse nötig, Lötstationen sind da. Anmeldung: meetup.com/attraktor/events/31207…</span><div class="row"><button class="btn">Text kopieren</button><button class="btn">Bild laden</button><input class="input" id="fblink" placeholder="Link zum FB-Post einfügen" style="flex:1"></div></div>
+    </div>`;
+  },
+  ig(){
+    return `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">instagram.com/attraktor_org</span></div>
+    <div class="phone"><div class="notif">${av('P','var(--accent)')}<div><b>Postomat</b> · #medienteam<br><span class="muted">Instagram-Post „Lötkurs für Anfänger“ ist online.</span></div></div>
+      <div class="preview-ig hl" style="border:none;border-radius:0"><div class="h">${av('A','var(--accent)')} attraktor_org <span class="muted" style="font-weight:400">· Hamburg</span></div>${brandPost({title:'Lötworkshop für Anfänger'})}<div class="c">${igCaption('♥ 37 &nbsp; 💬 4')}</div></div></div>`;
+  },
+  lib(){
+    const neu = [{cls:'ph-people',t:'Lötkurs 12/2026 #1'},{cls:'ph-solder',t:'Lötkurs 12/2026 #2'},{cls:'ph-pcb',t:'Lötkurs 12/2026 #3'}];
+    return `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">postomat.attraktor.org/bibliothek</span></div>
+    <div class="pane"><div class="row" style="justify-content:space-between"><h3>Fotobibliothek <span class="muted small">${LIBRARY.length+3} Bilder</span></h3><span class="small muted">Speicherort: Nextcloud <span class="mono">/Postomat-Fotos/2026/2026-12-11-loetkurs</span></span></div>
+      <div class="lib">${neu.map(x=>`<div class="libitem hl">${thumb(x.cls)}<b>${x.t}<span class="newtag">NEU</span></b><span class="consent free">frei verwendbar</span><span class="tags">löten, workshop, personen, lötkurs<br>@lena · 12/2026 · Einwilligung: alle gefragt</span></div>`).join('')}
+      ${LIBRARY.slice(0,5).map(x=>`<div class="libitem">${thumb(x.cls)}<b>${esc(x.t)}</b><span class="consent ${x.c}">${consentLabel[x.c]}</span><span class="tags">${esc(x.tags)}</span></div>`).join('')}</div>
+      <div class="note">Daraus ist automatisch ein Entwurf „Rückblick: Lötkurs für Anfänger“ entstanden. Er liegt jetzt bei Kai und Jo zur Freigabe.</div></div>`;
+  },
+  mine(){
+    const steps = ['Eingereicht','Beim Medienteam','Geplant','Online'];
+    const posts = [{cls:'ph-people',t:'Rückblick: Lötkurs',sub:'Rückblick · 14.12.',note:'Online auf Instagram, Website und Mastodon · freigegeben von @kai'},{cls:'ph-solder',t:'Lötkurs für Anfänger',sub:'Event · Fr 11.12.',note:'Meetup, Website, Wiki, Mastodon, Instagram, Facebook · DE + EN'}];
+    return `<div class="frame-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">postomat.attraktor.org/meine-beitraege</span></div>
+    <div class="pane"><div class="kc">🔒 Angemeldet als <b>lena</b></div><h3>Meine Beiträge</h3>
+      ${posts.map((p,k)=>`<div class="card mypost ${k===0?'hl':''}">${thumb(p.cls)}<div style="display:grid;gap:6px;min-width:0"><div><b>${esc(p.t)}</b> <span class="muted small">${esc(p.sub)}</span></div><div class="stepper">${steps.map(s=>`<span class="done">${s}</span>`).join('')}</div><div class="small muted">${esc(p.note)}</div></div></div>`).join('')}
+      <div class="card" style="display:grid;gap:4px"><span class="eyebrow">Dein Aufwand</span><span><b>9</b> Nachrichten im Chat · <b>1</b> Klick im Browser · <b>3</b> Fotos</span><span class="small muted">Dabei rausgekommen: 1 Meetup-Event, 1 Wiki-Termin, 2 Website-Beiträge, 3 Instagram-Posts/Stories, 2 Mastodon-Posts, 1 Facebook-Post, alles auf Deutsch + Englisch</span></div></div>`;
+  },
+};
+function renderStory(){
+  const st = STORY[sStep], P = PEOPLE[st.who];
+  $('#tl').innerHTML = STORY.map((x,k)=>`<button data-k="${k}" class="${k<sStep?'past':k>sStep?'future':''}" ${k===sStep?'aria-current="step"':''}><span class="pip" style="background:${PEOPLE[x.who].c}"></span><span><span class="when">${x.t}</span><span class="what">${esc(x.title)}</span></span></button>`).join('');
+  $('#cap').innerHTML = `<div style="display:grid;gap:6px;min-width:0"><div class="meta"><span class="avatar" style="background:${P.c};width:26px;height:26px;font-size:.62rem;${st.who==='world'?'color:var(--bg)':''}">${P.av}</span><b>${P.n}</b><span class="muted small">${P.role}</span><span class="chip ${st.where.startsWith('Matrix')?'mx':st.where.startsWith('Web')?'web':''}">${esc(st.where)}</span><span class="mono small muted">${st.t}</span></div>
+    <h2>${esc(st.title)}</h2><p class="why">${esc(st.why)}</p></div>
+    <div class="ctrl"><button class="btn" id="sprev" aria-label="Zurück" ${sStep===0?'disabled':''}>◀</button><span class="count">${sStep+1} / ${STORY.length}</span><button class="btn pri" id="snext" aria-label="Weiter" ${sStep===STORY.length-1?'disabled':''}>▶</button><button class="btn ghost" id="splay">${sTimer?'❚❚ Pause':'Auto'}</button></div>`;
+  $('#prog').style.width = ((sStep+1)/STORY.length*100)+'%';
+  $('#sstage').innerHTML = SCREENS[st.scr](sStep);
+  const b = $('#sbody'); if(b){ const h = b.querySelector('.hl'); b.scrollTop = h ? h.offsetTop - 40 : b.scrollHeight; }
+  const cur = $('#tl [aria-current]'); if(cur){ const tl=$('#tl'); if(tl.scrollWidth > tl.clientWidth + 4){ tl.scrollLeft = cur.offsetLeft - 8; } else if(cur.offsetTop < tl.scrollTop || cur.offsetTop > tl.scrollTop + tl.clientHeight - 50) tl.scrollTop = cur.offsetTop - 60; }
+  $('#sprev').onclick = () => go(sStep-1); $('#snext').onclick = () => go(sStep+1);
+  $('#sprev2').disabled = sStep===0; $('#snext2').disabled = sStep===STORY.length-1; $('#scount2').textContent = (sStep+1)+' / '+STORY.length;
+  $('#splay').onclick = () => { if(sTimer){ clearInterval(sTimer); sTimer=null; } else { if(sStep===STORY.length-1) sStep=0; sTimer = setInterval(()=>{ if(sStep>=STORY.length-1){clearInterval(sTimer);sTimer=null;renderStory();return;} go(sStep+1,true); }, 5500); } renderStory(); };
+}
+function go(k, auto){ sStep = Math.max(0, Math.min(STORY.length-1, k)); if(!auto && sTimer){ clearInterval(sTimer); sTimer=null; } renderStory(); }
+$('#sprev2').onclick = () => { go(sStep-1); $('#cap').scrollIntoView({block:'start'}); };
+$('#snext2').onclick = () => { go(sStep+1); $('#cap').scrollIntoView({block:'start'}); };
+$('#tl').addEventListener('click', e => { const b=e.target.closest('button[data-k]'); if(b) go(+b.dataset.k); });
+addEventListener('keydown', e => { if($('#v-walkthrough').hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return; if(e.key==='ArrowRight') go(sStep+1); if(e.key==='ArrowLeft') go(sStep-1); });
+renderStory();
+
+/* ---------- decisions ---------- */
+const DECS = [
+  {k:'auth', q:'How does someone log in?', done:'Keycloak, SSO only', o:[['Keycloak (OIDC) for the web app','Same login as everything else at Attraktor. Groups give the roles.',1],['One-time link sent by the bot in Matrix','Not needed now that Keycloak exists.']]},
+  {k:'approve', q:'What counts as approval?', done:'no self-approval', o:[['1 👍 from #medienteam, not your own post','With 2–3 reviewers, the other one or two must approve.',1],['2 👍','Too slow with 2–3 people.']]},
+  {k:'meetup', q:'Meetup without API?', done:'no Pro', o:[['Copy helper + auto-detect via Meetup’s iCal feed','About 2 minutes per event, no link pasting.',1],['Browser automation','Breaks easily, against Meetup’s terms.']]},
+  {k:'lang', q:'Languages?', done:'DE + EN', o:[['Every text in both. IG: EN below DE; Mastodon: EN as reply; Website: one post with EN section','One Beitrag, no duplicate posts.',1],['Separate posts per language','Clutters the feeds.']]},
+  {k:'recurring', q:'Regular events?', done:'both', o:[['Series flow once + monthly overview post from Meetup + wiki','No weekly spam, still visible.',1],['A post per occurrence','Too much noise.']]},
+  {k:'photos', q:'Where do photos live?', done:'Nextcloud, empty', o:[['Files in a Nextcloud folder, tags + consent in Postomat','No migration. Phone upload for free.',1]]},
+  {k:'who', q:'Who may submit?', done:'members only', o:[['Keycloak group mitglieder','Guests ask a member.',1]]},
+  {k:'after', q:'Edit/delete after publishing?', done:'by hand, follow-up', o:[['By hand for now, Postomat keeps the links','Listed as a later feature.',1]]},
+  {k:'ig', q:'Instagram: switch @attraktor_org to a professional account?', o:[['Yes, as “Gemeinnützige Organisation”','Free, needed for auto-posting, adds post insights.',1],['No, Instagram stays copy mode','Media team posts by hand from the copy helper.']]},
+  {k:'imgtpl', q:'Branded images?', o:[['Postomat renders the banner template automatically (4 colors)','Every member photo looks on-brand without Canva.',1],['Media team designs every image by hand','Matches today, but is the bottleneck.']]},
+  {k:'website', q:'Who owns the website today?', o:[['Postomat posts, andreas/Ludwig/nemo stay editors','Last post was in September, so this would revive it.',1],['Keep the website manual','Then it stays a copy channel.']]},
+  {k:'stale', q:'What if nobody approves?', o:[['Ping the other reviewers after 24 h, “eilt” if the event is < 5 days away','Small team, gentle pressure.',1],['Auto-publish after 48 h','Breaks “kein Post ohne Mensch”.']]},
+  {k:'stage1', q:'What ships first?', o:[['Bot + review room + copy mode + WordPress & wiki auto','Both have free APIs, so stage 1 can already publish.',1],['Bot + review room + copy mode only','Smallest, but more manual work.']]},
+];
+const picks = Object.assign({auth:0, approve:0, meetup:0, lang:0, recurring:0, photos:0, who:0, after:0}, store.get('picks', {}));
+function renderDecs(){
+  $('#decs').innerHTML = DECS.map(d => `<div class="card dec"><div class="row" style="justify-content:space-between"><h3>${esc(d.q)}</h3>${d.done?`<span class="tape ok">geklärt · ${esc(d.done)}</span>`:'<span class="tape">offen</span>'}</div><div class="opts">${d.o.map((o,i)=>`<button class="opt" data-k="${d.k}" data-i="${i}" aria-pressed="${picks[d.k]===i}"><span class="radio"></span><span><b>${esc(o[0])}</b>${o[2]?'<span class="rec">empfohlen</span>':''}<small>${esc(o[1])}</small></span></button>`).join('')}</div></div>`).join('');
+}
+$('#decs').addEventListener('click', e => { const b=e.target.closest('.opt'); if(!b) return; picks[b.dataset.k]=+b.dataset.i; store.set('picks',picks); renderDecs(); });
+renderDecs();
+</script>
+
+</body>
+</html>
