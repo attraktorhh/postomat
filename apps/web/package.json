@@ -5,15 +5,43 @@
   "scripts": {},
   "sideEffects": false,
   "nx": {
-    "name": "@postomat/web"
+    "name": "web",
+    "targets": {
+      "serve": {
+        "continuous": true,
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "react-router dev --port 3000",
+          "cwd": "apps/web",
+          "env": {
+            "NODE_OPTIONS": "--conditions=@postomat/source"
+          }
+        }
+      },
+      "start": {
+        "executor": "nx:run-commands",
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "command": "react-router-serve ./build/server/index.js",
+          "cwd": "apps/web"
+        }
+      }
+    }
   },
   "dependencies": {
     "@heroui/react": "^3.2.8",
     "@heroui/styles": "^3.2.8",
+    "@postomat/ai": "workspace:*",
     "@postomat/channel-copy": "workspace:*",
+    "@postomat/channel-mediawiki": "workspace:*",
     "@postomat/channel-meetup": "workspace:*",
+    "@postomat/channel-wordpress": "workspace:*",
     "@postomat/core": "workspace:*",
     "@postomat/db": "workspace:*",
+    "@postomat/media": "workspace:*",
+    "@postomat/render": "workspace:*",
     "@postomat/templates": "workspace:*",
     "@postomat/workflow": "workspace:*",
     "@react-router/node": "^7.14.2",
@@ -22,7 +50,8 @@
     "openid-client": "^6.9.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router": "^7.14.2"
+    "react-router": "^7.14.2",
+    "tailwind-variants": "^4.0.2"
   },
   "devDependencies": {
     "@react-router/dev": "^7.14.2",

@@ -29,5 +29,5 @@ export function linksOf(channels: ChannelPost[]): Links & { meetupId?: string | 
 export const postUrl = (deps: Pick<WorkflowDeps, 'env'>, id: number) => `${deps.env.PUBLIC_WEB_URL.replace(/\/$/, '')}/b/${id}`;
 export const redaktionUrl = (deps: Pick<WorkflowDeps, 'env'>, id: number) =>
   `${deps.env.PUBLIC_WEB_URL.replace(/\/$/, '')}/redaktion/${id}`;
-export const copyHelperUrl = (deps: Pick<WorkflowDeps, 'env'>, id: number) =>
-  `${deps.env.PUBLIC_WEB_URL.replace(/\/$/, '')}/redaktion/${id}/kopierhilfe`;
+export const copyHelperUrl = (deps: Pick<WorkflowDeps, 'env'>, id: number, channel: ChannelId = 'meetup') =>
+  `${deps.env.PUBLIC_WEB_URL.replace(/\/$/, '')}/redaktion/${id}/${channel}`;

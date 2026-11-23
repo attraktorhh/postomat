@@ -5,7 +5,7 @@ import {
   type MatrixIncoming,
   type MatrixPort,
 } from '@postomat/core';
-import { and, conversations, desc, eq, posts, processedEvents, type Conversation, type Post } from '@postomat/db';
+import { and, conversations, desc, eq, posts, processedEvents, settings, type Conversation, type Post } from '@postomat/db';
 import {
   approvedSummary,
   CHANNEL_NAMES,
@@ -20,7 +20,7 @@ import {
 } from '@postomat/templates';
 import type { WorkflowDeps } from './deps.ts';
 import type { JobQueue } from './queue.ts';
-import { Membership } from './membership.ts';
+import { getRoomSettings, Membership } from './membership.ts';
 import { addHistory, getChannels, getPost, localpart, updatePost } from './repo.ts';
 import {
   answerQuestion,
@@ -92,12 +92,12 @@ export class BotService {
 
   private async onInvite(roomId: string, inviter: string): Promise<void> {
     const configured = await this.membership.configuredRoomIds();
-    const { getRoomSettings } = await import('./membership.ts');
     const settings = await getRoomSettings(this.deps);
     const named = [...settings.memberRooms, settings.medienteamRoom].filter(Boolean) as string[];
     if (configured.includes(roomId) || named.includes(roomId) || (await this.membership.isMember(inviter))) {
       await this.matrix.joinRoom(roomId);
       this.membership.invalidate();
+      await this.publishRoomDirectory().catch(() => undefined);
       this.deps.log.info('joined room after invite', { roomId, inviter });
     } else {
       this.deps.log.info('ignored invite from non-member', { roomId, inviter });
@@ -426,7 +426,7 @@ export class BotService {
       const msg = approvedSummary({
         approver: post.approvedBy,
         channels: channels.map((c) => ({ channel: c.channel, mode: c.mode, status: c.status, url: c.url })),
-        copyHelperUrl: copyHelperUrl(this.deps, postId),
+        copyHelperUrl: copyHelperUrl(this.deps, postId, channels.find((c) => c.mode === 'copy')?.channel),
       });
       await this.matrix.sendText(roomId, msg.body, msg.html, { mentions: [approverId] });
     }
@@ -435,6 +435,19 @@ export class BotService {
       .sort((a, b) => ORDER.indexOf(a.channel) - ORDER.indexOf(b.channel))
       .map((c) => ({ channel: c.channel, url: c.url! }));
     await this.sendDm(post.authorMatrixId, dmPublished(post.facts.title ?? 'Beitrag', links));
+  }
+
+  /** Publishes the joined rooms for the web room picker (/admin/raeume). */
+  async publishRoomDirectory(): Promise<void> {
+    const rooms = [];
+    for (const roomId of await this.matrix.getJoinedRooms()) {
+      const info = await this.matrix.getRoomInfo(roomId).catch(() => null);
+      if (info && info.memberCount > 2) rooms.push(info); // skip DMs
+    }
+    await this.deps.db
+      .insert(settings)
+      .values({ key: 'matrix_room_directory', value: rooms, updatedBy: 'postomat' })
+      .onConflictDoUpdate({ target: settings.key, set: { value: rooms, updatedAt: new Date() } });
   }
 
   async registerJobs(queue: JobQueue): Promise<void> {

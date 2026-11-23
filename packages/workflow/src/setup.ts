@@ -2,6 +2,7 @@ import {
   channelModeWarnings,
   createLogger,
   credentialsFromEnv,
+  fromRoot,
   loadConfig,
   loadEnv,
   type Env,
@@ -20,7 +21,7 @@ export function mediaStoreFromEnv(env: Env, log: Logger): MediaStore {
     return new WebDavClient({ baseUrl: env.NEXTCLOUD_WEBDAV_URL, username: env.NEXTCLOUD_USERNAME, password: env.NEXTCLOUD_PASSWORD });
   }
   log.warn('Nextcloud credentials missing – storing photos in MEDIA_LOCAL_DIR (dev only)', { dir: env.MEDIA_LOCAL_DIR });
-  return new LocalFileStore(env.MEDIA_LOCAL_DIR);
+  return new LocalFileStore(fromRoot(env.MEDIA_LOCAL_DIR));
 }
 
 /** Builds the production dependencies from environment variables. */

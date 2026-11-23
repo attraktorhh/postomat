@@ -423,18 +423,33 @@ importers:
       '@heroui/styles':
         specifier: ^3.2.8
         version: 3.2.8(tailwindcss@4.3.5)
+      '@postomat/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@postomat/channel-copy':
         specifier: workspace:*
         version: link:../../packages/channels/copy
+      '@postomat/channel-mediawiki':
+        specifier: workspace:*
+        version: link:../../packages/channels/mediawiki
       '@postomat/channel-meetup':
         specifier: workspace:*
         version: link:../../packages/channels/meetup
+      '@postomat/channel-wordpress':
+        specifier: workspace:*
+        version: link:../../packages/channels/wordpress
       '@postomat/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@postomat/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@postomat/media':
+        specifier: workspace:*
+        version: link:../../packages/media
+      '@postomat/render':
+        specifier: workspace:*
+        version: link:../../packages/render
       '@postomat/templates':
         specifier: workspace:*
         version: link:../../packages/templates
@@ -462,6 +477,9 @@ importers:
       react-router:
         specifier: ^7.14.2
         version: 7.18.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      tailwind-variants:
+        specifier: ^4.0.2
+        version: 4.0.2
     devDependencies:
       '@react-router/dev':
         specifier: ^7.14.2
