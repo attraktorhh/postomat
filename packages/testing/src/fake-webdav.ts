@@ -25,17 +25,24 @@ export class FakeWebDav {
         res.writeHead(404).end();
         return;
       }
-      const path = decodeURIComponent(raw.slice(prefix.length)).replace(/\/+$/, '') || '/';
+      const path =
+        decodeURIComponent(raw.slice(prefix.length)).replace(/\/+$/, '') || '/';
       const parent = path.split('/').slice(0, -1).join('/') || '/';
       switch (req.method) {
         case 'MKCOL':
-          if (this.dirs.has(path) || this.files.has(path)) return void res.writeHead(405).end();
+          if (this.dirs.has(path) || this.files.has(path))
+            return void res.writeHead(405).end();
           if (!this.dirs.has(parent)) return void res.writeHead(409).end();
           this.dirs.add(path);
           return void res.writeHead(201).end();
         case 'PUT':
           if (!this.dirs.has(parent)) return void res.writeHead(409).end();
-          this.files.set(path, { data: body, type: String(req.headers['content-type'] ?? 'application/octet-stream') });
+          this.files.set(path, {
+            data: body,
+            type: String(
+              req.headers['content-type'] ?? 'application/octet-stream',
+            ),
+          });
           return void res.writeHead(201).end();
         case 'GET': {
           const f = this.files.get(path);
@@ -44,9 +51,12 @@ export class FakeWebDav {
           return void res.end(f.data);
         }
         case 'PROPFIND':
-          if (!this.dirs.has(path) && !this.files.has(path)) return void res.writeHead(404).end();
+          if (!this.dirs.has(path) && !this.files.has(path))
+            return void res.writeHead(404).end();
           res.writeHead(207, { 'content-type': 'application/xml' });
-          return void res.end(`<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>${prefix}${path}</d:href></d:response></d:multistatus>`);
+          return void res.end(
+            `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>${prefix}${path}</d:href></d:response></d:multistatus>`,
+          );
         case 'DELETE':
           this.files.delete(path);
           this.dirs.delete(path);

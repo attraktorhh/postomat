@@ -1,13 +1,31 @@
 import sharp from 'sharp';
-import { DEFAULT_CONFIG, loadEnv, silentLogger, type MatrixIncoming } from '@postomat/core';
+import {
+  DEFAULT_CONFIG,
+  loadEnv,
+  silentLogger,
+  type MatrixIncoming,
+} from '@postomat/core';
 import { createDb, runMigrations, sql, type DbHandle } from '@postomat/db';
 import { WebDavClient } from '@postomat/media';
 import { WordPressClient } from '@postomat/channel-wordpress';
 import { MediaWikiClient } from '@postomat/channel-mediawiki';
-import { FakeMatrix, FakeMediaWiki, FakeMeetupFeed, FakeWebDav, FakeWordPress } from '@postomat/testing';
-import { BotService, InMemoryQueue, registerWorkerJobs, type WorkflowDeps } from '@postomat/workflow';
+import {
+  FakeMatrix,
+  FakeMediaWiki,
+  FakeMeetupFeed,
+  FakeWebDav,
+  FakeWordPress,
+} from '@postomat/testing';
+import {
+  BotService,
+  InMemoryQueue,
+  registerWorkerJobs,
+  type WorkflowDeps,
+} from '@postomat/workflow';
 
-export const TEST_DB_URL = process.env['DATABASE_URL_TEST'] ?? 'postgres://postomat:postomat@localhost:55432/postomat_test';
+export const TEST_DB_URL =
+  process.env['DATABASE_URL_TEST'] ??
+  'postgres://postomat:postomat@localhost:55432/postomat_test';
 
 export const ROOMS = {
   members: '!mitglieder:localhost',
@@ -33,14 +51,27 @@ export class Harness {
   private counter = 0;
 
   async start(): Promise<this> {
-    await Promise.all([this.wordpress.start(), this.wiki.start(), this.webdav.start(), this.meetup.start()]);
+    await Promise.all([
+      this.wordpress.start(),
+      this.wiki.start(),
+      this.webdav.start(),
+      this.meetup.start(),
+    ]);
     this.db = createDb(TEST_DB_URL, 4);
     await runMigrations(this.db.db);
     await this.db.db.execute(
       sql`truncate posts, channel_posts, photos, history, approvals, conversations, settings, processed_events, meetup_questions restart identity cascade`,
     );
-    this.matrix.addRoom(ROOMS.members, [BOT, '@lena:localhost', '@kai:localhost', '@mira:localhost'], { alias: '#mitglieder:localhost', name: 'Attraktor Mitglieder' });
-    this.matrix.addRoom(ROOMS.medienteam, [BOT, '@kai:localhost', '@mira:localhost'], { alias: '#medienteam:localhost', name: 'Medienteam' });
+    this.matrix.addRoom(
+      ROOMS.members,
+      [BOT, '@lena:localhost', '@kai:localhost', '@mira:localhost'],
+      { alias: '#mitglieder:localhost', name: 'Attraktor Mitglieder' },
+    );
+    this.matrix.addRoom(
+      ROOMS.medienteam,
+      [BOT, '@kai:localhost', '@mira:localhost'],
+      { alias: '#medienteam:localhost', name: 'Medienteam' },
+    );
     this.matrix.addRoom(ROOMS.dmLena, [BOT, '@lena:localhost']);
     this.matrix.addRoom(ROOMS.dmGast, [BOT, '@gast:localhost']);
     this.matrix.displayNames.set('@lena:localhost', 'Lena');
@@ -69,15 +100,29 @@ export class Harness {
       log: silentLogger,
       now: () => this.clock,
       ai: null,
-      media: new WebDavClient({ baseUrl: env.NEXTCLOUD_WEBDAV_URL, username: env.NEXTCLOUD_USERNAME, password: env.NEXTCLOUD_PASSWORD }),
-      wordpress: new WordPressClient({ baseUrl: env.WORDPRESS_URL, username: env.WORDPRESS_USERNAME!, appPassword: env.WORDPRESS_APP_PASSWORD! }),
-      mediawiki: new MediaWikiClient({ apiUrl: env.MEDIAWIKI_API_URL, username: env.MEDIAWIKI_BOT_USERNAME!, password: env.MEDIAWIKI_BOT_PASSWORD! }),
+      media: new WebDavClient({
+        baseUrl: env.NEXTCLOUD_WEBDAV_URL,
+        username: env.NEXTCLOUD_USERNAME,
+        password: env.NEXTCLOUD_PASSWORD,
+      }),
+      wordpress: new WordPressClient({
+        baseUrl: env.WORDPRESS_URL,
+        username: env.WORDPRESS_USERNAME!,
+        appPassword: env.WORDPRESS_APP_PASSWORD!,
+      }),
+      mediawiki: new MediaWikiClient({
+        apiUrl: env.MEDIAWIKI_API_URL,
+        username: env.MEDIAWIKI_BOT_USERNAME!,
+        password: env.MEDIAWIKI_BOT_PASSWORD!,
+      }),
       fetch,
       bannerAssets: {},
       matrix: this.matrix,
     };
     // Same object: tests may swap deps (e.g. the AI) later.
-    this.bot = new BotService(this.deps as WorkflowDeps & { matrix: FakeMatrix });
+    this.bot = new BotService(
+      this.deps as WorkflowDeps & { matrix: FakeMatrix },
+    );
     await this.bot.registerJobs(this.queue);
     await registerWorkerJobs(this.deps, this.queue);
     return this;
@@ -85,7 +130,12 @@ export class Harness {
 
   async stop(): Promise<void> {
     await this.db?.close();
-    await Promise.all([this.wordpress.stop(), this.wiki.stop(), this.webdav.stop(), this.meetup.stop()]);
+    await Promise.all([
+      this.wordpress.stop(),
+      this.wiki.stop(),
+      this.webdav.stop(),
+      this.meetup.stop(),
+    ]);
   }
 
   private id(): string {
@@ -93,29 +143,75 @@ export class Harness {
   }
 
   /** Sends a DM from a user and runs resulting jobs. Returns the bot's replies. */
-  async dm(user: string, text: string, roomId = ROOMS.dmLena): Promise<string[]> {
+  async dm(
+    user: string,
+    text: string,
+    roomId = ROOMS.dmLena,
+  ): Promise<string[]> {
     const before = this.matrix.sent.length;
-    await this.bot.handle({ kind: 'message', roomId, eventId: this.id(), sender: user, msgtype: 'm.text', body: text, content: { msgtype: 'm.text', body: text } });
+    await this.bot.handle({
+      kind: 'message',
+      roomId,
+      eventId: this.id(),
+      sender: user,
+      msgtype: 'm.text',
+      body: text,
+      content: { msgtype: 'm.text', body: text },
+    });
     await this.queue.drain();
-    return this.matrix.sent.slice(before).filter((m) => m.roomId === roomId).map((m) => m.body);
+    return this.matrix.sent
+      .slice(before)
+      .filter((m) => m.roomId === roomId)
+      .map((m) => m.body);
   }
 
-  async photo(user: string, data: Buffer, roomId = ROOMS.dmLena): Promise<string[]> {
+  async photo(
+    user: string,
+    data: Buffer,
+    roomId = ROOMS.dmLena,
+  ): Promise<string[]> {
     const before = this.matrix.sent.length;
     const content = this.matrix.uploadImage(data);
-    await this.bot.handle({ kind: 'message', roomId, eventId: this.id(), sender: user, msgtype: 'm.image', body: 'photo.jpg', content });
+    await this.bot.handle({
+      kind: 'message',
+      roomId,
+      eventId: this.id(),
+      sender: user,
+      msgtype: 'm.image',
+      body: 'photo.jpg',
+      content,
+    });
     await this.queue.drain();
-    return this.matrix.sent.slice(before).filter((m) => m.roomId === roomId).map((m) => m.body);
+    return this.matrix.sent
+      .slice(before)
+      .filter((m) => m.roomId === roomId)
+      .map((m) => m.body);
   }
 
   async react(user: string, eventId: string, key: string): Promise<void> {
-    const evt: MatrixIncoming = { kind: 'reaction', roomId: ROOMS.medienteam, eventId: this.id(), sender: user, relatesTo: eventId, key };
+    const evt: MatrixIncoming = {
+      kind: 'reaction',
+      roomId: ROOMS.medienteam,
+      eventId: this.id(),
+      sender: user,
+      relatesTo: eventId,
+      key,
+    };
     await this.bot.handle(evt);
     await this.queue.drain();
   }
 
   async threadReply(user: string, root: string, text: string): Promise<void> {
-    await this.bot.handle({ kind: 'message', roomId: ROOMS.medienteam, eventId: this.id(), sender: user, msgtype: 'm.text', body: text, threadRoot: root, content: {} });
+    await this.bot.handle({
+      kind: 'message',
+      roomId: ROOMS.medienteam,
+      eventId: this.id(),
+      sender: user,
+      msgtype: 'm.text',
+      body: text,
+      threadRoot: root,
+      content: {},
+    });
     await this.queue.drain();
   }
 
@@ -131,7 +227,14 @@ export class Harness {
 }
 
 export async function testPhoto(): Promise<Buffer> {
-  return sharp({ create: { width: 1200, height: 900, channels: 3, background: { r: 200, g: 120, b: 60 } } })
+  return sharp({
+    create: {
+      width: 1200,
+      height: 900,
+      channels: 3,
+      background: { r: 200, g: 120, b: 60 },
+    },
+  })
     .jpeg()
     .toBuffer();
 }

@@ -1,4 +1,14 @@
-import { Link, Links, Meta, Outlet, Scripts, ScrollRestoration, isRouteErrorResponse, useRouteError, type MetaFunction } from 'react-router';
+import {
+  Link,
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+  isRouteErrorResponse,
+  useRouteError,
+  type MetaFunction,
+} from 'react-router';
 import stylesHref from '../styles.css?url';
 
 export const meta: MetaFunction = () => [{ title: 'Postomat' }];
@@ -32,7 +42,9 @@ export function ErrorBoundary() {
   const notFound = isRouteErrorResponse(error) && error.status === 404;
   return (
     <main className="mx-auto grid max-w-xl gap-3 p-4">
-      <h1 className="text-xl font-bold">{forbidden ? 'Kein Zugang' : notFound ? 'Nicht gefunden' : 'Fehler'}</h1>
+      <h1 className="text-xl font-bold">
+        {forbidden ? 'Kein Zugang' : notFound ? 'Nicht gefunden' : 'Fehler'}
+      </h1>
       <p className="text-sm">
         {forbidden
           ? 'Dein Attraktor-Login gehört zu keiner Postomat-Gruppe (mitglieder, medienteam, postomat-admin). Frag das Medienteam, wenn das nicht stimmt.'

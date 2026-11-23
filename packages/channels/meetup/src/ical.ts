@@ -13,32 +13,61 @@ export interface FeedEvent {
 }
 
 function unfold(text: string): string[] {
-  return text.replace(/\r\n/g, '\n').replace(/\n[ \t]/g, '').split('\n');
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\n[ \t]/g, '')
+    .split('\n');
 }
 
 function unescapeText(v: string): string {
-  return v.replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\;/g, ';').replace(/\\\\/g, '\\');
+  return v
+    .replace(/\\n/gi, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\');
 }
 
-function parseDate(value: string, params: Record<string, string>): Date | undefined {
-  const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(value.trim());
+function parseDate(
+  value: string,
+  params: Record<string, string>,
+): Date | undefined {
+  const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(
+    value.trim(),
+  );
   if (!m) return undefined;
   const [, y, mo, d, hh, mm, ss, z] = m;
   if (!hh) return berlinToInstant(`${y}-${mo}-${d}`, '00:00');
-  if (z) return new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(hh), Number(mm), Number(ss ?? 0)));
+  if (z)
+    return new Date(
+      Date.UTC(
+        Number(y),
+        Number(mo) - 1,
+        Number(d),
+        Number(hh),
+        Number(mm),
+        Number(ss ?? 0),
+      ),
+    );
   // TZID=Europe/Berlin or floating time → Berlin wall clock (the club's zone).
   void params;
   return berlinToInstant(`${y}-${mo}-${d}`, `${hh}:${mm}`);
 }
 
 export function meetupIdFrom(uid: string, url: string): string {
-  return /event_([^@]+)@/.exec(uid)?.[1] ?? /\/events\/([^/]+)\/?/.exec(url)?.[1] ?? uid;
+  return (
+    /event_([^@]+)@/.exec(uid)?.[1] ??
+    /\/events\/([^/]+)\/?/.exec(url)?.[1] ??
+    uid
+  );
 }
 
 /** Parses an iCalendar text into events (only what Postomat needs). */
 export function parseIcal(text: string): FeedEvent[] {
   const events: FeedEvent[] = [];
-  let cur: Record<string, { value: string; params: Record<string, string> }> | null = null;
+  let cur: Record<
+    string,
+    { value: string; params: Record<string, string> }
+  > | null = null;
   for (const line of unfold(text)) {
     if (line === 'BEGIN:VEVENT') {
       cur = {};
@@ -48,7 +77,9 @@ export function parseIcal(text: string): FeedEvent[] {
       if (cur) {
         const uid = cur['UID']?.value ?? '';
         const url = cur['URL']?.value ?? '';
-        const start = cur['DTSTART'] ? parseDate(cur['DTSTART'].value, cur['DTSTART'].params) : undefined;
+        const start = cur['DTSTART']
+          ? parseDate(cur['DTSTART'].value, cur['DTSTART'].params)
+          : undefined;
         if (uid && start) {
           events.push({
             uid,
@@ -57,7 +88,9 @@ export function parseIcal(text: string): FeedEvent[] {
             description: unescapeText(cur['DESCRIPTION']?.value ?? ''),
             url,
             start,
-            end: cur['DTEND'] ? parseDate(cur['DTEND'].value, cur['DTEND'].params) : undefined,
+            end: cur['DTEND']
+              ? parseDate(cur['DTEND'].value, cur['DTEND'].params)
+              : undefined,
           });
         }
       }
@@ -68,14 +101,21 @@ export function parseIcal(text: string): FeedEvent[] {
     const idx = line.indexOf(':');
     if (idx < 0) continue;
     const [name, ...paramParts] = line.slice(0, idx).split(';');
-    const params = Object.fromEntries(paramParts.map((p) => p.split('=') as [string, string]));
+    const params = Object.fromEntries(
+      paramParts.map((p) => p.split('=') as [string, string]),
+    );
     cur[name.toUpperCase()] = { value: line.slice(idx + 1), params };
   }
   return events;
 }
 
-export async function fetchFeed(url: string, fetchFn: FetchLike = fetch): Promise<FeedEvent[]> {
-  const res = await fetchFn(url, { headers: { accept: 'text/calendar', 'user-agent': 'Postomat/1.0' } });
+export async function fetchFeed(
+  url: string,
+  fetchFn: FetchLike = fetch,
+): Promise<FeedEvent[]> {
+  const res = await fetchFn(url, {
+    headers: { accept: 'text/calendar', 'user-agent': 'Postomat/1.0' },
+  });
   const text = await res.text();
   if (!res.ok) throw new HttpError(`GET ${url}`, res.status, text);
   return parseIcal(text);

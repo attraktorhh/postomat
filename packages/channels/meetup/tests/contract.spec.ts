@@ -8,11 +8,24 @@ describe(`Meetup iCal contract (${contractTarget()})`, () => {
   const id = String(390000000 + Math.floor(Math.random() * 99999));
 
   beforeAll(async () => {
-    const event = { id, title: 'Contract Test / Contract test', start: '2026-12-11T18:00', end: '2026-12-11T21:00', description: 'Hallo, Welt; mit Sonderzeichen' };
+    const event = {
+      id,
+      title: 'Contract Test / Contract test',
+      start: '2026-12-11T18:00',
+      end: '2026-12-11T21:00',
+      description: 'Hallo, Welt; mit Sonderzeichen',
+    };
     if (contractTarget() === 'local') {
-      url = env('MEETUP_ICAL_URL', 'http://localhost:8084/attraktor/events/ical/');
+      url = env(
+        'MEETUP_ICAL_URL',
+        'http://localhost:8084/attraktor/events/ical/',
+      );
       const base = new URL(url).origin;
-      const res = await fetch(`${base}/_fake/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(event) });
+      const res = await fetch(`${base}/_fake/events`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(event),
+      });
       expect(res.ok).toBe(true);
     } else {
       fake = await new FakeMeetupFeed().start();

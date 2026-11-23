@@ -22,7 +22,8 @@ import type {
   PostType,
 } from '@postomat/core';
 
-const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
+const ts = (name: string) =>
+  timestamp(name, { withTimezone: true, mode: 'date' });
 
 /** A Beitrag. `id` is short on purpose: it shows up in URLs like /b/42. */
 export const posts = pgTable(
@@ -37,7 +38,10 @@ export const posts = pgTable(
     authorUsername: text('author_username').notNull(),
     authorDisplayName: text('author_display_name'),
     note: text('note'),
-    bannerColor: text('banner_color').$type<BannerColor>().notNull().default('mint'),
+    bannerColor: text('banner_color')
+      .$type<BannerColor>()
+      .notNull()
+      .default('mint'),
     meetupCategory: text('meetup_category'),
     aiUsed: boolean('ai_used').notNull().default(false),
     cardRoomId: text('card_room_id'),
@@ -58,7 +62,9 @@ export const posts = pgTable(
     index('posts_status_idx').on(t.status),
     index('posts_author_idx').on(t.authorUsername),
     // At most one draft per member.
-    uniqueIndex('posts_one_draft_per_author').on(t.authorMatrixId).where(sql`${t.status} = 'sammeln'`),
+    uniqueIndex('posts_one_draft_per_author')
+      .on(t.authorMatrixId)
+      .where(sql`${t.status} = 'sammeln'`),
   ],
 );
 
@@ -72,11 +78,17 @@ export const channelPosts = pgTable(
       .references(() => posts.id, { onDelete: 'cascade' }),
     channel: text('channel').$type<ChannelId>().notNull(),
     mode: text('mode').$type<ChannelMode>().notNull(),
-    status: text('status').$type<ChannelPostStatus>().notNull().default('entwurf'),
+    status: text('status')
+      .$type<ChannelPostStatus>()
+      .notNull()
+      .default('entwurf'),
     textDe: text('text_de').notNull().default(''),
     textEn: text('text_en').notNull().default(''),
     /** Extra copy fields (e.g. title, hashtags). */
-    fields: jsonb('fields').$type<Record<string, string>>().notNull().default({}),
+    fields: jsonb('fields')
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
     /** Remote IDs (WordPress post/media id, wiki page title, Meetup event id). */
     remoteId: text('remote_id'),
     remoteMediaId: text('remote_media_id'),
@@ -94,7 +106,9 @@ export const photos = pgTable(
   'photos',
   {
     id: serial('id').primaryKey(),
-    postId: integer('post_id').references(() => posts.id, { onDelete: 'set null' }),
+    postId: integer('post_id').references(() => posts.id, {
+      onDelete: 'set null',
+    }),
     kind: text('kind').$type<'photo' | 'banner'>().notNull().default('photo'),
     /** Banner format: '4x5' | '16x9'. */
     format: text('format'),
@@ -107,7 +121,10 @@ export const photos = pgTable(
     height: integer('height'),
     sha256: text('sha256').notNull(),
     uploaderMatrixId: text('uploader_matrix_id'),
-    consent: text('consent').$type<Consent>().notNull().default('einwilligung_fehlt'),
+    consent: text('consent')
+      .$type<Consent>()
+      .notNull()
+      .default('einwilligung_fehlt'),
     tags: text('tags').array().notNull().default([]),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
@@ -139,7 +156,9 @@ export const approvals = pgTable('approvals', {
     .references(() => posts.id, { onDelete: 'cascade' }),
   version: integer('version').notNull(),
   actor: text('actor').notNull(),
-  result: text('result').$type<'approved' | 'change_requested' | 'refused'>().notNull(),
+  result: text('result')
+    .$type<'approved' | 'change_requested' | 'refused'>()
+    .notNull(),
   comment: text('comment'),
   createdAt: ts('created_at').notNull().defaultNow(),
 });
@@ -148,10 +167,14 @@ export const approvals = pgTable('approvals', {
 export const conversations = pgTable('conversations', {
   matrixUserId: text('matrix_user_id').primaryKey(),
   dmRoomId: text('dm_room_id'),
-  postId: integer('post_id').references(() => posts.id, { onDelete: 'set null' }),
+  postId: integer('post_id').references(() => posts.id, {
+    onDelete: 'set null',
+  }),
   state: jsonb('state').$type<DialogState>(),
   /** Post whose Rückfrage is open. */
-  questionPostId: integer('question_post_id').references(() => posts.id, { onDelete: 'set null' }),
+  questionPostId: integer('question_post_id').references(() => posts.id, {
+    onDelete: 'set null',
+  }),
   updatedAt: ts('updated_at').notNull().defaultNow(),
 });
 

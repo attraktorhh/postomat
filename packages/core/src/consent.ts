@@ -17,9 +17,11 @@ export const CONSENT_LABELS: Record<Consent, string> = {
 export function parseConsentAnswer(text: string): Consent | null {
   const t = text.trim().toLowerCase();
   if (/^(1|1️⃣|eins)\b/u.test(t) || t.startsWith('1️⃣')) return 'frei';
-  if (/^(2|2️⃣|zwei)\b/u.test(t) || t.startsWith('2️⃣')) return 'einwilligung_fehlt';
+  if (/^(2|2️⃣|zwei)\b/u.test(t) || t.startsWith('2️⃣'))
+    return 'einwilligung_fehlt';
   if (/^(3|3️⃣|drei)\b/u.test(t) || t.startsWith('3️⃣')) return 'frei';
-  if (/nicht gefragt|nicht einverstanden|weiß nicht|weiss nicht/.test(t)) return 'einwilligung_fehlt';
+  if (/nicht gefragt|nicht einverstanden|weiß nicht|weiss nicht/.test(t))
+    return 'einwilligung_fehlt';
   if (/alle (waren )?einverstanden|ja,? alle/.test(t)) return 'frei';
   if (/^(nein|nö|ne|nee|keine)\b/.test(t)) return 'frei';
   return null;

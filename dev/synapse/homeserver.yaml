@@ -1,16 +1,16 @@
 # Synapse config for LOCAL DEVELOPMENT ONLY. Never use these settings in production.
-server_name: "localhost"
-public_baseurl: "http://localhost:8008/"
+server_name: 'localhost'
+public_baseurl: 'http://localhost:8008/'
 pid_file: /data/homeserver.pid
 report_stats: false
 suppress_key_server_warning: true
-trusted_key_servers: []          # no federation, never contact matrix.org
+trusted_key_servers: [] # no federation, never contact matrix.org
 
 listeners:
   - port: 8008
     type: http
     tls: false
-    bind_addresses: ["0.0.0.0"]
+    bind_addresses: ['0.0.0.0']
     x_forwarded: false
     resources:
       - names: [client]
@@ -21,15 +21,15 @@ database:
   args:
     database: /data/homeserver.db
 
-log_config: "/config/log.config"
+log_config: '/config/log.config'
 media_store_path: /data/media_store
-signing_key_path: "/data/localhost.signing.key"
-macaroon_secret_key: "postomat-dev-macaroon-secret"
-form_secret: "postomat-dev-form-secret"
+signing_key_path: '/data/localhost.signing.key'
+macaroon_secret_key: 'postomat-dev-macaroon-secret'
+form_secret: 'postomat-dev-form-secret'
 
 # Accounts
 enable_registration: false
-registration_shared_secret: "postomat-dev-registration-secret"
+registration_shared_secret: 'postomat-dev-registration-secret'
 password_config:
   enabled: true
   localdb_enabled: true

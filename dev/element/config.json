@@ -17,9 +17,7 @@
   "default_country_code": "DE",
   "default_theme": "light",
   "room_directory": {
-    "servers": [
-      "localhost"
-    ]
+    "servers": ["localhost"]
   },
   "setting_defaults": {
     "UIFeature.feedback": false,

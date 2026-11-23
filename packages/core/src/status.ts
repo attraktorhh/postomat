@@ -1,4 +1,8 @@
-import type { ChannelPostSnapshot, ChannelPostStatus, PostStatus } from './types.ts';
+import type {
+  ChannelPostSnapshot,
+  ChannelPostStatus,
+  PostStatus,
+} from './types.ts';
 
 export const STATUS_LABELS: Record<PostStatus, string> = {
   sammeln: 'Entwurf',
@@ -20,7 +24,12 @@ export const CHANNEL_STATUS_LABELS: Record<ChannelPostStatus, string> = {
   aus: 'Aus',
 };
 
-export const MEMBER_STEPS = ['Eingereicht', 'Beim Medienteam', 'Geplant', 'Online'] as const;
+export const MEMBER_STEPS = [
+  'Eingereicht',
+  'Beim Medienteam',
+  'Geplant',
+  'Online',
+] as const;
 
 export interface MemberStage {
   /** Number of completed stepper steps (0–4). 0 means still a draft. */
@@ -37,7 +46,12 @@ export function memberStage(status: PostStatus): MemberStage {
       return { done: 0, label: 'Entwurf', draft: true, discarded: false };
     case 'zur_freigabe':
     case 'aenderung_gewuenscht':
-      return { done: 2, label: 'Beim Medienteam', draft: false, discarded: false };
+      return {
+        done: 2,
+        label: 'Beim Medienteam',
+        draft: false,
+        discarded: false,
+      };
     case 'geplant':
       return { done: 3, label: 'Geplant', draft: false, discarded: false };
     case 'online':
@@ -47,7 +61,12 @@ export function memberStage(status: PostStatus): MemberStage {
   }
 }
 
-const DONE_STATES: ReadonlySet<ChannelPostStatus> = new Set(['veroeffentlicht', 'erledigt', 'uebersprungen', 'aus']);
+const DONE_STATES: ReadonlySet<ChannelPostStatus> = new Set([
+  'veroeffentlicht',
+  'erledigt',
+  'uebersprungen',
+  'aus',
+]);
 
 /** True when a channel needs nothing more (published, linked, skipped or off). */
 export function isChannelDone(c: Pick<ChannelPostSnapshot, 'status'>): boolean {
@@ -55,11 +74,17 @@ export function isChannelDone(c: Pick<ChannelPostSnapshot, 'status'>): boolean {
 }
 
 /** After approval: `online` once every channel is done, otherwise `geplant`. */
-export function overallStatusAfterApproval(channels: Pick<ChannelPostSnapshot, 'status'>[]): 'geplant' | 'online' {
+export function overallStatusAfterApproval(
+  channels: Pick<ChannelPostSnapshot, 'status'>[],
+): 'geplant' | 'online' {
   return channels.every(isChannelDone) ? 'online' : 'geplant';
 }
 
 /** True when every auto channel has finished (published or failed for good). */
-export function autoChannelsSettled(channels: Pick<ChannelPostSnapshot, 'mode' | 'status'>[]): boolean {
-  return channels.filter((c) => c.mode === 'auto').every((c) => c.status !== 'wartet' && c.status !== 'entwurf');
+export function autoChannelsSettled(
+  channels: Pick<ChannelPostSnapshot, 'mode' | 'status'>[],
+): boolean {
+  return channels
+    .filter((c) => c.mode === 'auto')
+    .every((c) => c.status !== 'wartet' && c.status !== 'entwurf');
 }

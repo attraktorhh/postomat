@@ -39,7 +39,10 @@ function dice<T>(a: T[], b: T[]): number {
 export function titleSimilarity(a: string, b: string): number {
   const na = normalizeTitle(a);
   const nb = normalizeTitle(b);
-  return Math.max(dice(bigrams(na), bigrams(nb)), dice(na.split(' '), nb.split(' ')));
+  return Math.max(
+    dice(bigrams(na), bigrams(nb)),
+    dice(na.split(' '), nb.split(' ')),
+  );
 }
 
 export const STRONG_THRESHOLD = 0.6;
@@ -71,7 +74,11 @@ export interface MatchablePost {
  * same-day candidates (0.3–0.6) or several strong matches are ambiguous.
  * Events already linked to another post are ignored.
  */
-export function matchMeetupEvent(post: MatchablePost, events: FeedEvent[], linkedIds: ReadonlySet<string>): MatchResult {
+export function matchMeetupEvent(
+  post: MatchablePost,
+  events: FeedEvent[],
+  linkedIds: ReadonlySet<string>,
+): MatchResult {
   const start = berlinToInstant(post.date, post.startTime).getTime();
   const sameDay = events
     .filter((e) => !linkedIds.has(e.meetupId) && !linkedIds.has(e.uid))
@@ -79,13 +86,23 @@ export function matchMeetupEvent(post: MatchablePost, events: FeedEvent[], linke
     .map<MatchCandidate>((event) => ({
       event,
       similarity: titleSimilarity(post.title, event.summary),
-      timeOk: Math.abs(event.start.getTime() - start) <= START_TOLERANCE_MIN * 60000,
+      timeOk:
+        Math.abs(event.start.getTime() - start) <= START_TOLERANCE_MIN * 60000,
     }));
-  const strong = sameDay.filter((c) => c.timeOk && c.similarity >= STRONG_THRESHOLD);
-  if (strong.length === 1) return { kind: 'strong', event: strong[0].event, similarity: strong[0].similarity };
+  const strong = sameDay.filter(
+    (c) => c.timeOk && c.similarity >= STRONG_THRESHOLD,
+  );
+  if (strong.length === 1)
+    return {
+      kind: 'strong',
+      event: strong[0].event,
+      similarity: strong[0].similarity,
+    };
   const weak = sameDay.filter((c) => c.similarity >= WEAK_THRESHOLD);
   if (strong.length > 1 || weak.length) {
-    const candidates = (strong.length > 1 ? strong : weak).sort((a, b) => b.similarity - a.similarity).slice(0, 5);
+    const candidates = (strong.length > 1 ? strong : weak)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 5);
     return { kind: 'ambiguous', candidates };
   }
   return { kind: 'none' };

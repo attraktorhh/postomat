@@ -1,4 +1,8 @@
-import type { ChannelPostSnapshot, PhotoSnapshot, PostSnapshot } from './types.ts';
+import type {
+  ChannelPostSnapshot,
+  PhotoSnapshot,
+  PostSnapshot,
+} from './types.ts';
 import { berlinToInstant } from './time.ts';
 import { missingRequiredFields } from './fields.ts';
 
@@ -23,7 +27,8 @@ export interface CheckInput {
   meetupCategory?: string | null;
 }
 
-const countHashtags = (s: string) => (s.match(/(^|\s)#[\p{L}\p{N}_]+/gu) ?? []).length;
+const countHashtags = (s: string) =>
+  (s.match(/(^|\s)#[\p{L}\p{N}_]+/gu) ?? []).length;
 
 export function runChecks(input: CheckInput): CheckResult[] {
   const { post, channels, photos, now } = input;
@@ -32,21 +37,32 @@ export function runChecks(input: CheckInput): CheckResult[] {
 
   if (post.type === 'event') {
     const { date, startTime } = post.facts;
-    const future = !!date && berlinToInstant(date, startTime ?? '00:00').getTime() > now.getTime();
+    const future =
+      !!date &&
+      berlinToInstant(date, startTime ?? '00:00').getTime() > now.getTime();
     results.push({
       id: 'date_future',
       level: 'block',
       ok: future,
-      label: future ? 'Datum in der Zukunft' : 'Datum liegt nicht in der Zukunft',
+      label: future
+        ? 'Datum in der Zukunft'
+        : 'Datum liegt nicht in der Zukunft',
     });
   }
 
-  const missing = missingRequiredFields(post.type, post.facts, photos.filter((p) => p.kind === 'photo').length);
+  const missing = missingRequiredFields(
+    post.type,
+    post.facts,
+    photos.filter((p) => p.kind === 'photo').length,
+  );
   results.push({
     id: 'required_fields',
     level: 'block',
     ok: missing.length === 0,
-    label: missing.length === 0 ? 'Pflichtangaben vollständig' : `Es fehlt: ${missing.join(', ')}`,
+    label:
+      missing.length === 0
+        ? 'Pflichtangaben vollständig'
+        : `Es fehlt: ${missing.join(', ')}`,
   });
 
   const userPhotos = photos.filter((p) => p.kind === 'photo');
@@ -70,16 +86,23 @@ export function runChecks(input: CheckInput): CheckResult[] {
       id: 'not_author',
       level: 'block',
       ok: differs,
-      label: differs ? 'Autor*in ≠ Freigebende' : 'Eigene Beiträge kann man nicht selbst freigeben',
+      label: differs
+        ? 'Autor*in ≠ Freigebende'
+        : 'Eigene Beiträge kann man nicht selbst freigeben',
     });
   }
 
-  const missingEn = active.filter((c) => c.channel !== 'wiki' && !c.textEn.trim());
+  const missingEn = active.filter(
+    (c) => c.channel !== 'wiki' && !c.textEn.trim(),
+  );
   results.push({
     id: 'en_text',
     level: 'warn',
     ok: missingEn.length === 0,
-    label: missingEn.length === 0 ? 'EN-Text vorhanden' : `EN-Text fehlt: ${missingEn.map((c) => c.channel).join(', ')}`,
+    label:
+      missingEn.length === 0
+        ? 'EN-Text vorhanden'
+        : `EN-Text fehlt: ${missingEn.map((c) => c.channel).join(', ')}`,
   });
 
   if (active.some((c) => c.channel === 'meetup')) {
@@ -97,7 +120,10 @@ export function runChecks(input: CheckInput): CheckResult[] {
     id: 'title_length',
     level: 'warn',
     ok: title.length <= 80,
-    label: title.length <= 80 ? 'Titel ≤ 80 Zeichen' : `Titel ist ${title.length} Zeichen lang (max. 80)`,
+    label:
+      title.length <= 80
+        ? 'Titel ≤ 80 Zeichen'
+        : `Titel ist ${title.length} Zeichen lang (max. 80)`,
   });
 
   const ig = active.find((c) => c.channel === 'instagram');

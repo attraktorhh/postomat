@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { extractDate, extractFacts, extractTimes, guessTitle, guessType } from '../src/extract.ts';
+import {
+  extractDate,
+  extractFacts,
+  extractTimes,
+  guessTitle,
+  guessType,
+} from '../src/extract.ts';
 
 // Monday, 23.11.2026, 14:02 in Hamburg.
 const NOW = new Date('2026-11-23T13:02:00Z');
@@ -59,11 +65,19 @@ describe('extractTimes', () => {
 
 describe('extractFacts', () => {
   it('takes several facts from one answer (walkthrough)', () => {
-    const facts = extractFacts('Nee, den Freitag danach, also 11.12.! 18 Uhr, max. 8 Leute, 5 € fürs Material', {
-      now: NOW,
-      expecting: 'startTime',
+    const facts = extractFacts(
+      'Nee, den Freitag danach, also 11.12.! 18 Uhr, max. 8 Leute, 5 € fürs Material',
+      {
+        now: NOW,
+        expecting: 'startTime',
+      },
+    );
+    expect(facts).toEqual({
+      date: '2026-12-11',
+      startTime: '18:00',
+      places: 8,
+      costs: '5 € Material',
     });
-    expect(facts).toEqual({ date: '2026-12-11', startTime: '18:00', places: 8, costs: '5 € Material' });
   });
 
   it.each([
@@ -86,12 +100,19 @@ describe('extractFacts', () => {
 
   it('fills the asked field from a bare answer', () => {
     expect(extractFacts('8', { now: NOW, expecting: 'places' }).places).toBe(8);
-    expect(extractFacts('nein', { now: NOW, expecting: 'costs' }).costs).toBe('kostenlos');
-    expect(extractFacts('Lötkurs für Anfänger', { now: NOW, expecting: 'title' }).title).toBe('Lötkurs für Anfänger');
+    expect(extractFacts('nein', { now: NOW, expecting: 'costs' }).costs).toBe(
+      'kostenlos',
+    );
+    expect(
+      extractFacts('Lötkurs für Anfänger', { now: NOW, expecting: 'title' })
+        .title,
+    ).toBe('Lötkurs für Anfänger');
   });
 
   it('accepts explicit title corrections', () => {
-    expect(extractFacts('Titel: Löten lernen', { now: NOW }).title).toBe('Löten lernen');
+    expect(extractFacts('Titel: Löten lernen', { now: NOW }).title).toBe(
+      'Löten lernen',
+    );
   });
 
   it('flags workshops', () => {
@@ -101,7 +122,9 @@ describe('extractFacts', () => {
 
 describe('guessTitle / guessType', () => {
   it('finds the title of an event sentence', () => {
-    expect(guessTitle('Ich will nächsten Freitag einen Lötkurs für Anfänger machen')).toBe('Lötkurs für Anfänger');
+    expect(
+      guessTitle('Ich will nächsten Freitag einen Lötkurs für Anfänger machen'),
+    ).toBe('Lötkurs für Anfänger');
   });
 
   it('finds the title of a project sentence', () => {
@@ -110,7 +133,9 @@ describe('guessTitle / guessType', () => {
 
   it('guesses the type', () => {
     expect(guessType('Ich habe eine Nixie-Uhr gebaut', NOW)).toBe('projekt');
-    expect(guessType('Ich will nächsten Freitag einen Lötkurs machen', NOW)).toBe('event');
+    expect(
+      guessType('Ich will nächsten Freitag einen Lötkurs machen', NOW),
+    ).toBe('event');
     expect(guessType('Hallo', NOW)).toBeUndefined();
   });
 });

@@ -21,8 +21,13 @@ export function createDb(url: string, max = 10): DbHandle {
   return { db, pool, close: () => pool.end() };
 }
 
-export const MIGRATIONS_DIR = fileURLToPath(new URL('../migrations', import.meta.url));
+export const MIGRATIONS_DIR = fileURLToPath(
+  new URL('../migrations', import.meta.url),
+);
 
-export async function runMigrations(db: Database, migrationsFolder = MIGRATIONS_DIR): Promise<void> {
+export async function runMigrations(
+  db: Database,
+  migrationsFolder = MIGRATIONS_DIR,
+): Promise<void> {
   await migrate(db, { migrationsFolder });
 }

@@ -34,10 +34,19 @@ describe('AI service', () => {
       }) as never,
     });
     const ai = createAiService(model, { timeoutMs: 1000, logger: quiet });
-    const r = await ai.extract({ text: 'Ich will nächsten Freitag einen Lötkurs machen', facts: {}, now: NOW });
+    const r = await ai.extract({
+      text: 'Ich will nächsten Freitag einen Lötkurs machen',
+      facts: {},
+      now: NOW,
+    });
     expect(r).toEqual({
       type: 'event',
-      facts: { title: 'Lötkurs für Anfänger', description: 'Du lernst löten.', date: '2026-11-27', isWorkshop: true },
+      facts: {
+        title: 'Lötkurs für Anfänger',
+        description: 'Du lernst löten.',
+        date: '2026-11-27',
+        isWorkshop: true,
+      },
     });
     const sent = JSON.stringify(model.doGenerateCalls[0].prompt);
     expect(sent).not.toMatch(/@\w+:/);
@@ -45,9 +54,20 @@ describe('AI service', () => {
   });
 
   it('writes texts', async () => {
-    const texts = { hookDe: 'Lust auf Löten? 🔥', bodyDe: 'Du lernst.', titleEn: 'Soldering', bodyEn: 'You learn.', shortEn: 'Learn it.' };
-    const ai = createAiService(new MockLanguageModelV4({ doGenerate: result(texts) as never }), { timeoutMs: 1000, logger: quiet });
-    expect(await ai.writeTexts({ type: 'event', facts: { title: 'Lötkurs' } })).toEqual(texts);
+    const texts = {
+      hookDe: 'Lust auf Löten? 🔥',
+      bodyDe: 'Du lernst.',
+      titleEn: 'Soldering',
+      bodyEn: 'You learn.',
+      shortEn: 'Learn it.',
+    };
+    const ai = createAiService(
+      new MockLanguageModelV4({ doGenerate: result(texts) as never }),
+      { timeoutMs: 1000, logger: quiet },
+    );
+    expect(
+      await ai.writeTexts({ type: 'event', facts: { title: 'Lötkurs' } }),
+    ).toEqual(texts);
   });
 
   it('returns null and logs a warning on errors', async () => {
@@ -65,7 +85,11 @@ describe('AI service', () => {
   it('returns null on timeout', async () => {
     const model = new MockLanguageModelV4({
       doGenerate: (opts) =>
-        new Promise((_, reject) => opts.abortSignal?.addEventListener('abort', () => reject(new Error('aborted')))),
+        new Promise((_, reject) =>
+          opts.abortSignal?.addEventListener('abort', () =>
+            reject(new Error('aborted')),
+          ),
+        ),
     });
     const ai = createAiService(model, { timeoutMs: 50, logger: quiet });
     expect(await ai.writeTexts({ type: 'event', facts: {} })).toBeNull();
@@ -73,9 +97,17 @@ describe('AI service', () => {
 
   it('is disabled with AI_PROVIDER=none (default)', () => {
     expect(createAiFromEnv(loadEnv({}))).toBeNull();
-    expect(createAiFromEnv(loadEnv({ AI_PROVIDER: 'openai-compatible' }), quiet)).toBeNull();
     expect(
-      createAiFromEnv(loadEnv({ AI_PROVIDER: 'openai-compatible', AI_BASE_URL: 'http://localhost:11434/v1', AI_MODEL: 'x' })),
+      createAiFromEnv(loadEnv({ AI_PROVIDER: 'openai-compatible' }), quiet),
+    ).toBeNull();
+    expect(
+      createAiFromEnv(
+        loadEnv({
+          AI_PROVIDER: 'openai-compatible',
+          AI_BASE_URL: 'http://localhost:11434/v1',
+          AI_MODEL: 'x',
+        }),
+      ),
     ).not.toBeNull();
   });
 });

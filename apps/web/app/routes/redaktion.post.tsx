@@ -1,7 +1,22 @@
 import { useState } from 'react';
-import { Form, Link, useActionData, useLoaderData, useNavigation, type ActionFunctionArgs, type LoaderFunctionArgs } from 'react-router';
+import {
+  Form,
+  Link,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from 'react-router';
 import { Alert, Button, Tabs, TextArea } from '@heroui/react';
-import { BANNER_COLORS, CONSENT_LABELS, CONSENTS, type BannerColor, type ChannelId, type Consent } from '@postomat/core';
+import {
+  BANNER_COLORS,
+  CONSENT_LABELS,
+  CONSENTS,
+  type BannerColor,
+  type ChannelId,
+  type Consent,
+} from '@postomat/core';
 import {
   approvePost,
   askMember,
@@ -33,7 +48,10 @@ const SWATCH: Record<BannerColor, [string, string]> = {
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request, ['medienteam']);
-  return { user: { username: user.username, roles: user.roles }, view: await loadPostView(Number(params['id'])) };
+  return {
+    user: { username: user.username, roles: user.roles },
+    view: await loadPostView(Number(params['id'])),
+  };
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -48,29 +66,73 @@ export async function action({ request, params }: ActionFunctionArgs) {
     switch (intent) {
       case 'save_text': {
         const fields: Record<string, string> = {};
-        for (const k of ['hashtags', 'title', 'titleEn']) if (form.has(k)) fields[k] = s(k);
-        await editChannelText(deps, id, channel, { textDe: String(form.get('textDe') ?? ''), textEn: String(form.get('textEn') ?? ''), fields }, user.username);
+        for (const k of ['hashtags', 'title', 'titleEn'])
+          if (form.has(k)) fields[k] = s(k);
+        await editChannelText(
+          deps,
+          id,
+          channel,
+          {
+            textDe: String(form.get('textDe') ?? ''),
+            textEn: String(form.get('textEn') ?? ''),
+            fields,
+          },
+          user.username,
+        );
         return { ok: 'Gespeichert.' };
       }
       case 'banner_color':
-        await setBannerColor(deps, id, s('color') as BannerColor, user.username);
+        await setBannerColor(
+          deps,
+          id,
+          s('color') as BannerColor,
+          user.username,
+        );
         return { ok: 'Banner wird neu erzeugt …' };
       case 'meetup_category':
         await setMeetupCategory(deps, id, s('category'), user.username);
         return { ok: 'Meetup-Kategorie gespeichert.' };
       case 'consent':
-        await setPhotoConsent(deps, id, Number(s('photoId')), s('consent') as Consent, user.username);
+        await setPhotoConsent(
+          deps,
+          id,
+          Number(s('photoId')),
+          s('consent') as Consent,
+          user.username,
+        );
         return { ok: 'Einwilligung gespeichert.' };
       case 'facts':
-        await editFacts(deps, id, { endTime: s('endTime') || undefined, isWorkshop: form.get('isWorkshop') === 'on' }, user.username);
+        await editFacts(
+          deps,
+          id,
+          {
+            endTime: s('endTime') || undefined,
+            isWorkshop: form.get('isWorkshop') === 'on',
+          },
+          user.username,
+        );
         return { ok: 'Angaben gespeichert.' };
       case 'approve': {
         const view = await loadPostView(id);
-        const d = await approvePost(deps, { postId: id, approverUsername: user.username, approverIsMedienteam: true, version: view.post.version, via: 'web' });
-        if (d.kind === 'approve') return { ok: 'Freigegeben. Website und Wiki werden veröffentlicht.' };
-        if (d.kind === 'self_approval') return { error: 'Eigene Beiträge kann man nicht selbst freigeben 🙂' };
-        if (d.kind === 'blocked') return { error: `Freigabe nicht möglich: ${d.failures.map((f) => f.label).join(' · ')}` };
-        if (d.kind === 'outdated_version') return { error: 'Bitte erst die neue Version zur Freigabe stellen.' };
+        const d = await approvePost(deps, {
+          postId: id,
+          approverUsername: user.username,
+          approverIsMedienteam: true,
+          version: view.post.version,
+          via: 'web',
+        });
+        if (d.kind === 'approve')
+          return { ok: 'Freigegeben. Website und Wiki werden veröffentlicht.' };
+        if (d.kind === 'self_approval')
+          return {
+            error: 'Eigene Beiträge kann man nicht selbst freigeben 🙂',
+          };
+        if (d.kind === 'blocked')
+          return {
+            error: `Freigabe nicht möglich: ${d.failures.map((f) => f.label).join(' · ')}`,
+          };
+        if (d.kind === 'outdated_version')
+          return { error: 'Bitte erst die neue Version zur Freigabe stellen.' };
         return { error: 'Der Beitrag kann gerade nicht freigegeben werden.' };
       }
       case 'request_change':
@@ -87,7 +149,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
         await askMember(deps, id, s('question'), user.username);
         return { ok: 'Rückfrage ist unterwegs.' };
       case 'retry':
-        await retryChannel(deps, id, channel as 'wordpress' | 'wiki', user.username);
+        await retryChannel(
+          deps,
+          id,
+          channel as 'wordpress' | 'wiki',
+          user.username,
+        );
         return { ok: 'Wird erneut versucht …' };
       case 'link':
         await setChannelLink(deps, id, channel, s('url'), user.username);
@@ -105,7 +172,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
 type Lang = 'de' | 'en' | 'both';
 
-function ChannelEditor({ ch, editable, lang }: { ch: ChannelView; editable: boolean; lang: Lang }) {
+function ChannelEditor({
+  ch,
+  editable,
+  lang,
+}: {
+  ch: ChannelView;
+  editable: boolean;
+  lang: Lang;
+}) {
   const nav = useNavigation();
   const showDe = lang !== 'en';
   const showEn = lang !== 'de' && ch.channel !== 'wiki';
@@ -116,28 +191,55 @@ function ChannelEditor({ ch, editable, lang }: { ch: ChannelView; editable: bool
       {'title' in ch.fields && (
         <label className="grid gap-1 text-sm">
           Titel
-          <input name="title" defaultValue={ch.fields['title']} disabled={!editable} className="rounded-md border border-[var(--border)] bg-[var(--field-background,transparent)] px-2 py-1" />
+          <input
+            name="title"
+            defaultValue={ch.fields['title']}
+            disabled={!editable}
+            className="rounded-md border border-[var(--border)] bg-[var(--field-background,transparent)] px-2 py-1"
+          />
         </label>
       )}
       <div className={`grid gap-2 ${showDe && showEn ? 'md:grid-cols-2' : ''}`}>
         <label className={`grid gap-1 text-sm ${showDe ? '' : 'hidden'}`}>
           Deutsch
-          <TextArea name="textDe" defaultValue={ch.textDe} rows={12} disabled={!editable} className="w-full font-mono text-sm" />
+          <TextArea
+            name="textDe"
+            defaultValue={ch.textDe}
+            rows={12}
+            disabled={!editable}
+            className="w-full font-mono text-sm"
+          />
         </label>
         <label className={`grid gap-1 text-sm ${showEn ? '' : 'hidden'}`}>
           English
-          <TextArea name="textEn" defaultValue={ch.textEn} rows={12} disabled={!editable} className="w-full font-mono text-sm" />
+          <TextArea
+            name="textEn"
+            defaultValue={ch.textEn}
+            rows={12}
+            disabled={!editable}
+            className="w-full font-mono text-sm"
+          />
         </label>
       </div>
       {'hashtags' in ch.fields && (
         <label className="grid gap-1 text-sm">
           Hashtags
-          <input name="hashtags" defaultValue={ch.fields['hashtags']} disabled={!editable} className="rounded-md border border-[var(--border)] px-2 py-1" />
+          <input
+            name="hashtags"
+            defaultValue={ch.fields['hashtags']}
+            disabled={!editable}
+            className="rounded-md border border-[var(--border)] px-2 py-1"
+          />
         </label>
       )}
       {editable && (
         <div>
-          <Button type="submit" size="sm" variant="primary" isPending={nav.state === 'submitting'}>
+          <Button
+            type="submit"
+            size="sm"
+            variant="primary"
+            isPending={nav.state === 'submitting'}
+          >
             {ch.name}-Text speichern
           </Button>
         </div>
@@ -146,17 +248,29 @@ function ChannelEditor({ ch, editable, lang }: { ch: ChannelView; editable: bool
   );
 }
 
-function ChannelStatusRows({ view }: { view: ReturnType<typeof useLoaderData<typeof loader>>['view'] }) {
+function ChannelStatusRows({
+  view,
+}: {
+  view: ReturnType<typeof useLoaderData<typeof loader>>['view'];
+}) {
   return (
     <div className="grid gap-2">
       {view.channels
         .filter((c) => c.mode !== 'off')
         .map((c) => (
-          <div key={c.channel} className="grid gap-2 rounded-md border border-[var(--border)] p-2 sm:grid-cols-[7rem_1fr_auto] sm:items-center">
+          <div
+            key={c.channel}
+            className="grid gap-2 rounded-md border border-[var(--border)] p-2 sm:grid-cols-[7rem_1fr_auto] sm:items-center"
+          >
             <b>{c.name}</b>
             <span className="min-w-0 text-sm text-[var(--muted)] [overflow-wrap:anywhere]">
               {c.url ? (
-                <a href={c.url} className="underline" target="_blank" rel="noreferrer">
+                <a
+                  href={c.url}
+                  className="underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   {c.url}
                 </a>
               ) : c.status === 'kopieren' ? (
@@ -166,10 +280,14 @@ function ChannelStatusRows({ view }: { view: ReturnType<typeof useLoaderData<typ
                   'Kopiervorlage – Link nach dem Posten eintragen'
                 )
               ) : (
-                c.error ?? ''
+                (c.error ?? '')
               )}
-              {c.channel === 'wordpress' && c.status === 'veroeffentlicht' ? ' · Kategorie Termine · DE + EN' : ''}
-              {c.channel === 'meetup' && c.linkedVia === 'ical' ? ' · im iCal-Feed erkannt' : ''}
+              {c.channel === 'wordpress' && c.status === 'veroeffentlicht'
+                ? ' · Kategorie Termine · DE + EN'
+                : ''}
+              {c.channel === 'meetup' && c.linkedVia === 'ical'
+                ? ' · im iCal-Feed erkannt'
+                : ''}
             </span>
             <span className="flex flex-wrap items-center gap-2">
               <ChannelStatus status={c.status} channel={c.channel} />
@@ -183,7 +301,10 @@ function ChannelStatusRows({ view }: { view: ReturnType<typeof useLoaderData<typ
                 </Form>
               )}
               {c.mode === 'copy' && c.status === 'kopieren' && (
-                <Link to={`/redaktion/${view.post.id}/${c.channel}`} className="text-sm underline">
+                <Link
+                  to={`/redaktion/${view.post.id}/${c.channel}`}
+                  className="text-sm underline"
+                >
                   Kopierhilfe
                 </Link>
               )}
@@ -199,7 +320,9 @@ export default function RedaktionPost() {
   const result = useActionData<typeof action>();
   const [lang, setLang] = useState<Lang>('de');
   const p = view.post;
-  const editable = ['zur_freigabe', 'aenderung_gewuenscht', 'sammeln'].includes(p.status);
+  const editable = ['zur_freigabe', 'aenderung_gewuenscht', 'sammeln'].includes(
+    p.status,
+  );
   const approvedPhase = p.status === 'geplant' || p.status === 'online';
   const active = view.channels.filter((c) => c.mode !== 'off');
   const isAuthor = p.authorUsername === user.username;
@@ -218,8 +341,14 @@ export default function RedaktionPost() {
         </div>
         <StatusTape status={p.status} version={p.version} />
       </div>
-      {p.note && <p className="rounded-md bg-[var(--default)] p-2 text-sm">Notiz von @{p.authorUsername}: „{p.note}“</p>}
-      {p.pendingQuestion && <p className="text-sm">❓ Offene Rückfrage: „{p.pendingQuestion}“</p>}
+      {p.note && (
+        <p className="rounded-md bg-[var(--default)] p-2 text-sm">
+          Notiz von @{p.authorUsername}: „{p.note}“
+        </p>
+      )}
+      {p.pendingQuestion && (
+        <p className="text-sm">❓ Offene Rückfrage: „{p.pendingQuestion}“</p>
+      )}
       {result && 'error' in result && result.error && (
         <Alert status="danger">
           <Alert.Content>
@@ -253,7 +382,13 @@ export default function RedaktionPost() {
                   ['both', 'DE + EN nebeneinander'],
                 ] as const
               ).map(([k, label]) => (
-                <Button key={k} size="sm" variant={lang === k ? 'primary' : 'outline'} aria-pressed={lang === k} onPress={() => setLang(k)}>
+                <Button
+                  key={k}
+                  size="sm"
+                  variant={lang === k ? 'primary' : 'outline'}
+                  aria-pressed={lang === k}
+                  onPress={() => setLang(k)}
+                >
                   {label}
                 </Button>
               ))}
@@ -297,21 +432,41 @@ export default function RedaktionPost() {
                   />
                 </Form>
               ))}
-              <a href={`/banner/${p.id}/4x5?download=1`} className="text-sm underline">
+              <a
+                href={`/banner/${p.id}/4x5?download=1`}
+                className="text-sm underline"
+              >
                 4:5 laden
               </a>
-              <a href={`/banner/${p.id}/16x9?download=1`} className="text-sm underline">
+              <a
+                href={`/banner/${p.id}/16x9?download=1`}
+                className="text-sm underline"
+              >
                 16:9 laden
               </a>
             </div>
-            {view.hasBanner && <img src={`/banner/${p.id}/4x5?c=${p.bannerColor}&v=${p.version}`} alt="Banner" className="w-40 rounded" />}
+            {view.hasBanner && (
+              <img
+                src={`/banner/${p.id}/4x5?c=${p.bannerColor}&v=${p.version}`}
+                alt="Banner"
+                className="w-40 rounded"
+              />
+            )}
             {active.some((c) => c.channel === 'meetup') && (
-              <Form method="post" className="flex flex-wrap items-center gap-2 text-sm">
+              <Form
+                method="post"
+                className="flex flex-wrap items-center gap-2 text-sm"
+              >
                 <input type="hidden" name="intent" value="meetup_category" />
                 <label htmlFor="mcat">
                   <b>Meetup-Kategorie</b>
                 </label>
-                <select id="mcat" name="category" defaultValue={p.meetupCategory ?? ''} className="rounded-md border border-[var(--border)] px-2 py-1">
+                <select
+                  id="mcat"
+                  name="category"
+                  defaultValue={p.meetupCategory ?? ''}
+                  className="rounded-md border border-[var(--border)] px-2 py-1"
+                >
                   <option value="">– bitte wählen –</option>
                   {view.meetupCategories.map((c) => (
                     <option key={c}>{c}</option>
@@ -323,12 +478,25 @@ export default function RedaktionPost() {
               </Form>
             )}
             {view.photos.map((ph) => (
-              <Form method="post" key={ph.id} className="flex flex-wrap items-center gap-2 text-sm">
+              <Form
+                method="post"
+                key={ph.id}
+                className="flex flex-wrap items-center gap-2 text-sm"
+              >
                 <input type="hidden" name="intent" value="consent" />
                 <input type="hidden" name="photoId" value={ph.id} />
-                <img src={`/foto/${ph.id}`} alt="Foto" className="h-12 w-12 rounded object-cover" />
+                <img
+                  src={`/foto/${ph.id}`}
+                  alt="Foto"
+                  className="h-12 w-12 rounded object-cover"
+                />
                 <label htmlFor={`consent-${ph.id}`}>Foto-Einwilligung</label>
-                <select id={`consent-${ph.id}`} name="consent" defaultValue={ph.consent} className="rounded-md border border-[var(--border)] px-2 py-1">
+                <select
+                  id={`consent-${ph.id}`}
+                  name="consent"
+                  defaultValue={ph.consent}
+                  className="rounded-md border border-[var(--border)] px-2 py-1"
+                >
                   {CONSENTS.map((c) => (
                     <option key={c} value={c}>
                       {CONSENT_LABELS[c]}
@@ -341,12 +509,26 @@ export default function RedaktionPost() {
               </Form>
             ))}
             {p.type === 'event' && editable && (
-              <Form method="post" className="flex flex-wrap items-center gap-2 text-sm">
+              <Form
+                method="post"
+                className="flex flex-wrap items-center gap-2 text-sm"
+              >
                 <input type="hidden" name="intent" value="facts" />
                 <label htmlFor="endTime">Ende</label>
-                <input id="endTime" name="endTime" type="time" defaultValue={p.facts.endTime ?? ''} className="rounded-md border border-[var(--border)] px-2 py-1" />
+                <input
+                  id="endTime"
+                  name="endTime"
+                  type="time"
+                  defaultValue={p.facts.endTime ?? ''}
+                  className="rounded-md border border-[var(--border)] px-2 py-1"
+                />
                 <label className="flex items-center gap-1">
-                  <input type="checkbox" name="isWorkshop" defaultChecked={!!p.facts.isWorkshop} /> Workshop (Kategorie „Workshops“)
+                  <input
+                    type="checkbox"
+                    name="isWorkshop"
+                    defaultChecked={!!p.facts.isWorkshop}
+                  />{' '}
+                  Workshop (Kategorie „Workshops“)
                 </label>
                 <Button type="submit" size="sm" variant="secondary">
                   Speichern
@@ -363,7 +545,12 @@ export default function RedaktionPost() {
             {p.status === 'zur_freigabe' && (
               <Form method="post">
                 <input type="hidden" name="intent" value="approve" />
-                <Button type="submit" variant="primary" className="w-full" isDisabled={isAuthor}>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="w-full"
+                  isDisabled={isAuthor}
+                >
                   Freigeben
                 </Button>
               </Form>
@@ -371,7 +558,13 @@ export default function RedaktionPost() {
             {p.status === 'zur_freigabe' && (
               <Form method="post" className="grid gap-1">
                 <input type="hidden" name="intent" value="request_change" />
-                <TextArea name="comment" rows={2} placeholder="Was soll sich ändern? (optional)" aria-label="Kommentar" className="w-full" />
+                <TextArea
+                  name="comment"
+                  rows={2}
+                  placeholder="Was soll sich ändern? (optional)"
+                  aria-label="Kommentar"
+                  className="w-full"
+                />
                 <Button type="submit" variant="secondary">
                   Änderung anfragen
                 </Button>
@@ -385,17 +578,33 @@ export default function RedaktionPost() {
                 </Button>
               </Form>
             )}
-            {['sammeln', 'zur_freigabe', 'aenderung_gewuenscht'].includes(p.status) && (
+            {['sammeln', 'zur_freigabe', 'aenderung_gewuenscht'].includes(
+              p.status,
+            ) && (
               <Form method="post" className="grid gap-1">
                 <input type="hidden" name="intent" value="ask" />
-                <TextArea name="question" rows={2} placeholder="Frage an @… (geht per Matrix-DM)" aria-label="Rückfrage" className="w-full" />
+                <TextArea
+                  name="question"
+                  rows={2}
+                  placeholder="Frage an @… (geht per Matrix-DM)"
+                  aria-label="Rückfrage"
+                  className="w-full"
+                />
                 <Button type="submit" variant="outline">
                   Rückfrage ans Mitglied
                 </Button>
               </Form>
             )}
-            {['sammeln', 'zur_freigabe', 'aenderung_gewuenscht'].includes(p.status) && (
-              <Form method="post" onSubmit={(e) => !confirm('Beitrag wirklich verwerfen?') && e.preventDefault()}>
+            {['sammeln', 'zur_freigabe', 'aenderung_gewuenscht'].includes(
+              p.status,
+            ) && (
+              <Form
+                method="post"
+                onSubmit={(e) =>
+                  !window.confirm('Beitrag wirklich verwerfen?') &&
+                  e.preventDefault()
+                }
+              >
                 <input type="hidden" name="intent" value="discard" />
                 <Button type="submit" variant="danger" className="w-full">
                   Verwerfen
@@ -404,23 +613,48 @@ export default function RedaktionPost() {
             )}
           </div>
           <div>
-            <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Automatische Checks</h2>
+            <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+              Automatische Checks
+            </h2>
             <ul className="grid gap-1 text-sm">
               {view.checks.map((c) => (
-                <li key={c.id} className={c.ok ? '' : c.level === 'block' ? 'text-[var(--danger)]' : 'text-[var(--warning)]'}>
+                <li
+                  key={c.id}
+                  className={
+                    c.ok
+                      ? ''
+                      : c.level === 'block'
+                        ? 'text-[var(--danger)]'
+                        : 'text-[var(--warning)]'
+                  }
+                >
                   {c.ok ? '✓' : '!'} {c.label}
                 </li>
               ))}
-              {isAuthor && <li className="text-[var(--danger)]">! Eigener Beitrag – jemand anderes muss freigeben</li>}
+              {isAuthor && (
+                <li className="text-[var(--danger)]">
+                  ! Eigener Beitrag – jemand anderes muss freigeben
+                </li>
+              )}
             </ul>
           </div>
           <div>
-            <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Verlauf</h2>
+            <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+              Verlauf
+            </h2>
             <ul className="grid gap-1 text-sm">
               {view.history.map((h) => (
                 <li key={h.id}>
                   <b>@{h.actor}</b> {h.message} ·{' '}
-                  <time dateTime={h.at}>{new Date(h.at).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</time>
+                  <time dateTime={h.at}>
+                    {new Date(h.at).toLocaleString('de-DE', {
+                      timeZone: 'Europe/Berlin',
+                      day: '2-digit',
+                      month: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </time>
                 </li>
               ))}
             </ul>

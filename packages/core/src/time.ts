@@ -4,10 +4,39 @@
  */
 export const TIMEZONE = 'Europe/Berlin';
 
-const WEEKDAYS_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+const WEEKDAYS_DE = [
+  'Sonntag',
+  'Montag',
+  'Dienstag',
+  'Mittwoch',
+  'Donnerstag',
+  'Freitag',
+  'Samstag',
+];
 const WEEKDAYS_SHORT_DE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-const WEEKDAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WEEKDAYS_EN = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
+const MONTHS_EN = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 export const pad2 = (n: number): string => String(n).padStart(2, '0');
 
@@ -32,7 +61,9 @@ const partsFormatter = new Intl.DateTimeFormat('en-US', {
 });
 
 export function zonedParts(instant: Date): ZonedParts {
-  const parts = Object.fromEntries(partsFormatter.formatToParts(instant).map((p) => [p.type, p.value]));
+  const parts = Object.fromEntries(
+    partsFormatter.formatToParts(instant).map((p) => [p.type, p.value]),
+  );
   return {
     year: Number(parts.year),
     month: Number(parts.month),
@@ -57,7 +88,14 @@ export function localTimeOf(instant: Date): string {
 
 function offsetMinutes(instant: Date): number {
   const p = zonedParts(instant);
-  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  const asUtc = Date.UTC(
+    p.year,
+    p.month - 1,
+    p.day,
+    p.hour,
+    p.minute,
+    p.second,
+  );
   return Math.round((asUtc - instant.getTime()) / 60000);
 }
 
@@ -95,15 +133,21 @@ export function isValidDate(date: string): boolean {
   if (!m) return false;
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
   const t = new Date(Date.UTC(y, mo - 1, d));
-  return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+  return (
+    t.getUTCFullYear() === y &&
+    t.getUTCMonth() === mo - 1 &&
+    t.getUTCDate() === d
+  );
 }
 
-const split = (date: string) => date.split('-').map(Number) as [number, number, number];
+const split = (date: string) =>
+  date.split('-').map(Number) as [number, number, number];
 
 /** "Freitag" */
 export const weekdayDe = (date: string): string => WEEKDAYS_DE[weekdayOf(date)];
 /** "Fr" */
-export const weekdayShortDe = (date: string): string => WEEKDAYS_SHORT_DE[weekdayOf(date)];
+export const weekdayShortDe = (date: string): string =>
+  WEEKDAYS_SHORT_DE[weekdayOf(date)];
 
 /** "11.12." */
 export function dayMonthDe(date: string): string {
@@ -124,10 +168,12 @@ export function fullDateDe(date: string): string {
 }
 
 /** "Freitag, 11.12." */
-export const weekdayDateDe = (date: string): string => `${weekdayDe(date)}, ${dayMonthDe(date)}`;
+export const weekdayDateDe = (date: string): string =>
+  `${weekdayDe(date)}, ${dayMonthDe(date)}`;
 
 /** "Fr 11.12." */
-export const shortWeekdayDateDe = (date: string): string => `${weekdayShortDe(date)} ${dayMonthDe(date)}`;
+export const shortWeekdayDateDe = (date: string): string =>
+  `${weekdayShortDe(date)} ${dayMonthDe(date)}`;
 
 /** "18 Uhr" or "18:30 Uhr" style hour for ranges: "18" / "18:30". */
 function hourDe(time: string): string {
@@ -141,7 +187,11 @@ export function timeRangeDe(start: string, end?: string): string {
 }
 
 /** Banner / Instagram line: "Freitag, den 11.12.26 | 18 – 21 Uhr" */
-export function bannerWhenDe(date: string, start?: string, end?: string): string {
+export function bannerWhenDe(
+  date: string,
+  start?: string,
+  end?: string,
+): string {
   const day = `${weekdayDe(date)}, den ${shortDateDe(date)}`;
   return start ? `${day} | ${timeRangeDe(start, end)}` : day;
 }
@@ -158,7 +208,8 @@ export function timeRangeEn(start: string, end?: string): string {
   if (!end) return hourEn(start);
   const a = hourEn(start);
   const b = hourEn(end);
-  if (a.slice(-2) === b.slice(-2)) return `${a.slice(0, -2)}–${b.slice(0, -2)} ${b.slice(-2)}`;
+  if (a.slice(-2) === b.slice(-2))
+    return `${a.slice(0, -2)}–${b.slice(0, -2)} ${b.slice(-2)}`;
   return `${a}–${b}`;
 }
 
@@ -179,7 +230,10 @@ export function wikiDateTime(date: string, time: string): string {
 
 /** "seit 1 Std." style relative age for queues. */
 export function ageDe(from: Date, now: Date): string {
-  const minutes = Math.max(0, Math.round((now.getTime() - from.getTime()) / 60000));
+  const minutes = Math.max(
+    0,
+    Math.round((now.getTime() - from.getTime()) / 60000),
+  );
   if (minutes < 60) return `seit ${minutes} Min.`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `seit ${hours} Std.`;

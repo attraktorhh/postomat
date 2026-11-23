@@ -1,4 +1,8 @@
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 export interface FakeServer {
@@ -6,7 +10,11 @@ export interface FakeServer {
   close(): Promise<void>;
 }
 
-export type Handler = (req: IncomingMessage, body: Buffer, res: ServerResponse) => void | Promise<void>;
+export type Handler = (
+  req: IncomingMessage,
+  body: Buffer,
+  res: ServerResponse,
+) => void | Promise<void>;
 
 export async function readBody(req: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -36,12 +44,21 @@ export async function startServer(handler: Handler): Promise<FakeServer> {
   };
 }
 
-export function json(res: ServerResponse, status: number, data: unknown, headers: Record<string, string> = {}): void {
+export function json(
+  res: ServerResponse,
+  status: number,
+  data: unknown,
+  headers: Record<string, string> = {},
+): void {
   res.writeHead(status, { 'content-type': 'application/json', ...headers });
   res.end(JSON.stringify(data));
 }
 
-export function checkBasic(req: IncomingMessage, user: string, password: string): boolean {
+export function checkBasic(
+  req: IncomingMessage,
+  user: string,
+  password: string,
+): boolean {
   const h = req.headers.authorization ?? '';
   if (!h.startsWith('Basic ')) return false;
   const [u, ...p] = Buffer.from(h.slice(6), 'base64').toString().split(':');

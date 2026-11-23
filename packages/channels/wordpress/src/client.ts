@@ -1,4 +1,9 @@
-import { basicAuth, HttpError, trimSlash, type FetchLike } from '@postomat/core';
+import {
+  basicAuth,
+  HttpError,
+  trimSlash,
+  type FetchLike,
+} from '@postomat/core';
 
 export interface WordPressConfig {
   /** Site URL, e.g. http://localhost:8081 */
@@ -27,13 +32,25 @@ export class WordPressClient {
     this.auth = basicAuth(cfg.username, cfg.appPassword.replace(/\s+/g, ''));
   }
 
-  private async request<T>(path: string, init: RequestInit & { headers?: Record<string, string> } = {}): Promise<T> {
+  private async request<T>(
+    path: string,
+    init: RequestInit & { headers?: Record<string, string> } = {},
+  ): Promise<T> {
     const res = await this.fetchFn(`${this.api}${path}`, {
       ...init,
-      headers: { authorization: this.auth, accept: 'application/json', ...(init.headers ?? {}) },
+      headers: {
+        authorization: this.auth,
+        accept: 'application/json',
+        ...(init.headers ?? {}),
+      },
     });
     const text = await res.text();
-    if (!res.ok) throw new HttpError(`WordPress ${init.method ?? 'GET'} ${path}`, res.status, text);
+    if (!res.ok)
+      throw new HttpError(
+        `WordPress ${init.method ?? 'GET'} ${path}`,
+        res.status,
+        text,
+      );
     return JSON.parse(text) as T;
   }
 
@@ -48,16 +65,28 @@ export class WordPressClient {
       `/categories?per_page=100&slug=${slugs.map(encodeURIComponent).join(',')}`,
     );
     const missing = slugs.filter((s) => !found.some((c) => c.slug === s));
-    if (missing.length) throw new Error(`WordPress categories not found: ${missing.join(', ')}`);
+    if (missing.length)
+      throw new Error(`WordPress categories not found: ${missing.join(', ')}`);
     return slugs.map((s) => found.find((c) => c.slug === s)!.id);
   }
 
-  async uploadMedia(data: Buffer, filename: string, mime: string, altText?: string): Promise<{ id: number; url: string }> {
-    const media = await this.request<{ id: number; source_url: string }>('/media', {
-      method: 'POST',
-      headers: { 'content-type': mime, 'content-disposition': `attachment; filename="${filename}"` },
-      body: new Uint8Array(data),
-    });
+  async uploadMedia(
+    data: Buffer,
+    filename: string,
+    mime: string,
+    altText?: string,
+  ): Promise<{ id: number; url: string }> {
+    const media = await this.request<{ id: number; source_url: string }>(
+      '/media',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': mime,
+          'content-disposition': `attachment; filename="${filename}"`,
+        },
+        body: new Uint8Array(data),
+      },
+    );
     if (altText) {
       await this.request(`/media/${media.id}`, {
         method: 'POST',
@@ -69,14 +98,25 @@ export class WordPressClient {
   }
 
   async findPostBySlug(slug: string): Promise<WpPostRef | null> {
-    const list = await this.request<Array<{ id: number; link: string; status: string }>>(
+    const list = await this.request<
+      Array<{ id: number; link: string; status: string }>
+    >(
       `/posts?context=edit&status=publish,draft,future,pending,private&slug=${encodeURIComponent(slug)}`,
     );
     const p = list[0];
     return p ? { id: p.id, link: p.link, status: p.status } : null;
   }
 
-  async getPost(id: number): Promise<WpPostRef & { content: string; categories: number[]; featured_media: number; title: string }> {
+  async getPost(
+    id: number,
+  ): Promise<
+    WpPostRef & {
+      content: string;
+      categories: number[];
+      featured_media: number;
+      title: string;
+    }
+  > {
     const p = await this.request<{
       id: number;
       link: string;
@@ -105,27 +145,36 @@ export class WordPressClient {
     categories: number[];
     featuredMedia?: number;
   }): Promise<WpPostRef> {
-    const p = await this.request<{ id: number; link: string; status: string }>('/posts', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        title: input.title,
-        content: input.content,
-        status: input.status,
-        slug: input.slug,
-        categories: input.categories,
-        featured_media: input.featuredMedia,
-      }),
-    });
+    const p = await this.request<{ id: number; link: string; status: string }>(
+      '/posts',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: input.title,
+          content: input.content,
+          status: input.status,
+          slug: input.slug,
+          categories: input.categories,
+          featured_media: input.featuredMedia,
+        }),
+      },
+    );
     return { id: p.id, link: p.link, status: p.status };
   }
 
-  async updatePost(id: number, input: { content?: string; title?: string }): Promise<WpPostRef> {
-    const p = await this.request<{ id: number; link: string; status: string }>(`/posts/${id}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(input),
-    });
+  async updatePost(
+    id: number,
+    input: { content?: string; title?: string },
+  ): Promise<WpPostRef> {
+    const p = await this.request<{ id: number; link: string; status: string }>(
+      `/posts/${id}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    );
     return { id: p.id, link: p.link, status: p.status };
   }
 

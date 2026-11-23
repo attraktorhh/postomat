@@ -1,4 +1,10 @@
-import type { Env, FetchLike, Logger, MatrixPort, PostomatConfig } from '@postomat/core';
+import type {
+  Env,
+  FetchLike,
+  Logger,
+  MatrixPort,
+  PostomatConfig,
+} from '@postomat/core';
 import type { Database } from '@postomat/db';
 import type { AiService } from '@postomat/ai';
 import type { MediaStore } from '@postomat/media';

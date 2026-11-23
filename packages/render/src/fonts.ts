@@ -11,11 +11,18 @@ export const LOGO_FAMILY = 'Kaushan Script';
  * resolved relative to this module, which sits in `src/` when running from
  * source and in `dist/` after the build, so `../assets` works from both.
  */
-const fontUrl = (file: string): URL => new URL(`../assets/fonts/${file}`, import.meta.url);
+const fontUrl = (file: string): URL =>
+  new URL(`../assets/fonts/${file}`, import.meta.url);
 
 const BUNDLED = {
-  title: ['space-grotesk-latin-700-normal.woff', 'space-grotesk-latin-ext-700-normal.woff'],
-  text: ['space-grotesk-latin-600-normal.woff', 'space-grotesk-latin-ext-600-normal.woff'],
+  title: [
+    'space-grotesk-latin-700-normal.woff',
+    'space-grotesk-latin-ext-700-normal.woff',
+  ],
+  text: [
+    'space-grotesk-latin-600-normal.woff',
+    'space-grotesk-latin-ext-600-normal.woff',
+  ],
   logo: ['kaushan-script-latin-400-normal.woff'],
 } as const;
 
@@ -35,15 +42,32 @@ function load(source: string | URL): Promise<Buffer> {
 
 /** Loads all fonts for a banner. `titleFontPath` (TTF/OTF/WOFF) replaces the bundled title font. */
 export async function loadFonts(titleFontPath?: string): Promise<Font[]> {
-  const titleFiles: (string | URL)[] = titleFontPath ? [titleFontPath] : BUNDLED.title.map(fontUrl);
+  const titleFiles: (string | URL)[] = titleFontPath
+    ? [titleFontPath]
+    : BUNDLED.title.map(fontUrl);
   const [title, text, logo] = await Promise.all([
     Promise.all(titleFiles.map(load)),
     Promise.all(BUNDLED.text.map((f) => load(fontUrl(f)))),
     Promise.all(BUNDLED.logo.map((f) => load(fontUrl(f)))),
   ]);
   return [
-    ...title.map((data): Font => ({ name: TITLE_FAMILY, data, weight: 700, style: 'normal' })),
-    ...text.map((data): Font => ({ name: TEXT_FAMILY, data, weight: 600, style: 'normal' })),
-    ...logo.map((data): Font => ({ name: LOGO_FAMILY, data, weight: 400, style: 'normal' })),
+    ...title.map((data): Font => ({
+      name: TITLE_FAMILY,
+      data,
+      weight: 700,
+      style: 'normal',
+    })),
+    ...text.map((data): Font => ({
+      name: TEXT_FAMILY,
+      data,
+      weight: 600,
+      style: 'normal',
+    })),
+    ...logo.map((data): Font => ({
+      name: LOGO_FAMILY,
+      data,
+      weight: 400,
+      style: 'normal',
+    })),
   ];
 }

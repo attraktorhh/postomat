@@ -13,10 +13,7 @@
   "ssoSessionIdleTimeout": 36000,
   "ssoSessionMaxLifespan": 86400,
   "internationalizationEnabled": true,
-  "supportedLocales": [
-    "de",
-    "en"
-  ],
+  "supportedLocales": ["de", "en"],
   "defaultLocale": "de",
   "groups": [
     {
@@ -52,9 +49,7 @@
         }
       ],
       "requiredActions": [],
-      "groups": [
-        "/mitglieder"
-      ]
+      "groups": ["/mitglieder"]
     },
     {
       "id": "6b1c1a2e-0002-4c1a-9a00-00000000a002",
@@ -72,10 +67,7 @@
         }
       ],
       "requiredActions": [],
-      "groups": [
-        "/mitglieder",
-        "/medienteam"
-      ]
+      "groups": ["/mitglieder", "/medienteam"]
     },
     {
       "id": "6b1c1a2e-0003-4c1a-9a00-00000000a003",
@@ -93,10 +85,7 @@
         }
       ],
       "requiredActions": [],
-      "groups": [
-        "/mitglieder",
-        "/medienteam"
-      ]
+      "groups": ["/mitglieder", "/medienteam"]
     },
     {
       "id": "6b1c1a2e-0004-4c1a-9a00-00000000a004",
@@ -132,10 +121,7 @@
         }
       ],
       "requiredActions": [],
-      "groups": [
-        "/mitglieder",
-        "/postomat-admin"
-      ]
+      "groups": ["/mitglieder", "/postomat-admin"]
     }
   ],
   "clients": [
@@ -154,12 +140,8 @@
       "frontchannelLogout": true,
       "rootUrl": "http://localhost:3000",
       "baseUrl": "/",
-      "redirectUris": [
-        "http://localhost:3000/*"
-      ],
-      "webOrigins": [
-        "http://localhost:3000"
-      ],
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"],
       "attributes": {
         "post.logout.redirect.uris": "http://localhost:3000/*",
         "backchannel.logout.session.required": "true"

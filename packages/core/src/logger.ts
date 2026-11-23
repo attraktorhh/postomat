@@ -14,7 +14,13 @@ export function createLogger(name: string, level: Level = 'info'): Logger {
   const min = LEVELS[level];
   const write = (lvl: Level, msg: string, data?: Record<string, unknown>) => {
     if (LEVELS[lvl] < min) return;
-    const line = JSON.stringify({ t: new Date().toISOString(), level: lvl, name, msg, ...data });
+    const line = JSON.stringify({
+      t: new Date().toISOString(),
+      level: lvl,
+      name,
+      msg,
+      ...data,
+    });
     if (lvl === 'error' || lvl === 'warn') process.stderr.write(line + '\n');
     else process.stdout.write(line + '\n');
   };

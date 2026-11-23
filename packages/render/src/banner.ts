@@ -34,7 +34,10 @@ type Style = Record<string, string | number>;
 interface Node {
   type: string;
   key?: string;
-  props: Record<string, unknown> & { style?: Style; children?: Child | Child[] };
+  props: Record<string, unknown> & {
+    style?: Style;
+    children?: Child | Child[];
+  };
 }
 type Child = Node | string | null;
 
@@ -97,15 +100,38 @@ const TITLE_LINE_HEIGHT = 1.05;
 /** Stroke width marker of the info icons; a unique value so tests can find the icons in the SVG. */
 export const ICON_STROKE_WIDTH = 2.15;
 const CLOCK_PATHS = ['M12 6.6V12l3.6 2.2'];
-const PIN_PATHS = ['M12 21.6s-6.8-6.1-6.8-11.6a6.8 6.8 0 0 1 13.6 0c0 5.5-6.8 11.6-6.8 11.6z'];
+const PIN_PATHS = [
+  'M12 21.6s-6.8-6.1-6.8-11.6a6.8 6.8 0 0 1 13.6 0c0 5.5-6.8 11.6-6.8 11.6z',
+];
 
 function icon(kind: 'clock' | 'pin', size: number, ink: string): Node {
-  const stroke = { stroke: ink, 'stroke-width': ICON_STROKE_WIDTH, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+  const stroke = {
+    stroke: ink,
+    'stroke-width': ICON_STROKE_WIDTH,
+    fill: 'none',
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+  };
   const parts: Node[] =
     kind === 'clock'
-      ? [h('circle', { cx: 12, cy: 12, r: 8.6, ...stroke }), ...CLOCK_PATHS.map((d) => h('path', { d, ...stroke }))]
-      : [...PIN_PATHS.map((d) => h('path', { d, ...stroke })), h('circle', { cx: 12, cy: 10, r: 2.4, ...stroke })];
-  return h('svg', { width: size, height: size, viewBox: '0 0 24 24', style: { flexShrink: 0 } }, ...parts);
+      ? [
+          h('circle', { cx: 12, cy: 12, r: 8.6, ...stroke }),
+          ...CLOCK_PATHS.map((d) => h('path', { d, ...stroke })),
+        ]
+      : [
+          ...PIN_PATHS.map((d) => h('path', { d, ...stroke })),
+          h('circle', { cx: 12, cy: 10, r: 2.4, ...stroke }),
+        ];
+  return h(
+    'svg',
+    {
+      width: size,
+      height: size,
+      viewBox: '0 0 24 24',
+      style: { flexShrink: 0 },
+    },
+    ...parts,
+  );
 }
 
 /** Asymmetric soft wave like the prototype: low on the left, peak at ~55 %, a bit higher on the right. */
@@ -120,7 +146,12 @@ function bandCurve(width: number, curve: number, fill: string): Node {
   ].join(' ');
   return h(
     'svg',
-    { width, height: c + 2, viewBox: `0 0 ${width} ${c + 2}`, style: { display: 'flex', marginBottom: -2 } },
+    {
+      width,
+      height: c + 2,
+      viewBox: `0 0 ${width} ${c + 2}`,
+      style: { display: 'flex', marginBottom: -2 },
+    },
     h('path', { d, fill }),
   );
 }
@@ -132,7 +163,14 @@ const hexToRgb = (hex: string): [number, number, number] => {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 };
 const rgbToHex = (rgb: number[]): string =>
-  '#' + rgb.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('');
+  '#' +
+  rgb
+    .map((v) =>
+      Math.round(Math.min(255, Math.max(0, v)))
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('');
 const mix = (a: string, b: string, t: number): string => {
   const x = hexToRgb(a);
   const y = hexToRgb(b);
@@ -144,7 +182,11 @@ const mix = (a: string, b: string, t: number): string => {
 const fallbackCache = new Map<string, Promise<Buffer>>();
 
 /** Neutral background without a photo: a deep, desaturated shade of the band colour with a dot grid and faint traces. */
-function fallbackBackground(color: BannerColor, width: number, height: number): Promise<Buffer> {
+function fallbackBackground(
+  color: BannerColor,
+  width: number,
+  height: number,
+): Promise<Buffer> {
   const key = `${color}:${width}x${height}`;
   let hit = fallbackCache.get(key);
   if (!hit) {
@@ -166,7 +208,10 @@ function fallbackBackground(color: BannerColor, width: number, height: number): 
     const trace = traces
       .map((t) => {
         const pts: string[] = [];
-        for (let i = 0; i < t.length; i += 2) pts.push(`${(t[i] * width).toFixed(1)},${(t[i + 1] * height).toFixed(1)}`);
+        for (let i = 0; i < t.length; i += 2)
+          pts.push(
+            `${(t[i] * width).toFixed(1)},${(t[i + 1] * height).toFixed(1)}`,
+          );
         const [sx, sy] = pts[0].split(',');
         const [ex, ey] = pts[pts.length - 1].split(',');
         return (
@@ -192,12 +237,22 @@ function fallbackBackground(color: BannerColor, width: number, height: number): 
 
 // --- logo -----------------------------------------------------------------
 
-async function logoNode(logoPath: string | undefined, layout: Layout): Promise<Node> {
+async function logoNode(
+  logoPath: string | undefined,
+  layout: Layout,
+): Promise<Node> {
   const u = layout.unit;
-  const box: Style = { position: 'absolute', right: 4 * u, top: 3 * u, display: 'flex' };
+  const box: Style = {
+    position: 'absolute',
+    right: 4 * u,
+    top: 3 * u,
+    display: 'flex',
+  };
   if (logoPath) {
     const data = await readFile(logoPath);
-    const isSvg = /\.svg$/i.test(logoPath) || /^\s*(<\?xml|<svg)/i.test(data.subarray(0, 200).toString('utf8'));
+    const isSvg =
+      /\.svg$/i.test(logoPath) ||
+      /^\s*(<\?xml|<svg)/i.test(data.subarray(0, 200).toString('utf8'));
     const meta = await sharp(data).metadata();
     const maxW = 24 * u;
     const maxH = 10 * u;
@@ -205,7 +260,11 @@ async function logoNode(logoPath: string | undefined, layout: Layout): Promise<N
     const height = Math.round(Math.min(maxH, maxW / ratio));
     const width = Math.round(height * ratio);
     const src = `data:${isSvg ? 'image/svg+xml' : `image/${meta.format === 'jpeg' ? 'jpeg' : meta.format}`};base64,${data.toString('base64')}`;
-    return h('div', { style: box }, h('img', { src, width, height, style: { width, height } }));
+    return h(
+      'div',
+      { style: box },
+      h('img', { src, width, height, style: { width, height } }),
+    );
   }
   return h(
     'div',
@@ -218,14 +277,36 @@ async function logoNode(logoPath: string | undefined, layout: Layout): Promise<N
         textShadow: `0 ${0.15 * u}px ${0.35 * u}px rgba(0,0,0,0.45)`,
       },
     },
-    h('div', { style: { fontFamily: LOGO_FAMILY, fontSize: 6.4 * u, lineHeight: 0.95 } }, 'attraktor'),
-    h('div', { style: { fontFamily: TEXT_FAMILY, fontSize: 2.6 * u, fontWeight: 600, marginTop: 0.2 * u } }, 'e.V. Hamburg'),
+    h(
+      'div',
+      {
+        style: { fontFamily: LOGO_FAMILY, fontSize: 6.4 * u, lineHeight: 0.95 },
+      },
+      'attraktor',
+    ),
+    h(
+      'div',
+      {
+        style: {
+          fontFamily: TEXT_FAMILY,
+          fontSize: 2.6 * u,
+          fontWeight: 600,
+          marginTop: 0.2 * u,
+        },
+      },
+      'e.V. Hamburg',
+    ),
   );
 }
 
 // --- title fitting ----------------------------------------------------------
 
-function titleNode(text: string, fontSize: number, ink: string, maxLines: number): Node {
+function titleNode(
+  text: string,
+  fontSize: number,
+  ink: string,
+  maxLines: number,
+): Node {
   return h(
     'div',
     {
@@ -245,7 +326,12 @@ function titleNode(text: string, fontSize: number, ink: string, maxLines: number
 }
 
 /** Measures how many lines `text` needs at `fontSize` in a box `width` wide (via Satori's own layout). */
-async function countLines(text: string, fontSize: number, width: number, fonts: Font[]): Promise<number> {
+async function countLines(
+  text: string,
+  fontSize: number,
+  width: number,
+  fonts: Font[],
+): Promise<number> {
   let height = 0;
   const tree = h(
     'div',
@@ -276,7 +362,11 @@ async function fitTitle(
 ): Promise<{ size: number; lines: number }> {
   const u = layout.unit;
   const step = 0.4 * u;
-  for (let size = layout.titleMax * u; size > layout.titleMin * u; size -= step) {
+  for (
+    let size = layout.titleMax * u;
+    size > layout.titleMin * u;
+    size -= step
+  ) {
     if ((await countLines(text, size, width, fonts)) <= layout.titleLines) {
       return { size: Math.round(size), lines: layout.titleLines };
     }
@@ -299,19 +389,30 @@ export async function renderBannerSvg(
 
   const [fonts, background, logo] = await Promise.all([
     loadFonts(assets.titleFontPath),
-    input.photo ? coverPhoto(input.photo, width, height) : fallbackBackground(input.color, width, height),
+    input.photo
+      ? coverPhoto(input.photo, width, height)
+      : fallbackBackground(input.color, width, height),
     logoNode(assets.logoPath, layout),
   ]);
 
   const title = input.title.trim().toUpperCase();
   const titleWidth = width - 2 * layout.padX * u - layout.logoReserve * u;
-  const titleFit = title ? await fitTitle(title, titleWidth, layout, fonts) : { size: 0, lines: 0 };
+  const titleFit = title
+    ? await fitTitle(title, titleWidth, layout, fonts)
+    : { size: 0, lines: 0 };
 
   const lineSize = layout.line * u;
   const infoLine = (kind: 'clock' | 'pin', text: string): Node =>
     h(
       'div',
-      { style: { display: 'flex', alignItems: 'flex-start', gap: 1.5 * u, marginTop: 1.2 * u } },
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 1.5 * u,
+          marginTop: 1.2 * u,
+        },
+      },
       icon(kind, Math.round(lineSize * 1.15), palette.ink),
       h(
         'div',
@@ -337,7 +438,16 @@ export async function renderBannerSvg(
 
   const band = h(
     'div',
-    { style: { position: 'absolute', left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column' } },
+    {
+      style: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      },
+    },
     bandCurve(width, curve, palette.band),
     h(
       'div',
@@ -354,7 +464,13 @@ export async function renderBannerSvg(
       title
         ? h(
             'div',
-            { style: { display: 'flex', width: titleWidth, marginBottom: 0.6 * u } },
+            {
+              style: {
+                display: 'flex',
+                width: titleWidth,
+                marginBottom: 0.6 * u,
+              },
+            },
             titleNode(title, titleFit.size, palette.ink, titleFit.lines),
           )
         : null,
@@ -366,7 +482,15 @@ export async function renderBannerSvg(
 
   const tree = h(
     'div',
-    { style: { display: 'flex', position: 'relative', width, height, backgroundColor: '#222222' } },
+    {
+      style: {
+        display: 'flex',
+        position: 'relative',
+        width,
+        height,
+        backgroundColor: '#222222',
+      },
+    },
     h('img', {
       src: `data:image/jpeg;base64,${background.toString('base64')}`,
       width,
@@ -376,7 +500,12 @@ export async function renderBannerSvg(
     band,
   );
 
-  return satori(tree as unknown as SatoriElement, { width, height, fonts, embedFont: opts.embedFont ?? true });
+  return satori(tree as unknown as SatoriElement, {
+    width,
+    height,
+    fonts,
+    embedFont: opts.embedFont ?? true,
+  });
 }
 
 /** Renders the banner to a PNG of exactly the canvas size of `input.format`. */
@@ -386,7 +515,10 @@ export async function renderBanner(
 ): Promise<{ png: Buffer; width: number; height: number }> {
   const { width } = BANNER_SIZES[input.format];
   const svg = await renderBannerSvg(input, assets);
-  const rendered = new Resvg(svg, { fitTo: { mode: 'width', value: width }, font: { loadSystemFonts: false } }).render();
+  const rendered = new Resvg(svg, {
+    fitTo: { mode: 'width', value: width },
+    font: { loadSystemFonts: false },
+  }).render();
   const png = Buffer.from(rendered.asPng());
   return { png, width: rendered.width, height: rendered.height };
 }

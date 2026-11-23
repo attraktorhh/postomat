@@ -3,8 +3,24 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig(() => ({
   root: import.meta.dirname,
   cacheDir: '../../node_modules/.vite/packages/db',
-  resolve: { conditions: ['@postomat/source', 'module', 'node', 'development|production'] },
-  ssr: { resolve: { conditions: ['@postomat/source', 'module', 'node', 'development|production'] } },
+  resolve: {
+    conditions: [
+      '@postomat/source',
+      'module',
+      'node',
+      'development|production',
+    ],
+  },
+  ssr: {
+    resolve: {
+      conditions: [
+        '@postomat/source',
+        'module',
+        'node',
+        'development|production',
+      ],
+    },
+  },
   test: {
     name: 'db',
     watch: false,

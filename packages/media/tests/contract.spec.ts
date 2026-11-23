@@ -10,13 +10,20 @@ describe(`WebDAV contract (${contractTarget()})`, () => {
   beforeAll(async () => {
     if (contractTarget() === 'local') {
       client = new WebDavClient({
-        baseUrl: env('NEXTCLOUD_WEBDAV_URL', 'http://localhost:8083/remote.php/dav/files/postomat'),
+        baseUrl: env(
+          'NEXTCLOUD_WEBDAV_URL',
+          'http://localhost:8083/remote.php/dav/files/postomat',
+        ),
         username: env('NEXTCLOUD_USERNAME', 'postomat'),
         password: env('NEXTCLOUD_PASSWORD', 'postomat-nextcloud-dev'),
       });
     } else {
       fake = await new FakeWebDav().start();
-      client = new WebDavClient({ baseUrl: fake.url, username: fake.username, password: fake.password });
+      client = new WebDavClient({
+        baseUrl: fake.url,
+        username: fake.username,
+        password: fake.password,
+      });
     }
   });
   afterAll(async () => {
@@ -35,6 +42,8 @@ describe(`WebDAV contract (${contractTarget()})`, () => {
   });
 
   it('builds the folder pattern', () => {
-    expect(photoFolder('/Postomat-Fotos', '2026-12-11', 'loetkurs')).toBe('/Postomat-Fotos/2026/2026-12-11-loetkurs');
+    expect(photoFolder('/Postomat-Fotos', '2026-12-11', 'loetkurs')).toBe(
+      '/Postomat-Fotos/2026/2026-12-11-loetkurs',
+    );
   });
 });

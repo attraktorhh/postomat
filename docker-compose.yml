@@ -29,7 +29,11 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./dev/postgres:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postomat -d postomat && psql -U postomat -d postomat_test -c "select 1" >/dev/null']
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U postomat -d postomat && psql -U postomat -d postomat_test -c "select 1" >/dev/null',
+        ]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -58,7 +62,12 @@ services:
     image: node:24-bookworm-slim
     # Seeds, then stays up (idle) and reports healthy, so `up --wait` waits for the
     # seed and does not fail on an exited one-shot container. Re-run: `docker compose restart matrix-seed`.
-    command: ['sh', '-c', 'rm -f /tmp/seeded && node /seed/matrix-seed.mjs && touch /tmp/seeded && while :; do sleep 3600; done']
+    command:
+      [
+        'sh',
+        '-c',
+        'rm -f /tmp/seeded && node /seed/matrix-seed.mjs && touch /tmp/seeded && while :; do sleep 3600; done',
+      ]
     init: true
     environment:
       SYNAPSE_URL: http://synapse:8008
@@ -80,7 +89,8 @@ services:
     volumes:
       - ./dev/element/config.json:/app/config.json:ro
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:80/config.json']
+      test:
+        ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:80/config.json']
       interval: 10s
       timeout: 5s
       retries: 20
@@ -156,7 +166,13 @@ services:
       mariadb:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'php', '-r', 'exit(@file_get_contents("http://127.0.0.1/readme.html") === false ? 1 : 0);']
+      test:
+        [
+          'CMD',
+          'php',
+          '-r',
+          'exit(@file_get_contents("http://127.0.0.1/readme.html") === false ? 1 : 0);',
+        ]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -166,7 +182,12 @@ services:
     image: wordpress:cli
     user: '33:33' # same uid as www-data in the debian-based wordpress image
     # Same pattern as matrix-seed. Re-run: `docker compose --profile channels restart wordpress-seed`.
-    command: ['sh', '-c', 'rm -f /tmp/seeded && sh /seed/seed.sh && touch /tmp/seeded && while :; do sleep 3600; done']
+    command:
+      [
+        'sh',
+        '-c',
+        'rm -f /tmp/seeded && sh /seed/seed.sh && touch /tmp/seeded && while :; do sleep 3600; done',
+      ]
     init: true
     environment:
       <<: *wordpress-db-env
@@ -190,7 +211,13 @@ services:
       - mediawiki-data:/var/www/data
       - ./dev/mediawiki:/seed:ro
     healthcheck:
-      test: ['CMD', 'php', '-r', 'exit(@file_get_contents("http://127.0.0.1/api.php?action=query&meta=siteinfo&format=json") === false ? 1 : 0);']
+      test:
+        [
+          'CMD',
+          'php',
+          '-r',
+          'exit(@file_get_contents("http://127.0.0.1/api.php?action=query&meta=siteinfo&format=json") === false ? 1 : 0);',
+        ]
       interval: 5s
       timeout: 10s
       retries: 60
@@ -211,7 +238,11 @@ services:
       - ./dev/nextcloud/hooks/before-starting:/docker-entrypoint-hooks.d/before-starting:ro
       - ./dev/.generated:/generated
     healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS http://127.0.0.1/status.php | grep -q "\"installed\":true"']
+      test:
+        [
+          'CMD-SHELL',
+          'curl -fsS http://127.0.0.1/status.php | grep -q "\"installed\":true"',
+        ]
       interval: 10s
       timeout: 5s
       retries: 60

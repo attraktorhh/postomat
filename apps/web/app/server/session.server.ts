@@ -36,7 +36,13 @@ export const sessionStorage = createSessionStorage<SessionData>({
   async createData(data, expires) {
     const { db } = await getDeps();
     const id = randomUUID();
-    await db.insert(sessions).values({ id, data: data as Record<string, unknown>, expiresAt: expires ?? new Date(Date.now() + MAX_AGE * 1000) });
+    await db
+      .insert(sessions)
+      .values({
+        id,
+        data: data as Record<string, unknown>,
+        expiresAt: expires ?? new Date(Date.now() + MAX_AGE * 1000),
+      });
     return id;
   },
   async readData(id) {
@@ -49,8 +55,18 @@ export const sessionStorage = createSessionStorage<SessionData>({
     const { db } = await getDeps();
     await db
       .insert(sessions)
-      .values({ id, data: data as Record<string, unknown>, expiresAt: expires ?? new Date(Date.now() + MAX_AGE * 1000) })
-      .onConflictDoUpdate({ target: sessions.id, set: { data: data as Record<string, unknown>, expiresAt: expires ?? new Date(Date.now() + MAX_AGE * 1000) } });
+      .values({
+        id,
+        data: data as Record<string, unknown>,
+        expiresAt: expires ?? new Date(Date.now() + MAX_AGE * 1000),
+      })
+      .onConflictDoUpdate({
+        target: sessions.id,
+        set: {
+          data: data as Record<string, unknown>,
+          expiresAt: expires ?? new Date(Date.now() + MAX_AGE * 1000),
+        },
+      });
   },
   async deleteData(id) {
     const { db } = await getDeps();
@@ -58,4 +74,5 @@ export const sessionStorage = createSessionStorage<SessionData>({
   },
 });
 
-export const getSession = (request: Request) => sessionStorage.getSession(request.headers.get('cookie'));
+export const getSession = (request: Request) =>
+  sessionStorage.getSession(request.headers.get('cookie'));

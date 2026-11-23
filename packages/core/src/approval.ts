@@ -1,4 +1,8 @@
-import type { ChannelPostSnapshot, PhotoSnapshot, PostSnapshot } from './types.ts';
+import type {
+  ChannelPostSnapshot,
+  PhotoSnapshot,
+  PostSnapshot,
+} from './types.ts';
 import { blockingFailures, runChecks, type CheckResult } from './checks.ts';
 
 export type ApprovalDecision =
@@ -28,9 +32,11 @@ export interface ApprovalInput {
  */
 export function decideApproval(input: ApprovalInput): ApprovalDecision {
   const { post } = input;
-  if (input.approverUsername === post.authorUsername) return { kind: 'self_approval' };
+  if (input.approverUsername === post.authorUsername)
+    return { kind: 'self_approval' };
   if (!input.approverIsMedienteam) return { kind: 'not_medienteam' };
-  if (post.status === 'aenderung_gewuenscht') return { kind: 'outdated_version' };
+  if (post.status === 'aenderung_gewuenscht')
+    return { kind: 'outdated_version' };
   if (post.status !== 'zur_freigabe') return { kind: 'wrong_state' };
   if (input.version !== post.version) return { kind: 'outdated_version' };
   const checks = runChecks({

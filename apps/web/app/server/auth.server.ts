@@ -6,7 +6,11 @@ import { getSession, sessionStorage, type SessionUser } from './session.server';
 import { rolesFromGroups, type Role } from './roles';
 
 const env = loadEnv();
-export const GROUPS = { mitglieder: env.GROUP_MITGLIEDER, medienteam: env.GROUP_MEDIENTEAM, admin: env.GROUP_ADMIN };
+export const GROUPS = {
+  mitglieder: env.GROUP_MITGLIEDER,
+  medienteam: env.GROUP_MEDIENTEAM,
+  admin: env.GROUP_ADMIN,
+};
 
 let configPromise: Promise<client.Configuration> | undefined;
 function oidcConfig(): Promise<client.Configuration> {
@@ -17,7 +21,9 @@ function oidcConfig(): Promise<client.Configuration> {
       env.OIDC_CLIENT_SECRET,
       undefined,
       // The local Keycloak runs on plain http; production uses https.
-      env.OIDC_ISSUER.startsWith('http://') ? { execute: [client.allowInsecureRequests] } : undefined,
+      env.OIDC_ISSUER.startsWith('http://')
+        ? { execute: [client.allowInsecureRequests] }
+        : undefined,
     )
     .catch((e) => {
       configPromise = undefined;
@@ -26,10 +32,14 @@ function oidcConfig(): Promise<client.Configuration> {
   return configPromise;
 }
 
-const callbackUrl = () => `${env.PUBLIC_WEB_URL.replace(/\/$/, '')}/auth/callback`;
+const callbackUrl = () =>
+  `${env.PUBLIC_WEB_URL.replace(/\/$/, '')}/auth/callback`;
 
 /** Starts the authorization code flow with PKCE. */
-export async function startLogin(request: Request, returnTo = '/'): Promise<Response> {
+export async function startLogin(
+  request: Request,
+  returnTo = '/',
+): Promise<Response> {
   const config = await oidcConfig();
   const verifier = client.randomPKCECodeVerifier();
   const state = client.randomState();
@@ -41,8 +51,14 @@ export async function startLogin(request: Request, returnTo = '/'): Promise<Resp
     state,
   });
   const session = await getSession(request);
-  session.set('oidc', { state, verifier, returnTo: returnTo.startsWith('/') ? returnTo : '/' });
-  return redirect(url.href, { headers: { 'set-cookie': await sessionStorage.commitSession(session) } });
+  session.set('oidc', {
+    state,
+    verifier,
+    returnTo: returnTo.startsWith('/') ? returnTo : '/',
+  });
+  return redirect(url.href, {
+    headers: { 'set-cookie': await sessionStorage.commitSession(session) },
+  });
 }
 
 export async function finishLogin(request: Request): Promise<Response> {
@@ -59,21 +75,38 @@ export async function finishLogin(request: Request): Promise<Response> {
   const claims: Record<string, unknown> = tokens.claims() ?? {};
   let info: Record<string, unknown> = claims;
   if (!claims[env.OIDC_GROUPS_CLAIM] || !claims[env.OIDC_USERNAME_CLAIM]) {
-    info = { ...claims, ...(await client.fetchUserInfo(config, tokens.access_token, claims.sub as string)) };
+    info = {
+      ...claims,
+      ...(await client.fetchUserInfo(
+        config,
+        tokens.access_token,
+        claims.sub as string,
+      )),
+    };
   }
   const username = String(info[env.OIDC_USERNAME_CLAIM] ?? '');
-  const groups = Array.isArray(info[env.OIDC_GROUPS_CLAIM]) ? (info[env.OIDC_GROUPS_CLAIM] as string[]) : [];
-  const user: SessionUser = { username, name: typeof info['name'] === 'string' ? info['name'] : undefined, groups };
+  const groups = Array.isArray(info[env.OIDC_GROUPS_CLAIM])
+    ? (info[env.OIDC_GROUPS_CLAIM] as string[])
+    : [];
+  const user: SessionUser = {
+    username,
+    name: typeof info['name'] === 'string' ? info['name'] : undefined,
+    groups,
+  };
   session.unset('oidc');
   session.set('user', user);
   session.set('idToken', tokens.id_token);
-  return redirect(pending.returnTo, { headers: { 'set-cookie': await sessionStorage.commitSession(session) } });
+  return redirect(pending.returnTo, {
+    headers: { 'set-cookie': await sessionStorage.commitSession(session) },
+  });
 }
 
 export async function logout(request: Request): Promise<Response> {
   const session = await getSession(request);
   const idToken = session.get('idToken');
-  const headers = { 'set-cookie': await sessionStorage.destroySession(session) };
+  const headers = {
+    'set-cookie': await sessionStorage.destroySession(session),
+  };
   try {
     const config = await oidcConfig();
     const url = client.buildEndSessionUrl(config, {
@@ -101,13 +134,21 @@ export async function getUser(request: Request): Promise<CurrentUser | null> {
  * Requires a logged-in user with one of the roles. Not logged in → login,
  * logged in without any Postomat group (or without the role) → "Kein Zugang".
  */
-export async function requireUser(request: Request, roles?: Role[]): Promise<CurrentUser> {
+export async function requireUser(
+  request: Request,
+  roles?: Role[],
+): Promise<CurrentUser> {
   const user = await getUser(request);
   if (!user) {
     const url = new URL(request.url);
-    throw redirect(`/auth/login?returnTo=${encodeURIComponent(url.pathname + url.search)}`);
+    throw redirect(
+      `/auth/login?returnTo=${encodeURIComponent(url.pathname + url.search)}`,
+    );
   }
-  if (!user.roles.length || (roles && !roles.some((r) => user.roles.includes(r)))) {
+  if (
+    !user.roles.length ||
+    (roles && !roles.some((r) => user.roles.includes(r)))
+  ) {
     throw new Response('Kein Zugang', { status: 403 });
   }
   return user;

@@ -16,7 +16,10 @@ async function run(inputs: Array<string | number>, deps: DialogDeps = noAi) {
   const transcript: string[] = [];
   const effects: string[] = [];
   for (const i of inputs) {
-    const input: DialogInput = typeof i === 'number' ? { kind: 'photo', photoId: i } : { kind: 'text', text: i };
+    const input: DialogInput =
+      typeof i === 'number'
+        ? { kind: 'photo', photoId: i }
+        : { kind: 'text', text: i };
     const r = await advanceDialog(state, input, deps);
     state = r.state;
     transcript.push(...r.replies);
@@ -28,7 +31,9 @@ async function run(inputs: Array<string | number>, deps: DialogDeps = noAi) {
 describe('dialog without AI', () => {
   it('greets on hello', async () => {
     const { transcript } = await run(['Hallo']);
-    expect(transcript).toEqual(['Hi Lena! Erzähl einfach, was du vorhast oder gemacht hast. Ein Satz reicht.']);
+    expect(transcript).toEqual([
+      'Hi Lena! Erzähl einfach, was du vorhast oder gemacht hast. Ein Satz reicht.',
+    ]);
   });
 
   it('runs the event flow with the type menu and skips answered questions', async () => {
@@ -63,7 +68,18 @@ describe('dialog without AI', () => {
   });
 
   it('asks every fixed question when answers are short and allows skipping optional ones', async () => {
-    const { transcript, effects } = await run(['Hallo', 'Ich mach was', '1', 'Repair Café', 'Wir reparieren.', '12.12.', '15', 'weiter', '-', 'nö']);
+    const { transcript, effects } = await run([
+      'Hallo',
+      'Ich mach was',
+      '1',
+      'Repair Café',
+      'Wir reparieren.',
+      '12.12.',
+      '15',
+      'weiter',
+      '-',
+      'nö',
+    ]);
     expect(transcript.slice(2)).toEqual([
       'Wie soll der Titel lauten?',
       'Worum geht’s? Ein, zwei Sätze reichen.',
@@ -78,7 +94,13 @@ describe('dialog without AI', () => {
   });
 
   it('re-asks when the answer has no usable date', async () => {
-    const { transcript } = await run(['Ich mach was', '1', 'Repair Café', 'Wir reparieren.', 'weiß noch nicht so genau']);
+    const { transcript } = await run([
+      'Ich mach was',
+      '1',
+      'Repair Café',
+      'Wir reparieren.',
+      'weiß noch nicht so genau',
+    ]);
     expect(transcript.at(-1)).toContain('Ich habe kein Datum erkannt');
   });
 
@@ -93,13 +115,25 @@ describe('dialog without AI', () => {
       '2',
     ]);
     expect(transcript).toContain('Was war das Kniffligste?');
-    expect(transcript.filter((t) => t.includes('Für Projekte brauche ich mindestens eins')).length).toBe(2);
+    expect(
+      transcript.filter((t) =>
+        t.includes('Für Projekte brauche ich mindestens eins'),
+      ).length,
+    ).toBe(2);
     expect(effects).toEqual(['set_consent', 'summary']);
     expect(state.type).toBe('projekt');
   });
 
   it('turns free text in review into a change request without AI', async () => {
-    const { effects } = await run(['Ich habe eine Nixie-Uhr gebaut', '2', 'Uhr.', 'Röhren.', 7, '3', 'Text ändern: bitte lustiger']);
+    const { effects } = await run([
+      'Ich habe eine Nixie-Uhr gebaut',
+      '2',
+      'Uhr.',
+      'Röhren.',
+      7,
+      '3',
+      'Text ändern: bitte lustiger',
+    ]);
     expect(effects).toEqual(['set_consent', 'summary', 'change_request']);
   });
 });
@@ -122,7 +156,10 @@ describe('dialog with AI', () => {
           : { facts: {} },
     };
     const { transcript } = await run(
-      ['Ich will nächsten Freitag einen Lötkurs für Anfänger machen', 'Nee, den Freitag danach, also 11.12.! 18 Uhr, max. 8 Leute, 5 € fürs Material'],
+      [
+        'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
+        'Nee, den Freitag danach, also 11.12.! 18 Uhr, max. 8 Leute, 5 € fürs Material',
+      ],
       deps,
     );
     expect(transcript[0]).toBe(
@@ -135,7 +172,10 @@ describe('dialog with AI', () => {
 
   it('falls back to the parser when the AI returns null', async () => {
     const deps: DialogDeps = { ...noAi, aiExtract: async () => null };
-    const { transcript } = await run(['Ich will nächsten Freitag einen Lötkurs für Anfänger machen'], deps);
+    const { transcript } = await run(
+      ['Ich will nächsten Freitag einen Lötkurs für Anfänger machen'],
+      deps,
+    );
     expect(transcript[0]).toContain('• Lötkurs für Anfänger');
     expect(transcript[0]).toContain('Worum geht’s?');
   });

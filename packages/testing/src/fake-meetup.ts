@@ -9,7 +9,12 @@ export interface FakeMeetupEvent {
   description?: string;
 }
 
-const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+const esc = (s: string) =>
+  s
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\n/g, '\\n');
 const local = (s: string) => s.replace(/[-:]/g, '').slice(0, 13) + '00';
 
 function fold(line: string): string {

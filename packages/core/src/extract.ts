@@ -50,7 +50,12 @@ const MONTHS: Record<string, number> = {
   dez: 12,
 };
 
-function nextOccurrence(today: string, month: number, day: number, year?: number): string | undefined {
+function nextOccurrence(
+  today: string,
+  month: number,
+  day: number,
+  year?: number,
+): string | undefined {
   const [ty] = today.split('-').map(Number);
   if (year !== undefined) {
     const full = year < 100 ? 2000 + year : year;
@@ -70,7 +75,8 @@ export function extractDate(text: string, now: Date): string | undefined {
   const t = text.toLowerCase();
 
   // 11.12. / 11.12.2026 / 11.12.26 (but not times like 18.30 Uhr)
-  const explicit = /(?<![\d.])(\d{1,2})\.\s?(\d{1,2})\.(\d{2,4})?(?!\s*uhr)(?![\d])/i.exec(t);
+  const explicit =
+    /(?<![\d.])(\d{1,2})\.\s?(\d{1,2})\.(\d{2,4})?(?!\s*uhr)(?![\d])/i.exec(t);
   if (explicit) {
     const d = nextOccurrence(
       today,
@@ -83,7 +89,12 @@ export function extractDate(text: string, now: Date): string | undefined {
   // 11. Dezember (2026)
   const named = /(?<!\d)(\d{1,2})\.?\s+([a-zäö]+)\.?(?:\s+(\d{4}))?/i.exec(t);
   if (named && MONTHS[named[2]] !== undefined) {
-    const d = nextOccurrence(today, MONTHS[named[2]], Number(named[1]), named[3] ? Number(named[3]) : undefined);
+    const d = nextOccurrence(
+      today,
+      MONTHS[named[2]],
+      Number(named[1]),
+      named[3] ? Number(named[3]) : undefined,
+    );
     if (d) return d;
   }
   // ISO 2026-12-11
@@ -115,12 +126,21 @@ const toTime = (h: string, m?: string): string | undefined => {
 };
 
 /** Extracts start (and optional end) time. */
-export function extractTimes(text: string, bare = false): { startTime?: string; endTime?: string } {
+export function extractTimes(
+  text: string,
+  bare = false,
+): { startTime?: string; endTime?: string } {
   const t = text.toLowerCase().replace(/[–—]/g, '-');
   const hm = '(\\d{1,2})(?:[:.](\\d{2}))?';
   // 18-21 Uhr, 18:00 - 21:00, von 18 bis 21 Uhr
-  const range = new RegExp(`(?:von\\s+)?(?<![\\d.])${hm}\\s*(?:uhr\\s*)?(?:-|bis)\\s*${hm}\\s*(uhr|h\\b)?`, 'i').exec(t);
-  if (range && (range[5] || range[2] || range[4] || /\buhr\b/.test(t.slice(range.index)))) {
+  const range = new RegExp(
+    `(?:von\\s+)?(?<![\\d.])${hm}\\s*(?:uhr\\s*)?(?:-|bis)\\s*${hm}\\s*(uhr|h\\b)?`,
+    'i',
+  ).exec(t);
+  if (
+    range &&
+    (range[5] || range[2] || range[4] || /\buhr\b/.test(t.slice(range.index)))
+  ) {
     const start = toTime(range[1], range[2]);
     const end = toTime(range[3], range[4]);
     if (start && end) return { startTime: start, endTime: end };
@@ -154,8 +174,12 @@ export function extractTimes(text: string, bare = false): { startTime?: string; 
 export function extractPlaces(text: string, bare = false): number | undefined {
   const t = text.toLowerCase();
   const m =
-    /(\d{1,3})\s*(?:leute|plätze|plaetze|personen|teilnehmer(?:\*innen|innen)?|tn|menschen|leuten)\b/.exec(t) ??
-    /\b(?:max\.?|maximal|höchstens|bis zu|für)\s*(\d{1,3})\b(?!\s*(?:€|euro|uhr))/.exec(t);
+    /(\d{1,3})\s*(?:leute|plätze|plaetze|personen|teilnehmer(?:\*innen|innen)?|tn|menschen|leuten)\b/.exec(
+      t,
+    ) ??
+    /\b(?:max\.?|maximal|höchstens|bis zu|für)\s*(\d{1,3})\b(?!\s*(?:€|euro|uhr))/.exec(
+      t,
+    );
   if (m) return Number(m[1]);
   if (bare) {
     const only = /^\s*(\d{1,3})\s*$/.exec(t);
@@ -167,8 +191,14 @@ export function extractPlaces(text: string, bare = false): number | undefined {
 
 export function extractCosts(text: string, bare = false): string | undefined {
   const t = text.toLowerCase();
-  if (/\b(kostenlos|umsonst|gratis|kostet nichts|for free|keine kosten)\b/.test(t)) return 'kostenlos';
-  const m = /(?:€\s*(\d+(?:[.,]\d{1,2})?))|(?:(\d+(?:[.,]\d{1,2})?)\s*(?:€|euro\b|eur\b))/.exec(t);
+  if (
+    /\b(kostenlos|umsonst|gratis|kostet nichts|for free|keine kosten)\b/.test(t)
+  )
+    return 'kostenlos';
+  const m =
+    /(?:€\s*(\d+(?:[.,]\d{1,2})?))|(?:(\d+(?:[.,]\d{1,2})?)\s*(?:€|euro\b|eur\b))/.exec(
+      t,
+    );
   if (m) {
     const amount = (m[1] ?? m[2]).replace('.', ',');
     const material = /material/.test(t) ? ' Material' : '';
@@ -182,7 +212,8 @@ export function extractCosts(text: string, bare = false): string | undefined {
   return undefined;
 }
 
-const WORKSHOP_RE = /(workshop|kurs\b|kurs[ e]|lötkurs|einführung|anfänger|lernen|schulung)/i;
+const WORKSHOP_RE =
+  /(workshop|kurs\b|kurs[ e]|lötkurs|einführung|anfänger|lernen|schulung)/i;
 
 export function isWorkshopText(text: string): boolean {
   return WORKSHOP_RE.test(text);
@@ -220,8 +251,18 @@ export function guessTitle(text: string): string | undefined {
 /** Guesses the post type from a free sentence. Undefined when unclear. */
 export function guessType(text: string, now: Date): PostType | undefined {
   const t = text.toLowerCase();
-  if (/\b(gebaut|gebastelt|fertig geworden|projekt|restauriert|programmiert)\b/.test(t)) return 'projekt';
-  if (extractDate(t, now) || /(workshop|kurs|treffen|vortrag|stammtisch|abend|event|veranstalt|machen)/.test(t)) {
+  if (
+    /\b(gebaut|gebastelt|fertig geworden|projekt|restauriert|programmiert)\b/.test(
+      t,
+    )
+  )
+    return 'projekt';
+  if (
+    extractDate(t, now) ||
+    /(workshop|kurs|treffen|vortrag|stammtisch|abend|event|veranstalt|machen)/.test(
+      t,
+    )
+  ) {
     return 'event';
   }
   return undefined;
@@ -240,7 +281,8 @@ export function extractFacts(text: string, opts: ExtractOptions): PostFacts {
   const labelled = /^(titel|title)\s*:\s*(.+)$/im.exec(trimmed);
   if (labelled) facts.title = labelled[2].trim();
 
-  if (expecting === 'title' && !labelled) facts.title = trimmed.replace(/[.!]+$/, '');
+  if (expecting === 'title' && !labelled)
+    facts.title = trimmed.replace(/[.!]+$/, '');
   if (expecting === 'description') facts.description = trimmed;
   if (expecting === 'trickiest') facts.trickiest = trimmed;
   if (expecting === 'audience') facts.audience = trimmed;

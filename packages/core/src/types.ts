@@ -12,7 +12,13 @@ export const POST_STATUSES = [
 ] as const;
 export type PostStatus = (typeof POST_STATUSES)[number];
 
-export const CHANNELS = ['wordpress', 'wiki', 'meetup', 'instagram', 'facebook'] as const;
+export const CHANNELS = [
+  'wordpress',
+  'wiki',
+  'meetup',
+  'instagram',
+  'facebook',
+] as const;
 export type ChannelId = (typeof CHANNELS)[number];
 
 export const CHANNEL_MODES = ['auto', 'copy', 'off'] as const;

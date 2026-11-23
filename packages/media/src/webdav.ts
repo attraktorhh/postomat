@@ -1,4 +1,9 @@
-import { basicAuth, HttpError, trimSlash, type FetchLike } from '@postomat/core';
+import {
+  basicAuth,
+  HttpError,
+  trimSlash,
+  type FetchLike,
+} from '@postomat/core';
 import type { MediaStore } from './store.ts';
 
 export interface WebDavConfig {
@@ -33,12 +38,16 @@ export class WebDavClient implements MediaStore {
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
     const h: Record<string, string> = { ...extra };
-    if (this.cfg.username && this.cfg.password) h['authorization'] = basicAuth(this.cfg.username, this.cfg.password);
+    if (this.cfg.username && this.cfg.password)
+      h['authorization'] = basicAuth(this.cfg.username, this.cfg.password);
     return h;
   }
 
   async exists(path: string): Promise<boolean> {
-    const res = await this.fetchFn(this.url(path), { method: 'PROPFIND', headers: this.headers({ depth: '0' }) });
+    const res = await this.fetchFn(this.url(path), {
+      method: 'PROPFIND',
+      headers: this.headers({ depth: '0' }),
+    });
     await res.arrayBuffer();
     if (res.status === 404) return false;
     if (res.status === 207 || res.ok) return true;
@@ -51,10 +60,14 @@ export class WebDavClient implements MediaStore {
     let current = '';
     for (const part of parts) {
       current += `/${part}`;
-      const res = await this.fetchFn(this.url(current), { method: 'MKCOL', headers: this.headers() });
+      const res = await this.fetchFn(this.url(current), {
+        method: 'MKCOL',
+        headers: this.headers(),
+      });
       const text = await res.text();
       // 201 created, 405 already exists
-      if (res.status !== 201 && res.status !== 405 && !res.ok) throw new HttpError(`MKCOL ${current}`, res.status, text);
+      if (res.status !== 201 && res.status !== 405 && !res.ok)
+        throw new HttpError(`MKCOL ${current}`, res.status, text);
     }
   }
 
@@ -70,19 +83,28 @@ export class WebDavClient implements MediaStore {
 
   async get(path: string): Promise<Buffer> {
     const res = await this.fetchFn(this.url(path), { headers: this.headers() });
-    if (!res.ok) throw new HttpError(`GET ${path}`, res.status, await res.text());
+    if (!res.ok)
+      throw new HttpError(`GET ${path}`, res.status, await res.text());
     return Buffer.from(await res.arrayBuffer());
   }
 
   async delete(path: string): Promise<void> {
-    const res = await this.fetchFn(this.url(path), { method: 'DELETE', headers: this.headers() });
+    const res = await this.fetchFn(this.url(path), {
+      method: 'DELETE',
+      headers: this.headers(),
+    });
     await res.arrayBuffer();
-    if (!res.ok && res.status !== 404) throw new HttpError(`DELETE ${path}`, res.status, '');
+    if (!res.ok && res.status !== 404)
+      throw new HttpError(`DELETE ${path}`, res.status, '');
   }
 }
 
 /** `/Postomat-Fotos/YYYY/YYYY-MM-DD-<slug>` */
-export function photoFolder(baseFolder: string, date: string, slug: string): string {
+export function photoFolder(
+  baseFolder: string,
+  date: string,
+  slug: string,
+): string {
   const base = `/${baseFolder.replace(/^\/+|\/+$/g, '')}`;
   return `${base}/${date.slice(0, 4)}/${date}-${slug || 'beitrag'}`;
 }

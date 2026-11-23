@@ -25,15 +25,20 @@ export interface ChannelDraft {
 
 const hookDe = (ctx: TemplateContext): string => {
   if (ctx.ai?.hookDe) return ctx.ai.hookDe;
-  if (ctx.type === 'projekt') return `Frisch aus der Werkstatt: ${title(ctx)}! ✨`;
-  return ctx.facts.isWorkshop ? `Lust auf „${title(ctx)}“? 🔥` : `Kommt vorbei: ${title(ctx)}! 🔥`;
+  if (ctx.type === 'projekt')
+    return `Frisch aus der Werkstatt: ${title(ctx)}! ✨`;
+  return ctx.facts.isWorkshop
+    ? `Lust auf „${title(ctx)}“? 🔥`
+    : `Kommt vorbei: ${title(ctx)}! 🔥`;
 };
 
 const bodyDe = (ctx: TemplateContext): string => {
   if (ctx.ai?.bodyDe) return ctx.ai.bodyDe;
   const f = ctx.facts;
   if (ctx.type === 'projekt') {
-    const tricky = f.trickiest ? ` Das Kniffligste: ${f.trickiest.replace(/[.!]?$/, '.')}` : '';
+    const tricky = f.trickiest
+      ? ` Das Kniffligste: ${f.trickiest.replace(/[.!]?$/, '.')}`
+      : '';
     return `${firstSentences(f.description)}${tricky}`.trim();
   }
   return firstSentences(f.description) || `${title(ctx)} im Attraktor.`;
@@ -48,12 +53,16 @@ const placesCostsDe = (ctx: TemplateContext): string | undefined => {
 };
 
 const whenDe = (ctx: TemplateContext): string | undefined =>
-  ctx.facts.date ? bannerWhenDe(ctx.facts.date, ctx.facts.startTime, effectiveEnd(ctx)) : undefined;
+  ctx.facts.date
+    ? bannerWhenDe(ctx.facts.date, ctx.facts.startTime, effectiveEnd(ctx))
+    : undefined;
 
 const whenEn = (ctx: TemplateContext): string | undefined => {
   const f = ctx.facts;
   if (!f.date) return undefined;
-  return f.startTime ? `${dateEn(f.date)}, ${timeRangeEn(f.startTime, effectiveEnd(ctx))}` : dateEn(f.date);
+  return f.startTime
+    ? `${dateEn(f.date)}, ${timeRangeEn(f.startTime, effectiveEnd(ctx))}`
+    : dateEn(f.date);
 };
 
 const titleEn = (ctx: TemplateContext): string => ctx.ai?.titleEn ?? title(ctx);
@@ -61,7 +70,8 @@ const titleEn = (ctx: TemplateContext): string => ctx.ai?.titleEn ?? title(ctx);
 function shortEn(ctx: TemplateContext, signup = true): string {
   if (ctx.ai?.shortEn) return ctx.ai.shortEn;
   const f = ctx.facts;
-  if (ctx.type === 'projekt') return `Built at Attraktor: ${titleEn(ctx)}. Drop by and have a look!`;
+  if (ctx.type === 'projekt')
+    return `Built at Attraktor: ${titleEn(ctx)}. Drop by and have a look!`;
   const extras = [
     f.places !== undefined ? `${f.places} spots` : undefined,
     costsEn(f.costs),
@@ -105,7 +115,11 @@ function facebookDraft(ctx: TemplateContext): ChannelDraft {
   } else {
     de = `${hookDe(ctx)} ${bodyDe(ctx)} Kommt vorbei und schaut es euch an!`;
   }
-  return { textDe: de.replace(/\s+/g, ' ').trim(), textEn: `🇬🇧 ${shortEn(ctx)}`, fields: { hashtags: hashtags(ctx) } };
+  return {
+    textDe: de.replace(/\s+/g, ' ').trim(),
+    textEn: `🇬🇧 ${shortEn(ctx)}`,
+    fields: { hashtags: hashtags(ctx) },
+  };
 }
 
 // ---------- Meetup ----------
@@ -128,24 +142,38 @@ function meetupDraft(ctx: TemplateContext): ChannelDraft {
     textDe: de.join('\n').trim(),
     textEn: en.join('\n').trim(),
     // Without AI there is no English title; the Medienteam adds it in the editor.
-    fields: { title: ctx.ai?.titleEn ? `${title(ctx)} / ${ctx.ai.titleEn}` : title(ctx) },
+    fields: {
+      title: ctx.ai?.titleEn ? `${title(ctx)} / ${ctx.ai.titleEn}` : title(ctx),
+    },
   };
 }
 
 // ---------- WordPress ----------
 function wordpressDraft(ctx: TemplateContext): ChannelDraft {
   const intro = hookDe(ctx);
-  const de = `${intro}\n\n${ctx.ai?.bodyDe ?? ctx.facts.description ?? ''}`.trim();
-  return { textDe: de, textEn: bodyEn(ctx), fields: { title: title(ctx), titleEn: titleEn(ctx) } };
+  const de =
+    `${intro}\n\n${ctx.ai?.bodyDe ?? ctx.facts.description ?? ''}`.trim();
+  return {
+    textDe: de,
+    textEn: bodyEn(ctx),
+    fields: { title: title(ctx), titleEn: titleEn(ctx) },
+  };
 }
 
 // ---------- Wiki ----------
 function wikiDraft(ctx: TemplateContext): ChannelDraft {
-  return { textDe: ctx.ai?.bodyDe ?? ctx.facts.description ?? '', textEn: '', fields: {} };
+  return {
+    textDe: ctx.ai?.bodyDe ?? ctx.facts.description ?? '',
+    textEn: '',
+    fields: {},
+  };
 }
 
 /** Creates the editable drafts for the given channels. */
-export function buildDrafts(ctx: TemplateContext, channels: ChannelId[]): Partial<Record<ChannelId, ChannelDraft>> {
+export function buildDrafts(
+  ctx: TemplateContext,
+  channels: ChannelId[],
+): Partial<Record<ChannelId, ChannelDraft>> {
   const out: Partial<Record<ChannelId, ChannelDraft>> = {};
   for (const ch of channels) {
     switch (ch) {
@@ -179,7 +207,13 @@ export interface CopyField {
 
 /** Instagram caption: DE text, EN short version, hashtags. */
 export function instagramCaption(draft: ChannelDraft): string {
-  return [draft.textDe.trim(), draft.textEn.trim(), draft.fields['hashtags'] ?? ''].filter(Boolean).join('\n\n');
+  return [
+    draft.textDe.trim(),
+    draft.textEn.trim(),
+    draft.fields['hashtags'] ?? '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 export function facebookText(draft: ChannelDraft, links: Links): string {
@@ -189,7 +223,10 @@ export function facebookText(draft: ChannelDraft, links: Links): string {
   return parts.join('\n\n');
 }
 
-export function meetupDescription(ctx: TemplateContext, draft: ChannelDraft): string {
+export function meetupDescription(
+  ctx: TemplateContext,
+  draft: ChannelDraft,
+): string {
   const loc = ctx.config.location;
   return [
     draft.textDe.trim(),
@@ -198,35 +235,80 @@ export function meetupDescription(ctx: TemplateContext, draft: ChannelDraft): st
   ].join('\n\n');
 }
 
-export function meetupCopyFields(ctx: TemplateContext, draft: ChannelDraft, category?: string | null): CopyField[] {
+export function meetupCopyFields(
+  ctx: TemplateContext,
+  draft: ChannelDraft,
+  category?: string | null,
+): CopyField[] {
   const f = ctx.facts;
   const end = effectiveEnd(ctx);
   return [
-    { key: 'title', label: 'Titel', value: draft.fields['title'] ?? title(ctx) },
+    {
+      key: 'title',
+      label: 'Titel',
+      value: draft.fields['title'] ?? title(ctx),
+    },
     { key: 'date', label: 'Datum', value: f.date ? fullDateDe(f.date) : '' },
-    { key: 'time', label: 'Uhrzeit', value: f.startTime ? `${f.startTime}${end ? ` – ${end}` : ''}` : '' },
+    {
+      key: 'time',
+      label: 'Uhrzeit',
+      value: f.startTime ? `${f.startTime}${end ? ` – ${end}` : ''}` : '',
+    },
     { key: 'location', label: 'Ort', value: ctx.config.location.full },
-    { key: 'places', label: 'Teilnehmer max.', value: f.places !== undefined ? String(f.places) : '' },
-    { key: 'description', label: 'Beschreibung', value: meetupDescription(ctx, draft) },
+    {
+      key: 'places',
+      label: 'Teilnehmer max.',
+      value: f.places !== undefined ? String(f.places) : '',
+    },
+    {
+      key: 'description',
+      label: 'Beschreibung',
+      value: meetupDescription(ctx, draft),
+    },
     { key: 'category', label: 'Kategorie', value: category ?? '' },
   ];
 }
 
 export function instagramCopyFields(draft: ChannelDraft): CopyField[] {
   return [
-    { key: 'text', label: 'Text DE + EN', value: [draft.textDe.trim(), draft.textEn.trim()].filter(Boolean).join('\n\n') },
-    { key: 'hashtags', label: 'Hashtags', value: draft.fields['hashtags'] ?? '' },
+    {
+      key: 'text',
+      label: 'Text DE + EN',
+      value: [draft.textDe.trim(), draft.textEn.trim()]
+        .filter(Boolean)
+        .join('\n\n'),
+    },
+    {
+      key: 'hashtags',
+      label: 'Hashtags',
+      value: draft.fields['hashtags'] ?? '',
+    },
   ];
 }
 
-export function facebookCopyFields(draft: ChannelDraft, links: Links): CopyField[] {
+export function facebookCopyFields(
+  draft: ChannelDraft,
+  links: Links,
+): CopyField[] {
   return [
-    { key: 'text', label: 'Text DE + EN', value: facebookText({ ...draft, fields: draft.fields }, links) },
-    { key: 'hashtags', label: 'Hashtags', value: draft.fields['hashtags'] ?? '' },
+    {
+      key: 'text',
+      label: 'Text DE + EN',
+      value: facebookText({ ...draft, fields: draft.fields }, links),
+    },
+    {
+      key: 'hashtags',
+      label: 'Hashtags',
+      value: draft.fields['hashtags'] ?? '',
+    },
   ];
 }
 
-const escHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const escHtml = (s: string) =>
+  s.replace(
+    /[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!,
+  );
 const paragraphs = (text: string) =>
   text
     .split(/\n{2,}/)
@@ -236,10 +318,16 @@ const paragraphs = (text: string) =>
     .join('\n');
 
 /** WordPress post HTML: intro, Wo/Wann/Was, description, Meetup link, English section. */
-export function wordpressContent(ctx: TemplateContext, draft: ChannelDraft, links: Links): string {
+export function wordpressContent(
+  ctx: TemplateContext,
+  draft: ChannelDraft,
+  links: Links,
+): string {
   const f = ctx.facts;
   const [intro, ...rest] = draft.textDe.trim().split(/\n{2,}/);
-  const when = f.date ? bannerWhenDe(f.date, f.startTime, effectiveEnd(ctx)) : '';
+  const when = f.date
+    ? bannerWhenDe(f.date, f.startTime, effectiveEnd(ctx))
+    : '';
   const what = [
     f.places !== undefined ? `${f.places} Plätze` : undefined,
     f.costs,
@@ -249,8 +337,14 @@ export function wordpressContent(ctx: TemplateContext, draft: ChannelDraft, link
     `<strong>Wann:</strong> ${escHtml(when)}`,
     `<strong>Was:</strong> ${escHtml([title(ctx), ...what].join(' · '))}`,
   ].join('<br>\n');
-  const whenEnTxt = f.date ? `${dateEn(f.date)}${f.startTime ? `, ${timeRangeEn(f.startTime, effectiveEnd(ctx))}` : ''}` : '';
-  const whatEn = [draft.fields['titleEn'] ?? title(ctx), f.places !== undefined ? `${f.places} spots` : undefined, costsEn(f.costs)].filter(Boolean);
+  const whenEnTxt = f.date
+    ? `${dateEn(f.date)}${f.startTime ? `, ${timeRangeEn(f.startTime, effectiveEnd(ctx))}` : ''}`
+    : '';
+  const whatEn = [
+    draft.fields['titleEn'] ?? title(ctx),
+    f.places !== undefined ? `${f.places} spots` : undefined,
+    costsEn(f.costs),
+  ].filter(Boolean);
   const blockEn = [
     `<strong>Where:</strong> ${escHtml(ctx.config.location.full)}`,
     `<strong>When:</strong> ${escHtml(whenEnTxt)}`,
@@ -260,27 +354,41 @@ export function wordpressContent(ctx: TemplateContext, draft: ChannelDraft, link
     paragraphs(intro ?? ''),
     `<p>${block}</p>`,
     paragraphs(rest.join('\n\n')),
-    links.meetup ? `<p>Anmeldung über Meetup: <a href="${escHtml(links.meetup)}">${escHtml(links.meetup)}</a></p>` : '',
+    links.meetup
+      ? `<p>Anmeldung über Meetup: <a href="${escHtml(links.meetup)}">${escHtml(links.meetup)}</a></p>`
+      : '',
     '<h3>English</h3>',
     `<p>${blockEn}</p>`,
     paragraphs(draft.textEn),
-    links.meetup ? `<p>Sign up on Meetup: <a href="${escHtml(links.meetup)}">${escHtml(links.meetup)}</a></p>` : '',
+    links.meetup
+      ? `<p>Sign up on Meetup: <a href="${escHtml(links.meetup)}">${escHtml(links.meetup)}</a></p>`
+      : '',
   ];
   return html.filter(Boolean).join('\n');
 }
 
-export function wordpressTitle(ctx: TemplateContext, draft: ChannelDraft): string {
+export function wordpressTitle(
+  ctx: TemplateContext,
+  draft: ChannelDraft,
+): string {
   return draft.fields['title'] ?? title(ctx);
 }
 
 /** Wiki page title: "Termin:<Titel> <YYYY-MM-DD>". */
 export function wikiPageTitle(ctx: TemplateContext): string {
-  const clean = title(ctx).replace(/[#<>[\]|{}_]/g, ' ').replace(/\s+/g, ' ').trim();
+  const clean = title(ctx)
+    .replace(/[#<>[\]|{}_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   return `Termin:${clean} ${ctx.facts.date ?? ''}`.trim();
 }
 
 /** Wiki page content with the real {{Termin}} signature, German only. */
-export function wikiContent(ctx: TemplateContext, draft: ChannelDraft, links: Links & { meetupId?: string | null }): string {
+export function wikiContent(
+  ctx: TemplateContext,
+  draft: ChannelDraft,
+  links: Links & { meetupId?: string | null },
+): string {
   const f = ctx.facts;
   const start = f.date && f.startTime ? wikiDateTime(f.date, f.startTime) : '';
   const endTime = effectiveEnd(ctx);

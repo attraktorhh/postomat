@@ -10,8 +10,13 @@ export interface RoomSettings {
 const KEY = 'matrix_rooms';
 
 /** Room settings from the DB, seeded from env when the DB has none. */
-export async function getRoomSettings(deps: Pick<WorkflowDeps, 'db' | 'env'>): Promise<RoomSettings> {
-  const [row] = await deps.db.select().from(settings).where(eq(settings.key, KEY));
+export async function getRoomSettings(
+  deps: Pick<WorkflowDeps, 'db' | 'env'>,
+): Promise<RoomSettings> {
+  const [row] = await deps.db
+    .select()
+    .from(settings)
+    .where(eq(settings.key, KEY));
   if (row) return row.value as RoomSettings;
   return {
     memberRooms: splitList(deps.env.MATRIX_MEMBER_ROOMS),
@@ -19,11 +24,18 @@ export async function getRoomSettings(deps: Pick<WorkflowDeps, 'db' | 'env'>): P
   };
 }
 
-export async function saveRoomSettings(deps: Pick<WorkflowDeps, 'db'>, value: RoomSettings, actor: string): Promise<void> {
+export async function saveRoomSettings(
+  deps: Pick<WorkflowDeps, 'db'>,
+  value: RoomSettings,
+  actor: string,
+): Promise<void> {
   await deps.db
     .insert(settings)
     .values({ key: KEY, value, updatedBy: actor })
-    .onConflictDoUpdate({ target: settings.key, set: { value, updatedBy: actor, updatedAt: new Date() } });
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value, updatedBy: actor, updatedAt: new Date() },
+    });
 }
 
 /**
@@ -32,11 +44,20 @@ export async function saveRoomSettings(deps: Pick<WorkflowDeps, 'db'>, value: Ro
  * Results are cached for MATRIX_MEMBERSHIP_CACHE_SEC (max. 5 minutes).
  */
 export class Membership {
-  private cache?: { at: number; members: Set<string>; medienteam: Set<string>; medienteamRoomId?: string; memberRoomIds: string[] };
+  private cache?: {
+    at: number;
+    members: Set<string>;
+    medienteam: Set<string>;
+    medienteamRoomId?: string;
+    memberRoomIds: string[];
+  };
   private readonly deps: Pick<WorkflowDeps, 'db' | 'env' | 'now'>;
   private readonly matrix: MatrixPort;
 
-  constructor(deps: Pick<WorkflowDeps, 'db' | 'env' | 'now'>, matrix: MatrixPort) {
+  constructor(
+    deps: Pick<WorkflowDeps, 'db' | 'env' | 'now'>,
+    matrix: MatrixPort,
+  ) {
     this.deps = deps;
     this.matrix = matrix;
   }
@@ -47,7 +68,8 @@ export class Membership {
 
   private async load() {
     const ttl = this.deps.env.MATRIX_MEMBERSHIP_CACHE_SEC * 1000;
-    if (this.cache && this.deps.now().getTime() - this.cache.at < ttl) return this.cache;
+    if (this.cache && this.deps.now().getTime() - this.cache.at < ttl)
+      return this.cache;
     const cfg = await getRoomSettings(this.deps);
     const memberRoomIds: string[] = [];
     const members = new Set<string>();
@@ -55,13 +77,26 @@ export class Membership {
       const id = await this.matrix.resolveRoom(r).catch(() => undefined);
       if (!id) continue;
       memberRoomIds.push(id);
-      for (const m of await this.matrix.getJoinedMembers(id).catch(() => [])) members.add(m);
+      for (const m of await this.matrix.getJoinedMembers(id).catch(() => []))
+        members.add(m);
     }
-    const medienteamRoomId = cfg.medienteamRoom ? await this.matrix.resolveRoom(cfg.medienteamRoom).catch(() => undefined) : undefined;
-    const medienteam = new Set(medienteamRoomId ? await this.matrix.getJoinedMembers(medienteamRoomId).catch(() => []) : []);
+    const medienteamRoomId = cfg.medienteamRoom
+      ? await this.matrix.resolveRoom(cfg.medienteamRoom).catch(() => undefined)
+      : undefined;
+    const medienteam = new Set(
+      medienteamRoomId
+        ? await this.matrix.getJoinedMembers(medienteamRoomId).catch(() => [])
+        : [],
+    );
     members.delete(this.matrix.userId);
     medienteam.delete(this.matrix.userId);
-    this.cache = { at: this.deps.now().getTime(), members, medienteam, medienteamRoomId, memberRoomIds };
+    this.cache = {
+      at: this.deps.now().getTime(),
+      members,
+      medienteam,
+      medienteamRoomId,
+      memberRoomIds,
+    };
     return this.cache;
   }
 
@@ -79,6 +114,9 @@ export class Membership {
 
   async configuredRoomIds(): Promise<string[]> {
     const c = await this.load();
-    return [...c.memberRoomIds, ...(c.medienteamRoomId ? [c.medienteamRoomId] : [])];
+    return [
+      ...c.memberRoomIds,
+      ...(c.medienteamRoomId ? [c.medienteamRoomId] : []),
+    ];
   }
 }

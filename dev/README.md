@@ -27,27 +27,27 @@ takes about 1–2 minutes (Nextcloud install is the slowest part).
 
 All seeds are idempotent: run them as often as you like.
 
-| Re-run seed         | Command                                                                 |
-| ------------------- | ----------------------------------------------------------------------- |
-| Matrix              | `docker compose restart matrix-seed && docker compose logs -f matrix-seed` |
-| WordPress           | `docker compose --profile channels restart wordpress-seed`              |
-| MediaWiki           | `docker compose --profile channels restart mediawiki` (seed runs in its entrypoint) |
-| Nextcloud           | `docker compose --profile channels restart nextcloud` (hook `before-starting`) |
-| Keycloak            | realm is imported on container (re)creation: `docker compose up -d --force-recreate keycloak` |
-| Postgres            | `postomat_test` is created by `dev/postgres/01-create-test-db.sql` on an empty volume only |
+| Re-run seed | Command                                                                                       |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| Matrix      | `docker compose restart matrix-seed && docker compose logs -f matrix-seed`                    |
+| WordPress   | `docker compose --profile channels restart wordpress-seed`                                    |
+| MediaWiki   | `docker compose --profile channels restart mediawiki` (seed runs in its entrypoint)           |
+| Nextcloud   | `docker compose --profile channels restart nextcloud` (hook `before-starting`)                |
+| Keycloak    | realm is imported on container (re)creation: `docker compose up -d --force-recreate keycloak` |
+| Postgres    | `postomat_test` is created by `dev/postgres/01-create-test-db.sql` on an empty volume only    |
 
 ## Services, URLs, credentials
 
-| Service       | URL (host)                    | Notes |
-| ------------- | ----------------------------- | ----- |
-| Postgres 17   | `localhost:55432`             | user `postomat` / `postomat`, DBs `postomat`, `postomat_test` |
-| Synapse       | http://localhost:8008         | server_name `localhost`, SQLite |
-| Element Web   | http://localhost:8080         | preconfigured for the local Synapse |
-| Keycloak 26   | http://localhost:8180         | master console `admin` / `admin` |
-| fake Meetup   | http://localhost:8084         | iCal feed + control API |
-| WordPress     | http://localhost:8081         | profile `channels` |
-| MediaWiki 1.43| http://localhost:8082         | profile `channels` |
-| Nextcloud 31  | http://localhost:8083         | profile `channels` |
+| Service        | URL (host)            | Notes                                                         |
+| -------------- | --------------------- | ------------------------------------------------------------- |
+| Postgres 17    | `localhost:55432`     | user `postomat` / `postomat`, DBs `postomat`, `postomat_test` |
+| Synapse        | http://localhost:8008 | server_name `localhost`, SQLite                               |
+| Element Web    | http://localhost:8080 | preconfigured for the local Synapse                           |
+| Keycloak 26    | http://localhost:8180 | master console `admin` / `admin`                              |
+| fake Meetup    | http://localhost:8084 | iCal feed + control API                                       |
+| WordPress      | http://localhost:8081 | profile `channels`                                            |
+| MediaWiki 1.43 | http://localhost:8082 | profile `channels`                                            |
+| Nextcloud 31   | http://localhost:8083 | profile `channels`                                            |
 
 Connection strings for the apps:
 
@@ -61,24 +61,25 @@ TEST_DATABASE_URL=postgres://postomat:postomat@localhost:55432/postomat_test
 - Base URL `http://localhost:8008`, server name `localhost`.
 - Users (created via the shared-secret admin API, secret `postomat-dev-registration-secret`):
 
-  | User                  | Password           | |
-  | --------------------- | ------------------ | - |
+  | User                  | Password           |                     |
+  | --------------------- | ------------------ | ------------------- |
   | `@postomat:localhost` | `postomat-bot-dev` | the bot (not admin) |
-  | `@lena:localhost`     | `postomat-dev`     | |
-  | `@kai:localhost`      | `postomat-dev`     | |
-  | `@mira:localhost`     | `postomat-dev`     | |
-  | `@gast:localhost`     | `postomat-dev`     | in no room |
-  | `@admin:localhost`    | `postomat-dev`     | server admin |
+  | `@lena:localhost`     | `postomat-dev`     |                     |
+  | `@kai:localhost`      | `postomat-dev`     |                     |
+  | `@mira:localhost`     | `postomat-dev`     |                     |
+  | `@gast:localhost`     | `postomat-dev`     | in no room          |
+  | `@admin:localhost`    | `postomat-dev`     | server admin        |
 
 - Rooms (both end-to-end encrypted, `m.megolm.v1.aes-sha2`, private/invite-only):
 
-  | Alias                   | Name                 | Joined                       | Created by |
-  | ----------------------- | -------------------- | ---------------------------- | ---------- |
-  | `#mitglieder:localhost` | Attraktor Mitglieder | lena, kai, mira, postomat    | lena |
-  | `#medienteam:localhost` | Medienteam           | kai, mira, postomat          | kai  |
+  | Alias                   | Name                 | Joined                    | Created by |
+  | ----------------------- | -------------------- | ------------------------- | ---------- |
+  | `#mitglieder:localhost` | Attraktor Mitglieder | lena, kai, mira, postomat | lena       |
+  | `#medienteam:localhost` | Medienteam           | kai, mira, postomat       | kai        |
 
   Room IDs change after a reset; resolve the alias or read them from
   `docker compose logs matrix-seed`.
+
 - The seed logs every user in with the throwaway device `SEED` and logs out
   again. It never creates or touches the bot's real device `POSTOMATDEV`.
 - E2EE is on by default for every new room
@@ -97,8 +98,8 @@ TEST_DATABASE_URL=postgres://postomat:postomat@localhost:55432/postomat_test
   missing claim as `[]`.
 - Realm users, password `postomat-dev` for all:
 
-  | User  | Groups                     | `sub` (fixed) |
-  | ----- | -------------------------- | ------------- |
+  | User  | Groups                     | `sub` (fixed)                          |
+  | ----- | -------------------------- | -------------------------------------- |
   | lena  | mitglieder                 | `6b1c1a2e-0001-4c1a-9a00-00000000a001` |
   | kai   | mitglieder, medienteam     | `6b1c1a2e-0002-4c1a-9a00-00000000a002` |
   | mira  | mitglieder, medienteam     | `6b1c1a2e-0003-4c1a-9a00-00000000a003` |
@@ -106,6 +107,7 @@ TEST_DATABASE_URL=postgres://postomat:postomat@localhost:55432/postomat_test
   | admin | mitglieder, postomat-admin | `6b1c1a2e-0005-4c1a-9a00-00000000a005` |
 
   The realm `admin` user is separate from the master-console `admin`.
+
 - The realm comes from `dev/keycloak/attraktor-realm.json`. Keycloak has no data
   volume: recreating the container re-imports the realm. User IDs are fixed in
   the JSON, so `sub` stays stable across resets.
@@ -125,13 +127,13 @@ Europe/Berlin VTIMEZONE, `UID:event_<id>@meetup.com`, `URL` pointing at
 meetup.com, RFC 5545 escaping, 75-octet folding, CRLF). State lives in the
 `fake-meetup-data` volume; the initial state is `dev/fake-meetup/events.json` (empty).
 
-| Method | Path                       | |
-| ------ | -------------------------- | - |
-| GET    | `/attraktor/events/ical/`  | the feed (`text/calendar`) |
-| GET    | `/_fake/events`            | list stored events (JSON) |
-| POST   | `/_fake/events`            | add or replace (same `id`) an event |
-| DELETE | `/_fake/events`            | clear all events |
-| GET    | `/healthz`                 | health |
+| Method | Path                      |                                     |
+| ------ | ------------------------- | ----------------------------------- |
+| GET    | `/attraktor/events/ical/` | the feed (`text/calendar`)          |
+| GET    | `/_fake/events`           | list stored events (JSON)           |
+| POST   | `/_fake/events`           | add or replace (same `id`) an event |
+| DELETE | `/_fake/events`           | clear all events                    |
+| GET    | `/healthz`                | health                              |
 
 ```sh
 curl -X POST http://localhost:8084/_fake/events -H 'content-type: application/json' -d '{

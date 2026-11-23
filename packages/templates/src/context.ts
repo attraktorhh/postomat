@@ -42,7 +42,8 @@ export function effectiveEnd(ctx: TemplateContext): string | undefined {
   return addMinutesToTime(startTime, ctx.defaultDurationMin);
 }
 
-export const title = (ctx: TemplateContext): string => ctx.facts.title?.trim() || 'Ohne Titel';
+export const title = (ctx: TemplateContext): string =>
+  ctx.facts.title?.trim() || 'Ohne Titel';
 
 /** "5 € Material" → "€5 for material", "kostenlos" → "free". */
 export function costsEn(costs?: string): string | undefined {

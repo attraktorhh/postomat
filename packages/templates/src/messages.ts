@@ -26,36 +26,56 @@ export const CHANNEL_NAMES: Record<ChannelId, string> = {
   facebook: 'Facebook',
 };
 
-const CHANNEL_ORDER: ChannelId[] = ['wordpress', 'wiki', 'meetup', 'instagram', 'facebook'];
+const CHANNEL_ORDER: ChannelId[] = [
+  'wordpress',
+  'wiki',
+  'meetup',
+  'instagram',
+  'facebook',
+];
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const esc = (s: string) =>
+  s.replace(
+    /[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!,
+  );
 
 // ---------------- DM texts ----------------
 
 export const DM = {
-  notMember: 'Postomat ist nur für Attraktor-Mitglieder. Frag gern ein Mitglied, ob es deinen Beitrag einreicht.',
+  notMember:
+    'Postomat ist nur für Attraktor-Mitglieder. Frag gern ein Mitglied, ob es deinen Beitrag einreicht.',
   help:
     'So funktioniert’s: Erzähl mir in einem Satz, was du vorhast (Event) oder gebaut hast (Projekt). Ich frage nach, was fehlt, und schicke es ans Medienteam.\n\n' +
     'Befehle:\n• neu – neuen Beitrag starten\n• status – deine Beiträge\n• abbrechen – aktuellen Entwurf verwerfen\n• abschicken – Entwurf ans Medienteam schicken\n• hilfe – diese Hilfe',
   submitted: 'Ist beim Medienteam 🙌 Ich melde mich, sobald es online ist.',
-  cancelled: 'Okay, den Entwurf habe ich verworfen. Schreib einfach, wenn du etwas Neues hast.',
+  cancelled:
+    'Okay, den Entwurf habe ich verworfen. Schreib einfach, wenn du etwas Neues hast.',
   nothingToCancel: 'Du hast gerade keinen offenen Entwurf.',
-  nothingToSubmit: 'Du hast gerade keinen Entwurf zum Abschicken. Erzähl einfach, was du vorhast.',
+  nothingToSubmit:
+    'Du hast gerade keinen Entwurf zum Abschicken. Erzähl einfach, was du vorhast.',
   notReady: 'Mir fehlt noch etwas, bevor ich es abschicken kann.',
-  photoWithoutDraft: 'Danke für das Foto! Erzähl mir bitte erst kurz, worum es geht, dann schick es noch einmal.',
-  photoUnsupported: 'Das Format kenne ich leider nicht. Schick das Foto bitte als JPEG, PNG oder WebP.',
-  photoFailed: 'Das Foto konnte ich gerade nicht speichern. Versuch es bitte gleich noch einmal.',
+  photoWithoutDraft:
+    'Danke für das Foto! Erzähl mir bitte erst kurz, worum es geht, dann schick es noch einmal.',
+  photoUnsupported:
+    'Das Format kenne ich leider nicht. Schick das Foto bitte als JPEG, PNG oder WebP.',
+  photoFailed:
+    'Das Foto konnte ich gerade nicht speichern. Versuch es bitte gleich noch einmal.',
   rueckfrageAck: 'Danke, ich gebe das ans Medienteam weiter.',
-  noteStored: 'Notiert. Das Medienteam sieht deinen Hinweis. Antworte „abschicken“, wenn alles passt.',
-  textsUpdated: 'Ich habe die Texte angepasst. Antworte „abschicken“ oder ergänze im Browser eine Notiz.',
+  noteStored:
+    'Notiert. Das Medienteam sieht deinen Hinweis. Antworte „abschicken“, wenn alles passt.',
+  textsUpdated:
+    'Ich habe die Texte angepasst. Antworte „abschicken“ oder ergänze im Browser eine Notiz.',
   noPosts: 'Du hast noch keine Beiträge. Erzähl einfach, was du vorhast!',
   alreadySubmitted: 'Der Beitrag ist schon beim Medienteam.',
 } as const;
 
-export function channelListLine(channels: Array<{ channel: ChannelId; mode: ChannelMode }>): string {
-  const names = CHANNEL_ORDER.filter((c) => channels.some((x) => x.channel === c && x.mode !== 'off')).map(
-    (c) => CHANNEL_NAMES[c],
-  );
+export function channelListLine(
+  channels: Array<{ channel: ChannelId; mode: ChannelMode }>,
+): string {
+  const names = CHANNEL_ORDER.filter((c) =>
+    channels.some((x) => x.channel === c && x.mode !== 'off'),
+  ).map((c) => CHANNEL_NAMES[c]);
   return [...names, 'DE + EN'].join(' · ');
 }
 
@@ -67,7 +87,7 @@ export function dmSummary(input: {
   excerpt?: string;
 }): MatrixText {
   const f = input.facts;
-  const facts = input.type === 'event' ? factsLineDm(f) : f.description ?? '';
+  const facts = input.type === 'event' ? factsLineDm(f) : (f.description ?? '');
   const lines = [
     'Super, so schicke ich es ans Medienteam:',
     '',
@@ -88,18 +108,30 @@ export function dmSummary(input: {
   return { body: lines.join('\n'), html };
 }
 
-export const DM_SUBMIT_HINT = 'Antworte „abschicken“ oder ergänze im Browser eine Notiz.';
+export const DM_SUBMIT_HINT =
+  'Antworte „abschicken“ oder ergänze im Browser eine Notiz.';
 
-export function dmPublished(title: string, links: Array<{ channel: ChannelId; url: string }>): string {
+export function dmPublished(
+  title: string,
+  links: Array<{ channel: ChannelId; url: string }>,
+): string {
   const lines = links.map((l) => `• ${CHANNEL_NAMES[l.channel]}: ${l.url}`);
   return `✅ Dein ${title} ist online!${lines.length ? `\n${lines.join('\n')}` : ''}`;
 }
 
-export function dmFollowUp(title: string, channel: ChannelId, url: string): string {
+export function dmFollowUp(
+  title: string,
+  channel: ChannelId,
+  url: string,
+): string {
   return `🔗 ${CHANNEL_NAMES[channel]} zu „${title}“ ist da: ${url}`;
 }
 
-export function dmRueckfrage(title: string, question: string, from: string): string {
+export function dmRueckfrage(
+  title: string,
+  question: string,
+  from: string,
+): string {
   return `Frage vom Medienteam (@${from}) zu „${title}“:\n${question}\n\nAntworte einfach hier.`;
 }
 
@@ -107,7 +139,10 @@ export function dmStatus(
   posts: Array<{ id: number; title: string; status: PostStatus; url: string }>,
 ): string {
   if (!posts.length) return DM.noPosts;
-  const lines = posts.map((p) => `• ${p.title}: ${p.status === 'sammeln' ? 'Entwurf' : memberLabel(p.status)} – ${p.url}`);
+  const lines = posts.map(
+    (p) =>
+      `• ${p.title}: ${p.status === 'sammeln' ? 'Entwurf' : memberLabel(p.status)} – ${p.url}`,
+  );
   return `Deine Beiträge:\n${lines.join('\n')}`;
 }
 
@@ -156,10 +191,14 @@ export interface CardInput {
   editUrl: string;
 }
 
-export function cardStatusLabel(input: Pick<CardInput, 'status' | 'version' | 'approvedBy'>): string {
+export function cardStatusLabel(
+  input: Pick<CardInput, 'status' | 'version' | 'approvedBy'>,
+): string {
   switch (input.status) {
     case 'zur_freigabe':
-      return input.version > 1 ? `v${input.version} · Zur Freigabe` : 'Zur Freigabe';
+      return input.version > 1
+        ? `v${input.version} · Zur Freigabe`
+        : 'Zur Freigabe';
     case 'geplant':
       return `Freigegeben · @${input.approvedBy ?? '?'}`;
     default:
@@ -170,7 +209,9 @@ export function cardStatusLabel(input: Pick<CardInput, 'status' | 'version' | 'a
 export function channelChips(channels: CardChannel[]): string[] {
   const active = channels.filter((c) => c.mode !== 'off');
   const chips: string[] = [];
-  const auto = active.filter((c) => c.mode === 'auto').map((c) => CHANNEL_NAMES[c.channel]);
+  const auto = active
+    .filter((c) => c.mode === 'auto')
+    .map((c) => CHANNEL_NAMES[c.channel]);
   if (auto.length) chips.push(`${auto.join(' + ')}: sofort`);
   for (const c of active.filter((x) => x.mode === 'copy')) {
     if (c.channel === 'meetup') chips.push('Meetup: Kopierhilfe');
@@ -182,7 +223,10 @@ export function channelChips(channels: CardChannel[]): string[] {
 }
 
 function channelResult(c: CardChannel): string {
-  const label = c.status === 'erledigt' && c.channel === 'meetup' ? 'Gefunden' : CHANNEL_STATUS_LABELS[c.status];
+  const label =
+    c.status === 'erledigt' && c.channel === 'meetup'
+      ? 'Gefunden'
+      : CHANNEL_STATUS_LABELS[c.status];
   if (c.status === 'fehler') return `⚠️ ${CHANNEL_NAMES[c.channel]}: Fehler`;
   return `${CHANNEL_NAMES[c.channel]}: ${label}${c.url ? ` – ${c.url}` : ''}`;
 }
@@ -217,9 +261,13 @@ export function renderCard(input: CardInput): MatrixText {
     `<b>${esc(facts)}</b>`,
     input.instagramExcerpt ? `<i>IG: „${esc(input.instagramExcerpt)}“</i>` : '',
     chips.map((c) => `<code>${esc(c)}</code>`).join(' '),
-    input.note ? `<blockquote>Notiz von @${esc(input.authorUsername)}: „${esc(input.note)}“</blockquote>` : '',
+    input.note
+      ? `<blockquote>Notiz von @${esc(input.authorUsername)}: „${esc(input.note)}“</blockquote>`
+      : '',
     checks.map(esc).join(' · '),
-    results.length ? `<ul>${results.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : '',
+    results.length
+      ? `<ul>${results.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`
+      : '',
     `<sub>👍 freigeben · im Thread antworten = Änderung · <a href="${esc(input.editUrl)}">Im Browser bearbeiten ↗</a></sub>`,
   ]
     .filter(Boolean)
@@ -230,15 +278,24 @@ export function renderCard(input: CardInput): MatrixText {
 export const THREAD = {
   selfApproval: 'Eigene Beiträge kann man nicht selbst freigeben 🙂',
   outdated: 'Bitte erst die neue Version zur Freigabe stellen.',
-  blocked: (reasons: string[]) => `Freigabe nicht möglich: ${reasons.join(' · ')}`,
-  changeRequested: (who: string) => `Änderung gewünscht von @${who}. Im Browser bearbeiten und „Erneut zur Freigabe“ klicken.`,
+  blocked: (reasons: string[]) =>
+    `Freigabe nicht möglich: ${reasons.join(' · ')}`,
+  changeRequested: (who: string) =>
+    `Änderung gewünscht von @${who}. Im Browser bearbeiten und „Erneut zur Freigabe“ klicken.`,
   newVersion: (v: number) => `Neue Version v${v} zur Freigabe.`,
-  meetupQuestion: (title: string, candidates: Array<{ title: string; when: string }>) =>
+  meetupQuestion: (
+    title: string,
+    candidates: Array<{ title: string; when: string }>,
+  ) =>
     `Ist eins davon das Meetup-Event zu „${title}“?\n${candidates
-      .map((c, i) => `${['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'][i] ?? `${i + 1}.`} ${c.title} (${c.when})`)
+      .map(
+        (c, i) =>
+          `${['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'][i] ?? `${i + 1}.`} ${c.title} (${c.when})`,
+      )
       .join('\n')}\n– antworte mit der Zahl oder „nein“`,
   meetupLinked: (url: string) => `Meetup verlinkt: ${url}`,
-  meetupDeclined: 'Okay, ich suche weiter im Feed. Den Link kannst du auch im Browser eintragen.',
+  meetupDeclined:
+    'Okay, ich suche weiter im Feed. Den Link kannst du auch im Browser eintragen.',
 };
 
 /** Top-level message after approval and the auto channels. */
@@ -247,15 +304,24 @@ export function approvedSummary(input: {
   channels: CardChannel[];
   copyHelperUrl: string;
 }): MatrixText {
-  const online = input.channels.filter((c) => c.mode === 'auto' && c.status === 'veroeffentlicht');
-  const failed = input.channels.filter((c) => c.mode === 'auto' && c.status === 'fehler');
+  const online = input.channels.filter(
+    (c) => c.mode === 'auto' && c.status === 'veroeffentlicht',
+  );
+  const failed = input.channels.filter(
+    (c) => c.mode === 'auto' && c.status === 'fehler',
+  );
   const copy = input.channels.filter((c) => c.mode === 'copy');
   const names = (cs: CardChannel[]) => {
     const n = cs.map((c) => CHANNEL_NAMES[c.channel]);
-    return n.length <= 1 ? n.join('') : `${n.slice(0, -1).join(', ')} und ${n.at(-1)}`;
+    return n.length <= 1
+      ? n.join('')
+      : `${n.slice(0, -1).join(', ')} und ${n.at(-1)}`;
   };
   const parts = [`Freigegeben von @${input.approver}.`];
-  if (online.length) parts.push(`${names(online)} ${online.length > 1 ? 'sind' : 'ist'} online.`);
+  if (online.length)
+    parts.push(
+      `${names(online)} ${online.length > 1 ? 'sind' : 'ist'} online.`,
+    );
   for (const f of failed) parts.push(`⚠️ ${CHANNEL_NAMES[f.channel]}: Fehler`);
   let body = parts.join(' ');
   let html = esc(body);

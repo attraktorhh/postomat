@@ -1,7 +1,13 @@
 import { Chip } from '@heroui/react';
 import { MEMBER_STEPS } from '@postomat/core';
 
-export function Stepper({ done, discarded }: { done: number; discarded?: boolean }) {
+export function Stepper({
+  done,
+  discarded,
+}: {
+  done: number;
+  discarded?: boolean;
+}) {
   if (discarded) return <Chip color="danger">Verworfen</Chip>;
   return (
     <ol className="flex flex-wrap gap-1 text-xs" aria-label="Status">
@@ -19,7 +25,10 @@ export function Stepper({ done, discarded }: { done: number; discarded?: boolean
   );
 }
 
-const STATUS_COLOR: Record<string, 'default' | 'accent' | 'success' | 'warning' | 'danger'> = {
+const STATUS_COLOR: Record<
+  string,
+  'default' | 'accent' | 'success' | 'warning' | 'danger'
+> = {
   sammeln: 'default',
   zur_freigabe: 'accent',
   aenderung_gewuenscht: 'warning',
@@ -36,16 +45,27 @@ const STATUS_TEXT: Record<string, string> = {
   verworfen: 'Verworfen',
 };
 
-export function StatusTape({ status, version }: { status: string; version?: number }) {
+export function StatusTape({
+  status,
+  version,
+}: {
+  status: string;
+  version?: number;
+}) {
   return (
     <Chip color={STATUS_COLOR[status] ?? 'default'}>
-      {version && version > 1 && status === 'zur_freigabe' ? `v${version} · ` : ''}
+      {version && version > 1 && status === 'zur_freigabe'
+        ? `v${version} · `
+        : ''}
       {STATUS_TEXT[status] ?? status}
     </Chip>
   );
 }
 
-const CH_TEXT: Record<string, [string, 'default' | 'accent' | 'success' | 'warning' | 'danger']> = {
+const CH_TEXT: Record<
+  string,
+  [string, 'default' | 'accent' | 'success' | 'warning' | 'danger']
+> = {
   entwurf: ['Entwurf', 'default'],
   wartet: ['Wartet', 'accent'],
   veroeffentlicht: ['Online', 'success'],
@@ -56,9 +76,19 @@ const CH_TEXT: Record<string, [string, 'default' | 'accent' | 'success' | 'warni
   aus: ['Aus', 'default'],
 };
 
-export function ChannelStatus({ status, channel }: { status: string; channel?: string }) {
+export function ChannelStatus({
+  status,
+  channel,
+}: {
+  status: string;
+  channel?: string;
+}) {
   const [text, color] = CH_TEXT[status] ?? [status, 'default'];
-  return <Chip color={color}>{status === 'erledigt' && channel === 'meetup' ? 'Gefunden' : text}</Chip>;
+  return (
+    <Chip color={color}>
+      {status === 'erledigt' && channel === 'meetup' ? 'Gefunden' : text}
+    </Chip>
+  );
 }
 
 export function ModeTape({ mode }: { mode: string }) {

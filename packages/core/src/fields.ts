@@ -20,9 +20,16 @@ export const REQUIRED_FIELDS: Record<PostType, FactKey[]> = {
 };
 
 /** Whether a photo is required for this post type. */
-export const PHOTO_REQUIRED: Record<PostType, boolean> = { event: false, projekt: true };
+export const PHOTO_REQUIRED: Record<PostType, boolean> = {
+  event: false,
+  projekt: true,
+};
 
-export function missingRequiredFields(type: PostType, facts: PostFacts, photoCount: number): string[] {
+export function missingRequiredFields(
+  type: PostType,
+  facts: PostFacts,
+  photoCount: number,
+): string[] {
   const missing = REQUIRED_FIELDS[type]
     .filter((k) => facts[k] === undefined || facts[k] === '')
     .map((k) => FIELD_LABELS[k]);

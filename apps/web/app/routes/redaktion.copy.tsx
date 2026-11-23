@@ -1,4 +1,11 @@
-import { Form, Link, useActionData, useLoaderData, type ActionFunctionArgs, type LoaderFunctionArgs } from 'react-router';
+import {
+  Form,
+  Link,
+  useActionData,
+  useLoaderData,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from 'react-router';
 import { Alert, Button } from '@heroui/react';
 import type { ChannelId } from '@postomat/core';
 import { COPY_IMAGE_FORMAT } from '@postomat/channel-copy';
@@ -11,14 +18,23 @@ import { CopyFields } from '../components/copy-button';
 import { ChannelStatus } from '../components/status';
 
 const COPY_CHANNELS: ChannelId[] = ['meetup', 'instagram', 'facebook'];
-const TITLES: Record<string, string> = { meetup: 'Meetup-Kopierhilfe', instagram: 'Instagram-Kopiervorlage', facebook: 'Facebook-Kopiervorlage' };
+const TITLES: Record<string, string> = {
+  meetup: 'Meetup-Kopierhilfe',
+  instagram: 'Instagram-Kopiervorlage',
+  facebook: 'Facebook-Kopiervorlage',
+};
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request, ['medienteam']);
   const channel = params['channel'] as ChannelId;
-  if (!COPY_CHANNELS.includes(channel)) throw new Response('Nicht gefunden', { status: 404 });
+  if (!COPY_CHANNELS.includes(channel))
+    throw new Response('Nicht gefunden', { status: 404 });
   const view = await loadPostView(Number(params['id']));
-  return { user: { username: user.username, roles: user.roles }, view, channel };
+  return {
+    user: { username: user.username, roles: user.roles },
+    view,
+    channel,
+  };
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -32,7 +48,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       await skipChannel(deps, id, channel, user.username);
       return { ok: 'Übersprungen.' };
     }
-    await setChannelLink(deps, id, channel, String(form.get('url') ?? ''), user.username);
+    await setChannelLink(
+      deps,
+      id,
+      channel,
+      String(form.get('url') ?? ''),
+      user.username,
+    );
     return { ok: 'Link eingetragen.' };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
@@ -44,7 +66,9 @@ export default function CopyHelper() {
   const result = useActionData<typeof action>();
   const ch = view.channels.find((c) => c.channel === channel);
   const format = COPY_IMAGE_FORMAT[channel];
-  const others = view.channels.filter((c) => c.mode === 'copy' && COPY_CHANNELS.includes(c.channel));
+  const others = view.channels.filter(
+    (c) => c.mode === 'copy' && COPY_CHANNELS.includes(c.channel),
+  );
   if (!ch || ch.mode === 'off') {
     return (
       <Shell user={user}>
@@ -52,7 +76,13 @@ export default function CopyHelper() {
       </Shell>
     );
   }
-  const linkedAt = ch.linkedAt ? new Date(ch.linkedAt).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' }) : '';
+  const linkedAt = ch.linkedAt
+    ? new Date(ch.linkedAt).toLocaleTimeString('de-DE', {
+        timeZone: 'Europe/Berlin',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
   return (
     <Shell user={user}>
       <Link to={`/redaktion/${view.post.id}`} className="text-sm underline">
@@ -60,7 +90,13 @@ export default function CopyHelper() {
       </Link>
       <nav className="flex flex-wrap gap-3 text-sm">
         {others.map((o) => (
-          <Link key={o.channel} to={`/redaktion/${view.post.id}/${o.channel}`} className={o.channel === channel ? 'font-semibold underline' : 'underline'}>
+          <Link
+            key={o.channel}
+            to={`/redaktion/${view.post.id}/${o.channel}`}
+            className={
+              o.channel === channel ? 'font-semibold underline' : 'underline'
+            }
+          >
             {o.name}
           </Link>
         ))}
@@ -68,13 +104,21 @@ export default function CopyHelper() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold">{TITLES[channel]}</h1>
         {channel === 'meetup' && (
-          <a className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm text-[var(--accent-foreground)]" href={view.meetupGroupUrl} target="_blank" rel="noreferrer">
+          <a
+            className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm text-[var(--accent-foreground)]"
+            href={view.meetupGroupUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
             Meetup öffnen ↗
           </a>
         )}
       </div>
       {channel === 'meetup' && (
-        <p className="text-sm text-[var(--muted)]">Tipp: In Meetup „Event kopieren“ beim letzten ähnlichen Event wählen, dann nur die Felder unten ersetzen.</p>
+        <p className="text-sm text-[var(--muted)]">
+          Tipp: In Meetup „Event kopieren“ beim letzten ähnlichen Event wählen,
+          dann nur die Felder unten ersetzen.
+        </p>
       )}
       {result && 'error' in result && result.error && (
         <Alert status="danger">
@@ -86,8 +130,15 @@ export default function CopyHelper() {
       <CopyFields fields={ch.copyFields} />
       <div className="grid grid-cols-1 items-center gap-2 rounded-md border border-[var(--border)] p-2 sm:grid-cols-[8rem_1fr_auto]">
         <b className="text-sm">Bild</b>
-        <img src={`/banner/${view.post.id}/${format}`} alt={`Banner ${format}`} className="w-32 rounded" />
-        <a href={`/banner/${view.post.id}/${format}?download=1`} className="rounded-md border border-[var(--border)] px-3 py-1 text-sm">
+        <img
+          src={`/banner/${view.post.id}/${format}`}
+          alt={`Banner ${format}`}
+          className="w-32 rounded"
+        />
+        <a
+          href={`/banner/${view.post.id}/${format}?download=1`}
+          className="rounded-md border border-[var(--border)] px-3 py-1 text-sm"
+        >
           {channel === 'meetup' ? 'Laden' : 'Bild laden'}
         </a>
       </div>
@@ -96,15 +147,29 @@ export default function CopyHelper() {
         <div className="flex flex-wrap items-center gap-2">
           <ChannelStatus status={ch.status} channel={ch.channel} />
           {ch.url && (
-            <a href={ch.url} className="font-semibold underline [overflow-wrap:anywhere]" target="_blank" rel="noreferrer">
+            <a
+              href={ch.url}
+              className="font-semibold underline [overflow-wrap:anywhere]"
+              target="_blank"
+              rel="noreferrer"
+            >
               {ch.url}
             </a>
           )}
         </div>
-        {channel === 'meetup' && ch.status === 'erledigt' && ch.linkedVia === 'ical' && (
-          <span className="text-sm text-[var(--muted)]">Im iCal-Feed von Meetup erkannt (Titel + Datum passen) · {linkedAt}</span>
+        {channel === 'meetup' &&
+          ch.status === 'erledigt' &&
+          ch.linkedVia === 'ical' && (
+            <span className="text-sm text-[var(--muted)]">
+              Im iCal-Feed von Meetup erkannt (Titel + Datum passen) ·{' '}
+              {linkedAt}
+            </span>
+          )}
+        {channel === 'meetup' && ch.status === 'kopieren' && (
+          <span className="text-sm text-[var(--muted)]">
+            Warte auf das Event im iCal-Feed …
+          </span>
         )}
-        {channel === 'meetup' && ch.status === 'kopieren' && <span className="text-sm text-[var(--muted)]">Warte auf das Event im iCal-Feed …</span>}
         {ch.status !== 'erledigt' && ch.status !== 'uebersprungen' && (
           <>
             <Form method="post" className="flex flex-wrap gap-2">
@@ -117,7 +182,11 @@ export default function CopyHelper() {
                 name="url"
                 type="url"
                 required
-                placeholder={channel === 'meetup' ? 'Link zum Meetup-Event eintragen' : `Link zum ${channel === 'instagram' ? 'Instagram' : 'Facebook'}-Post einfügen`}
+                placeholder={
+                  channel === 'meetup'
+                    ? 'Link zum Meetup-Event eintragen'
+                    : `Link zum ${channel === 'instagram' ? 'Instagram' : 'Facebook'}-Post einfügen`
+                }
                 className="min-w-0 flex-1 rounded-md border border-[var(--border)] px-2 py-1 text-sm"
               />
               <Button type="submit" size="sm" variant="primary">

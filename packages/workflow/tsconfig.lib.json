@@ -36,9 +36,6 @@
       "path": "../channels/mediawiki/tsconfig.lib.json"
     },
     {
-      "path": "../channels/copy/tsconfig.lib.json"
-    },
-    {
       "path": "../ai/tsconfig.lib.json"
     }
   ],

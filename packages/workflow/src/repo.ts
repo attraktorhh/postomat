@@ -12,7 +12,12 @@ import {
   type Photo,
   type Post,
 } from '@postomat/db';
-import type { ChannelId, ChannelPostSnapshot, PhotoSnapshot, PostSnapshot } from '@postomat/core';
+import type {
+  ChannelId,
+  ChannelPostSnapshot,
+  PhotoSnapshot,
+  PostSnapshot,
+} from '@postomat/core';
 
 export class NotFoundError extends Error {
   constructor(what: string) {
@@ -21,22 +26,39 @@ export class NotFoundError extends Error {
   }
 }
 
-export async function getPost(db: DbOrTx, id: number, lock = false): Promise<Post> {
+export async function getPost(
+  db: DbOrTx,
+  id: number,
+  lock = false,
+): Promise<Post> {
   const q = db.select().from(posts).where(eq(posts.id, id));
   const [row] = lock ? await q.for('update') : await q;
   if (!row) throw new NotFoundError(`post ${id}`);
   return row;
 }
 
-export async function getChannels(db: DbOrTx, postId: number): Promise<ChannelPost[]> {
-  return db.select().from(channelPosts).where(eq(channelPosts.postId, postId)).orderBy(asc(channelPosts.id));
+export async function getChannels(
+  db: DbOrTx,
+  postId: number,
+): Promise<ChannelPost[]> {
+  return db
+    .select()
+    .from(channelPosts)
+    .where(eq(channelPosts.postId, postId))
+    .orderBy(asc(channelPosts.id));
 }
 
-export async function getChannel(db: DbOrTx, postId: number, channel: ChannelId): Promise<ChannelPost | undefined> {
+export async function getChannel(
+  db: DbOrTx,
+  postId: number,
+  channel: ChannelId,
+): Promise<ChannelPost | undefined> {
   const [row] = await db
     .select()
     .from(channelPosts)
-    .where(and(eq(channelPosts.postId, postId), eq(channelPosts.channel, channel)));
+    .where(
+      and(eq(channelPosts.postId, postId), eq(channelPosts.channel, channel)),
+    );
   return row;
 }
 
@@ -49,18 +71,34 @@ export async function updateChannel(
   await db
     .update(channelPosts)
     .set({ ...values, updatedAt: new Date() })
-    .where(and(eq(channelPosts.postId, postId), eq(channelPosts.channel, channel)));
+    .where(
+      and(eq(channelPosts.postId, postId), eq(channelPosts.channel, channel)),
+    );
 }
 
 export async function getPhotos(db: DbOrTx, postId: number): Promise<Photo[]> {
-  return db.select().from(photos).where(eq(photos.postId, postId)).orderBy(asc(photos.id));
+  return db
+    .select()
+    .from(photos)
+    .where(eq(photos.postId, postId))
+    .orderBy(asc(photos.id));
 }
 
-export async function latestBanner(db: DbOrTx, postId: number, format: '4x5' | '16x9'): Promise<Photo | undefined> {
+export async function latestBanner(
+  db: DbOrTx,
+  postId: number,
+  format: '4x5' | '16x9',
+): Promise<Photo | undefined> {
   const [row] = await db
     .select()
     .from(photos)
-    .where(and(eq(photos.postId, postId), eq(photos.kind, 'banner'), eq(photos.format, format)))
+    .where(
+      and(
+        eq(photos.postId, postId),
+        eq(photos.kind, 'banner'),
+        eq(photos.format, format),
+      ),
+    )
     .orderBy(desc(photos.id))
     .limit(1);
   return row;
@@ -77,7 +115,11 @@ export async function addHistory(
   await db.insert(history).values({ postId, actor, kind, message, data });
 }
 
-export async function updatePost(db: DbOrTx, id: number, values: Partial<typeof posts.$inferInsert>): Promise<void> {
+export async function updatePost(
+  db: DbOrTx,
+  id: number,
+  values: Partial<typeof posts.$inferInsert>,
+): Promise<void> {
   await db
     .update(posts)
     .set({ ...values, updatedAt: new Date() })
@@ -104,7 +146,12 @@ export const channelSnapshot = (c: ChannelPost): ChannelPostSnapshot => ({
   url: c.url,
 });
 
-export const photoSnapshot = (p: Photo): PhotoSnapshot => ({ id: p.id, consent: p.consent, kind: p.kind });
+export const photoSnapshot = (p: Photo): PhotoSnapshot => ({
+  id: p.id,
+  consent: p.consent,
+  kind: p.kind,
+});
 
 /** "@lena:localhost" → "lena" */
-export const localpart = (matrixId: string): string => matrixId.replace(/^@/, '').split(':')[0];
+export const localpart = (matrixId: string): string =>
+  matrixId.replace(/^@/, '').split(':')[0];

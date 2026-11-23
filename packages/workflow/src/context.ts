@@ -3,7 +3,10 @@ import type { ChannelPost, Post } from '@postomat/db';
 import type { ChannelDraft, Links, TemplateContext } from '@postomat/templates';
 import type { WorkflowDeps } from './deps.ts';
 
-export function templateContext(deps: Pick<WorkflowDeps, 'config' | 'env'>, post: Post): TemplateContext {
+export function templateContext(
+  deps: Pick<WorkflowDeps, 'config' | 'env'>,
+  post: Post,
+): TemplateContext {
   return {
     type: post.type,
     facts: post.facts,
@@ -12,10 +15,16 @@ export function templateContext(deps: Pick<WorkflowDeps, 'config' | 'env'>, post
   };
 }
 
-export const draftOf = (c: ChannelPost): ChannelDraft => ({ textDe: c.textDe, textEn: c.textEn, fields: c.fields });
+export const draftOf = (c: ChannelPost): ChannelDraft => ({
+  textDe: c.textDe,
+  textEn: c.textEn,
+  fields: c.fields,
+});
 
 /** Links known so far (published or entered). */
-export function linksOf(channels: ChannelPost[]): Links & { meetupId?: string | null } {
+export function linksOf(
+  channels: ChannelPost[],
+): Links & { meetupId?: string | null } {
   const by = (ch: ChannelId) => channels.find((c) => c.channel === ch);
   const meetup = by('meetup');
   return {
@@ -26,8 +35,12 @@ export function linksOf(channels: ChannelPost[]): Links & { meetupId?: string | 
   };
 }
 
-export const postUrl = (deps: Pick<WorkflowDeps, 'env'>, id: number) => `${deps.env.PUBLIC_WEB_URL.replace(/\/$/, '')}/b/${id}`;
+export const postUrl = (deps: Pick<WorkflowDeps, 'env'>, id: number) =>
+  `${deps.env.PUBLIC_WEB_URL.replace(/\/$/, '')}/b/${id}`;
 export const redaktionUrl = (deps: Pick<WorkflowDeps, 'env'>, id: number) =>
   `${deps.env.PUBLIC_WEB_URL.replace(/\/$/, '')}/redaktion/${id}`;
-export const copyHelperUrl = (deps: Pick<WorkflowDeps, 'env'>, id: number, channel: ChannelId = 'meetup') =>
-  `${deps.env.PUBLIC_WEB_URL.replace(/\/$/, '')}/redaktion/${id}/${channel}`;
+export const copyHelperUrl = (
+  deps: Pick<WorkflowDeps, 'env'>,
+  id: number,
+  channel: ChannelId = 'meetup',
+) => `${deps.env.PUBLIC_WEB_URL.replace(/\/$/, '')}/redaktion/${id}/${channel}`;

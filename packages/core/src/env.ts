@@ -7,13 +7,17 @@ import { z } from 'zod';
 const optional = z
   .string()
   .optional()
-  .transform((v) => (v === undefined || v.trim() === '' ? undefined : v.trim()));
+  .transform((v) =>
+    v === undefined || v.trim() === '' ? undefined : v.trim(),
+  );
 const int = (def: number) => z.coerce.number().int().positive().default(def);
 
 export const envSchema = z.object({
   NODE_ENV: z.string().default('development'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
-  DATABASE_URL: z.string().default('postgres://postomat:postomat@localhost:55432/postomat'),
+  DATABASE_URL: z
+    .string()
+    .default('postgres://postomat:postomat@localhost:55432/postomat'),
   PUBLIC_WEB_URL: z.string().default('http://localhost:3000'),
   POSTOMAT_CONFIG: optional,
 
@@ -25,7 +29,12 @@ export const envSchema = z.object({
   MATRIX_DATA_DIR: z.string().default('./.data/matrix'),
   MATRIX_MEMBER_ROOMS: optional,
   MATRIX_MEDIENTEAM_ROOM: optional,
-  MATRIX_MEMBERSHIP_CACHE_SEC: z.coerce.number().int().min(0).max(300).default(300),
+  MATRIX_MEMBERSHIP_CACHE_SEC: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(300)
+    .default(300),
 
   OIDC_ISSUER: z.string().default('http://localhost:8180/realms/attraktor'),
   OIDC_CLIENT_ID: z.string().default('postomat'),
@@ -49,18 +58,24 @@ export const envSchema = z.object({
   WORDPRESS_POST_STATUS: z.enum(['publish', 'draft']).default('publish'),
 
   MEDIAWIKI_API_URL: z.string().default('http://localhost:8082/api.php'),
-  MEDIAWIKI_PAGE_BASE_URL: z.string().default('http://localhost:8082/index.php/'),
+  MEDIAWIKI_PAGE_BASE_URL: z
+    .string()
+    .default('http://localhost:8082/index.php/'),
   MEDIAWIKI_BOT_USERNAME: optional,
   MEDIAWIKI_BOT_PASSWORD: optional,
 
-  NEXTCLOUD_WEBDAV_URL: z.string().default('http://localhost:8083/remote.php/dav/files/postomat'),
+  NEXTCLOUD_WEBDAV_URL: z
+    .string()
+    .default('http://localhost:8083/remote.php/dav/files/postomat'),
   NEXTCLOUD_USERNAME: optional,
   NEXTCLOUD_PASSWORD: optional,
   NEXTCLOUD_BASE_FOLDER: z.string().default('/Postomat-Fotos'),
   /** Used instead of Nextcloud when NEXTCLOUD_USERNAME/PASSWORD are empty (dev only). */
   MEDIA_LOCAL_DIR: z.string().default('./.data/media'),
 
-  MEETUP_ICAL_URL: z.string().default('http://localhost:8084/attraktor/events/ical/'),
+  MEETUP_ICAL_URL: z
+    .string()
+    .default('http://localhost:8084/attraktor/events/ical/'),
   MEETUP_GROUP_URL: z.string().default('http://localhost:8084/attraktor/'),
   MEETUP_POLL_INTERVAL_MIN: int(10),
 
@@ -76,7 +91,9 @@ export const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
+export function loadEnv(
+  source: Record<string, string | undefined> = process.env,
+): Env {
   return envSchema.parse(source);
 }
 

@@ -29,8 +29,17 @@ export interface MatrixRoomInfo {
 
 export interface MatrixPort {
   readonly userId: string;
-  sendText(roomId: string, body: string, html?: string, opts?: MatrixMessageOptions): Promise<string>;
-  sendImage(roomId: string, image: MatrixImage, opts?: MatrixMessageOptions): Promise<string>;
+  sendText(
+    roomId: string,
+    body: string,
+    html?: string,
+    opts?: MatrixMessageOptions,
+  ): Promise<string>;
+  sendImage(
+    roomId: string,
+    image: MatrixImage,
+    opts?: MatrixMessageOptions,
+  ): Promise<string>;
   /** Downloads (and decrypts, for encrypted rooms) the media of an m.image content. */
   downloadMedia(content: Record<string, unknown>): Promise<Buffer>;
   getJoinedRooms(): Promise<string[]>;
@@ -58,5 +67,12 @@ export type MatrixIncoming =
       /** Raw content, needed for media download. */
       content: Record<string, unknown>;
     }
-  | { kind: 'reaction'; roomId: string; eventId: string; sender: string; relatesTo: string; key: string }
+  | {
+      kind: 'reaction';
+      roomId: string;
+      eventId: string;
+      sender: string;
+      relatesTo: string;
+      key: string;
+    }
   | { kind: 'invite'; roomId: string; sender: string };

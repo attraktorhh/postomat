@@ -16,7 +16,9 @@ import { dirname } from 'node:path';
 const PORT = Number(process.env.PORT ?? 8084);
 const STATE_FILE = process.env.STATE_FILE ?? '/data/events.json';
 // Used as the initial state while STATE_FILE does not exist yet.
-const INITIAL_FILE = process.env.INITIAL_FILE ?? new URL('./events.json', import.meta.url).pathname;
+const INITIAL_FILE =
+  process.env.INITIAL_FILE ??
+  new URL('./events.json', import.meta.url).pathname;
 const GROUP = process.env.MEETUP_GROUP ?? 'attraktor';
 const CAL_NAME = process.env.CAL_NAME ?? 'Attraktor e.V. Events';
 
@@ -72,13 +74,18 @@ function foldLine(line) {
 
 // "2026-12-11T18:00" or "2026-12-11T18:00:00" -> "20261211T180000"
 function localStamp(value) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(value ?? ''));
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(
+    String(value ?? ''),
+  );
   if (!m) return null;
   return `${m[1]}${m[2]}${m[3]}T${m[4]}${m[5]}${m[6] ?? '00'}`;
 }
 
 function utcStamp(date) {
-  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  return date
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}/, '');
 }
 
 const VTIMEZONE = [
@@ -114,7 +121,9 @@ function buildCalendar(events) {
     'X-MS-OLK-FORCEINSPECTOROPEN:TRUE',
     ...VTIMEZONE,
   ];
-  const sorted = [...events].sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  const sorted = [...events].sort((a, b) =>
+    String(a.start).localeCompare(String(b.start)),
+  );
   for (const ev of sorted) {
     const url = `https://www.meetup.com/${GROUP}/events/${ev.id}/`;
     lines.push(
@@ -142,7 +151,8 @@ function buildCalendar(events) {
 // --- HTTP ------------------------------------------------------------------
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
-  const payload = typeof body === 'string' ? body : JSON.stringify(body, null, 2) + '\n';
+  const payload =
+    typeof body === 'string' ? body : JSON.stringify(body, null, 2) + '\n';
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
   res.end(payload);
 }
@@ -155,9 +165,11 @@ async function readJson(req) {
 
 function validate(ev) {
   const errors = [];
-  if (!/^\d+$/.test(String(ev.id ?? ''))) errors.push('id must be a numeric string');
+  if (!/^\d+$/.test(String(ev.id ?? '')))
+    errors.push('id must be a numeric string');
   if (!ev.title) errors.push('title is required');
-  if (!localStamp(ev.start)) errors.push('start must look like 2026-12-11T18:00');
+  if (!localStamp(ev.start))
+    errors.push('start must look like 2026-12-11T18:00');
   if (!localStamp(ev.end)) errors.push('end must look like 2026-12-11T21:00');
   return errors;
 }
@@ -165,10 +177,20 @@ function validate(ev) {
 const server = createServer(async (req, res) => {
   const { pathname } = new URL(req.url, 'http://localhost');
   try {
-    if (req.method === 'GET' && pathname === '/healthz') return send(res, 200, 'ok\n', 'text/plain');
+    if (req.method === 'GET' && pathname === '/healthz')
+      return send(res, 200, 'ok\n', 'text/plain');
 
-    if (req.method === 'GET' && (pathname === `/${GROUP}/events/ical/` || pathname === `/${GROUP}/events/ical`)) {
-      return send(res, 200, buildCalendar(await loadEvents()), 'text/calendar; charset=utf-8');
+    if (
+      req.method === 'GET' &&
+      (pathname === `/${GROUP}/events/ical/` ||
+        pathname === `/${GROUP}/events/ical`)
+    ) {
+      return send(
+        res,
+        200,
+        buildCalendar(await loadEvents()),
+        'text/calendar; charset=utf-8',
+      );
     }
 
     if (pathname === '/_fake/events') {
@@ -195,7 +217,11 @@ const server = createServer(async (req, res) => {
         if (idx >= 0) events[idx] = { ...events[idx], ...ev, updatedAt: now };
         else events.push({ ...ev, createdAt: now, updatedAt: now });
         await saveEvents(events);
-        return send(res, idx >= 0 ? 200 : 201, { ok: true, event: ev, replaced: idx >= 0 });
+        return send(res, idx >= 0 ? 200 : 201, {
+          ok: true,
+          event: ev,
+          replaced: idx >= 0,
+        });
       }
       return send(res, 405, { ok: false, error: 'method not allowed' });
     }
@@ -203,9 +229,15 @@ const server = createServer(async (req, res) => {
     send(res, 404, { ok: false, error: 'not found' });
   } catch (err) {
     console.error(err);
-    send(res, err instanceof SyntaxError ? 400 : 500, { ok: false, error: String(err.message ?? err) });
+    send(res, err instanceof SyntaxError ? 400 : 500, {
+      ok: false,
+      error: String(err.message ?? err),
+    });
   }
 });
 
-server.listen(PORT, () => console.log(`fake-meetup listening on :${PORT}, state file ${STATE_FILE}`));
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => server.close(() => process.exit(0)));
+server.listen(PORT, () =>
+  console.log(`fake-meetup listening on :${PORT}, state file ${STATE_FILE}`),
+);
+for (const sig of ['SIGINT', 'SIGTERM'])
+  process.on(sig, () => server.close(() => process.exit(0)));

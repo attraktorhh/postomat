@@ -13,7 +13,8 @@ export function workspaceRoot(start = process.cwd()): string {
 }
 
 /** Resolves a relative path against the workspace root (apps may run with another cwd). */
-export const fromRoot = (path: string): string => (isAbsolute(path) ? path : resolve(workspaceRoot(), path));
+export const fromRoot = (path: string): string =>
+  isAbsolute(path) ? path : resolve(workspaceRoot(), path);
 
 /** Loads <root>/.env if it exists; real environment variables win. */
 export function loadRootEnvFile(): void {

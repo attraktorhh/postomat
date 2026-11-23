@@ -12,11 +12,18 @@ const post = (over: Partial<PostSnapshot> = {}): PostSnapshot => ({
   version: 1,
   authorMatrixId: '@lena:localhost',
   authorUsername: 'lena',
-  facts: { title: 'Lötkurs für Anfänger', date: '2026-12-11', startTime: '18:00', description: 'Wir löten.' },
+  facts: {
+    title: 'Lötkurs für Anfänger',
+    date: '2026-12-11',
+    startTime: '18:00',
+    description: 'Wir löten.',
+  },
   ...over,
 });
 
-const channel = (c: Partial<ChannelPostSnapshot> & Pick<ChannelPostSnapshot, 'channel'>): ChannelPostSnapshot => ({
+const channel = (
+  c: Partial<ChannelPostSnapshot> & Pick<ChannelPostSnapshot, 'channel'>,
+): ChannelPostSnapshot => ({
   mode: 'copy',
   status: 'entwurf',
   textDe: 'Text',
@@ -27,7 +34,10 @@ const channel = (c: Partial<ChannelPostSnapshot> & Pick<ChannelPostSnapshot, 'ch
 
 const input = (over: Partial<ApprovalInput> = {}): ApprovalInput => ({
   post: post(),
-  channels: [channel({ channel: 'wordpress', mode: 'auto' }), channel({ channel: 'meetup' })],
+  channels: [
+    channel({ channel: 'wordpress', mode: 'auto' }),
+    channel({ channel: 'meetup' }),
+  ],
   photos: [{ id: 1, consent: 'frei', kind: 'photo' }],
   now: NOW,
   approverUsername: 'mira',
@@ -43,47 +53,71 @@ describe('decideApproval', () => {
   });
 
   it('refuses self-approval even for Medienteam members', () => {
-    expect(decideApproval(input({ approverUsername: 'lena' })).kind).toBe('self_approval');
-  });
-
-  it('ignores users outside the Medienteam', () => {
-    expect(decideApproval(input({ approverIsMedienteam: false, approverUsername: 'gast' })).kind).toBe(
-      'not_medienteam',
+    expect(decideApproval(input({ approverUsername: 'lena' })).kind).toBe(
+      'self_approval',
     );
   });
 
+  it('ignores users outside the Medienteam', () => {
+    expect(
+      decideApproval(
+        input({ approverIsMedienteam: false, approverUsername: 'gast' }),
+      ).kind,
+    ).toBe('not_medienteam');
+  });
+
   it('rejects a 👍 on an outdated card version', () => {
-    expect(decideApproval(input({ post: post({ version: 2 }), version: 1 })).kind).toBe('outdated_version');
+    expect(
+      decideApproval(input({ post: post({ version: 2 }), version: 1 })).kind,
+    ).toBe('outdated_version');
   });
 
   it('rejects a 👍 while a change is requested', () => {
-    expect(decideApproval(input({ post: post({ status: 'aenderung_gewuenscht' }) })).kind).toBe('outdated_version');
+    expect(
+      decideApproval(input({ post: post({ status: 'aenderung_gewuenscht' }) }))
+        .kind,
+    ).toBe('outdated_version');
   });
 
   it('ignores 👍 on posts that are already approved', () => {
-    expect(decideApproval(input({ post: post({ status: 'geplant' }) })).kind).toBe('wrong_state');
+    expect(
+      decideApproval(input({ post: post({ status: 'geplant' }) })).kind,
+    ).toBe('wrong_state');
   });
 
   it('blocks events in the past', () => {
-    const d = decideApproval(input({ post: post({ facts: { ...post().facts, date: '2026-11-01' } }) }));
+    const d = decideApproval(
+      input({ post: post({ facts: { ...post().facts, date: '2026-11-01' } }) }),
+    );
     expect(d.kind).toBe('blocked');
-    if (d.kind === 'blocked') expect(d.failures.map((f) => f.id)).toContain('date_future');
+    if (d.kind === 'blocked')
+      expect(d.failures.map((f) => f.id)).toContain('date_future');
   });
 
   it('blocks photos without consent or internal only', () => {
     for (const consent of ['einwilligung_fehlt', 'nur_intern'] as const) {
-      const d = decideApproval(input({ photos: [{ id: 1, consent, kind: 'photo' }] }));
+      const d = decideApproval(
+        input({ photos: [{ id: 1, consent, kind: 'photo' }] }),
+      );
       expect(d.kind).toBe('blocked');
-      if (d.kind === 'blocked') expect(d.failures.map((f) => f.id)).toEqual(['photo_consent']);
+      if (d.kind === 'blocked')
+        expect(d.failures.map((f) => f.id)).toEqual(['photo_consent']);
     }
   });
 
   it('blocks missing required fields and a missing Projekt photo', () => {
     const d = decideApproval(
-      input({ post: post({ type: 'projekt', facts: { title: 'Nixie-Uhr', description: 'Gebaut.' } }), photos: [] }),
+      input({
+        post: post({
+          type: 'projekt',
+          facts: { title: 'Nixie-Uhr', description: 'Gebaut.' },
+        }),
+        photos: [],
+      }),
     );
     expect(d.kind).toBe('blocked');
-    if (d.kind === 'blocked') expect(d.failures[0].label).toBe('Es fehlt: Das Kniffligste, Foto');
+    if (d.kind === 'blocked')
+      expect(d.failures[0].label).toBe('Es fehlt: Das Kniffligste, Foto');
   });
 });
 
@@ -93,14 +127,24 @@ describe('runChecks warnings', () => {
       post: post({ facts: { ...post().facts, title: 'x'.repeat(81) } }),
       channels: [
         channel({ channel: 'meetup', textEn: '' }),
-        channel({ channel: 'instagram', fields: { hashtags: '#a #b #c #d #e #f #g #h #i' } }),
+        channel({
+          channel: 'instagram',
+          fields: { hashtags: '#a #b #c #d #e #f #g #h #i' },
+        }),
       ],
       photos: [],
       now: NOW,
       meetupCategory: null,
     });
     const failed = checks.filter((c) => !c.ok).map((c) => c.id);
-    expect(failed).toEqual(['en_text', 'meetup_category', 'title_length', 'instagram_caption']);
-    expect(checks.filter((c) => !c.ok).every((c) => c.level === 'warn')).toBe(true);
+    expect(failed).toEqual([
+      'en_text',
+      'meetup_category',
+      'title_length',
+      'instagram_caption',
+    ]);
+    expect(checks.filter((c) => !c.ok).every((c) => c.level === 'warn')).toBe(
+      true,
+    );
   });
 });

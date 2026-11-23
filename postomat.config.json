@@ -1,6 +1,12 @@
 {
   "channels": {
-    "event": { "wordpress": "auto", "wiki": "auto", "meetup": "copy", "instagram": "copy", "facebook": "copy" },
+    "event": {
+      "wordpress": "auto",
+      "wiki": "auto",
+      "meetup": "copy",
+      "instagram": "copy",
+      "facebook": "copy"
+    },
     "projekt": { "instagram": "copy", "facebook": "copy" }
   },
   "location": {
@@ -10,13 +16,23 @@
     "transit": "Gut erreichbar mit Bus und Bahn in Hamburg-Altona."
   },
   "contact": "Fragen? Komm donnerstags zum Basteldonnerstag vorbei oder schreib uns über Meetup.",
-  "meetup": { "categories": ["Bildung & Workshops", "Technik", "Wissenschaft & Bildung", "Hobbys & Leidenschaften"] },
+  "meetup": {
+    "categories": [
+      "Bildung & Workshops",
+      "Technik",
+      "Wissenschaft & Bildung",
+      "Hobbys & Leidenschaften"
+    ]
+  },
   "hashtags": {
     "base": ["#makerspace", "#hamburg", "#altona", "#attraktor"],
     "event": [],
     "workshop": ["#workshop"],
     "projekt": ["#diy", "#maker"]
   },
-  "wordpress": { "eventCategories": ["termine"], "workshopCategories": ["workshops"] },
+  "wordpress": {
+    "eventCategories": ["termine"],
+    "workshopCategories": ["workshops"]
+  },
   "banner": { "defaultColor": "mint" }
 }

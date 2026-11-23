@@ -1,5 +1,14 @@
-import { Form, redirect, useActionData, useLoaderData, useNavigation, type ActionFunctionArgs, type LoaderFunctionArgs } from 'react-router';
+import {
+  Form,
+  redirect,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from 'react-router';
 import { Alert, Button, TextArea } from '@heroui/react';
+import { conversations, eq } from '@postomat/db';
 import { DM } from '@postomat/templates';
 import { getPost, submitPost } from '@postomat/workflow';
 import { requireUser, type CurrentUser } from '../server/auth.server';
@@ -15,7 +24,11 @@ async function access(request: Request, id: number): Promise<CurrentUser> {
   const post = await getPost(deps.db, id).catch(() => {
     throw new Response('Beitrag nicht gefunden', { status: 404 });
   });
-  if (post.authorUsername !== user.username && !user.roles.includes('medienteam')) throw new Response('Kein Zugang', { status: 403 });
+  if (
+    post.authorUsername !== user.username &&
+    !user.roles.includes('medienteam')
+  )
+    throw new Response('Kein Zugang', { status: 403 });
   return user;
 }
 
@@ -23,7 +36,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const id = Number(params['id']);
   const user = await access(request, id);
   const view = await loadPostView(id);
-  return { user: { username: user.username, roles: user.roles }, view, isAuthor: view.post.authorUsername === user.username };
+  return {
+    user: { username: user.username, roles: user.roles },
+    view,
+    isAuthor: view.post.authorUsername === user.username,
+  };
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -31,7 +48,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const user = await access(request, id);
   const deps = await getDeps();
   const post = await getPost(deps.db, id);
-  if (post.authorUsername !== user.username) return { error: 'Nur die Autorin oder der Autor kann den Beitrag abschicken.' };
+  if (post.authorUsername !== user.username)
+    return {
+      error: 'Nur die Autorin oder der Autor kann den Beitrag abschicken.',
+    };
   if (post.status !== 'sammeln') return { error: DM.alreadySubmitted };
   const form = await request.formData();
   const note = String(form.get('note') ?? '').slice(0, 2000);
@@ -41,9 +61,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
   // Also reset the DM conversation and confirm there.
-  const { conversations, eq } = await import('@postomat/db');
-  await deps.db.update(conversations).set({ state: null, postId: null }).where(eq(conversations.postId, id));
-  await deps.queue.send('bot.dm', { matrixUserId: post.authorMatrixId, text: DM.submitted });
+  await deps.db
+    .update(conversations)
+    .set({ state: null, postId: null })
+    .where(eq(conversations.postId, id));
+  await deps.queue.send('bot.dm', {
+    matrixUserId: post.authorMatrixId,
+    text: DM.submitted,
+  });
   return redirect(`/b/${id}?abgeschickt=1`);
 }
 
@@ -62,20 +87,37 @@ export default function Beitrag() {
         </div>
         <StatusTape status={p.status} version={p.version} />
       </div>
-      {p.status !== 'sammeln' && <Stepper done={p.stage.done} discarded={p.stage.discarded} />}
+      {p.status !== 'sammeln' && (
+        <Stepper done={p.stage.done} discarded={p.stage.discarded} />
+      )}
       <ChannelPreviews view={view} />
       {p.status === 'sammeln' && isAuthor ? (
-        <Form method="post" className="grid gap-2 rounded-lg border border-[var(--accent)] p-3">
+        <Form
+          method="post"
+          className="grid gap-2 rounded-lg border border-[var(--accent)] p-3"
+        >
           <label htmlFor="note" className="text-sm">
-            <b>Notiz fürs Medienteam</b> <span className="text-[var(--muted)]">(optional)</span>
+            <b>Notiz fürs Medienteam</b>{' '}
+            <span className="text-[var(--muted)]">(optional)</span>
           </label>
-          <TextArea id="note" name="note" rows={3} defaultValue={p.note ?? ''} className="w-full" />
+          <TextArea
+            id="note"
+            name="note"
+            rows={3}
+            defaultValue={p.note ?? ''}
+            className="w-full"
+          />
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" variant="primary" isPending={nav.state === 'submitting'}>
+            <Button
+              type="submit"
+              variant="primary"
+              isPending={nav.state === 'submitting'}
+            >
               Ans Medienteam schicken
             </Button>
             <span className="text-xs text-[var(--muted)]">
-              Texte ändern kann das Medienteam. Fehlt etwas Inhaltliches, schreib es einfach in die Notiz.
+              Texte ändern kann das Medienteam. Fehlt etwas Inhaltliches,
+              schreib es einfach in die Notiz.
             </span>
           </div>
           {result?.error && (
@@ -87,7 +129,11 @@ export default function Beitrag() {
           )}
         </Form>
       ) : (
-        p.note && <p className="rounded-md bg-[var(--default)] p-2 text-sm">Notiz: „{p.note}“</p>
+        p.note && (
+          <p className="rounded-md bg-[var(--default)] p-2 text-sm">
+            Notiz: „{p.note}“
+          </p>
+        )
       )}
     </Shell>
   );

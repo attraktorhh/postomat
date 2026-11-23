@@ -14,7 +14,8 @@ export default function Home() {
     <main className="mx-auto grid max-w-md gap-4 p-6">
       <h1 className="text-2xl font-bold">Postomat</h1>
       <p className="text-sm">
-        Beiträge für den Attraktor: Erzähl dem Bot <b>@postomat</b> in Matrix, was du vorhast. Hier siehst du deine Beiträge und das Medienteam
+        Beiträge für den Attraktor: Erzähl dem Bot <b>@postomat</b> in Matrix,
+        was du vorhast. Hier siehst du deine Beiträge und das Medienteam
         bearbeitet sie.
       </p>
       <form action="/auth/login" method="get">
