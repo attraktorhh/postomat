@@ -1,1 +1,1 @@
-export * from './lib/channel-mediawiki.js';
+export * from './client.ts';

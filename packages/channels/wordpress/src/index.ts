@@ -1,1 +1,1 @@
-export * from './lib/channel-wordpress.js';
+export * from './client.ts';

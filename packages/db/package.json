@@ -9,15 +9,50 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "@postomat/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }
   },
   "nx": {
-    "name": "db"
+    "name": "db",
+    "targets": {
+      "migrate": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node --conditions=@postomat/source src/migrate.ts",
+          "cwd": "packages/db"
+        }
+      },
+      "migrate-test": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "DATABASE_URL=${DATABASE_URL_TEST:-postgres://postomat:postomat@localhost:55432/postomat_test} node --conditions=@postomat/source src/migrate.ts",
+          "cwd": "packages/db"
+        }
+      },
+      "generate-migration": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "drizzle-kit generate",
+          "cwd": "packages/db"
+        }
+      }
+    }
   },
   "dependencies": {
+    "@postomat/core": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1",
     "tslib": "^2.3.0"
-  }
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11"
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ]
 }

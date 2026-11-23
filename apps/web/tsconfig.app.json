@@ -50,5 +50,25 @@
     "eslint.config.js",
     "eslint.config.cjs",
     "eslint.config.mjs"
+  ],
+  "references": [
+    {
+      "path": "../../packages/workflow/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/templates/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/db/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/core/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/channels/meetup/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/channels/copy/tsconfig.lib.json"
+    }
   ]
 }

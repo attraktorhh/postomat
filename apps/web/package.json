@@ -8,17 +8,28 @@
     "name": "@postomat/web"
   },
   "dependencies": {
+    "@heroui/react": "^3.2.8",
+    "@heroui/styles": "^3.2.8",
+    "@postomat/channel-copy": "workspace:*",
+    "@postomat/channel-meetup": "workspace:*",
+    "@postomat/core": "workspace:*",
+    "@postomat/db": "workspace:*",
+    "@postomat/templates": "workspace:*",
+    "@postomat/workflow": "workspace:*",
     "@react-router/node": "^7.14.2",
     "@react-router/serve": "^7.14.2",
     "isbot": "^4.4.0",
+    "openid-client": "^6.9.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router": "^7.14.2"
   },
   "devDependencies": {
     "@react-router/dev": "^7.14.2",
+    "@tailwindcss/vite": "^4.3.5",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.3.5"
   }
 }

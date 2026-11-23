@@ -1,0 +1,36 @@
+{
+  "name": "@postomat/workflow",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "@postomat/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "nx": {
+    "name": "workflow"
+  },
+  "dependencies": {
+    "@postomat/ai": "workspace:*",
+    "@postomat/channel-copy": "workspace:*",
+    "@postomat/channel-mediawiki": "workspace:*",
+    "@postomat/channel-meetup": "workspace:*",
+    "@postomat/channel-wordpress": "workspace:*",
+    "@postomat/core": "workspace:*",
+    "@postomat/db": "workspace:*",
+    "@postomat/media": "workspace:*",
+    "@postomat/render": "workspace:*",
+    "@postomat/templates": "workspace:*",
+    "image-size": "^2.1.0",
+    "pg-boss": "^12.39.0",
+    "tslib": "^2.3.0"
+  }
+}

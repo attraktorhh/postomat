@@ -44,6 +44,12 @@
     },
     {
       "path": "./apps/web"
+    },
+    {
+      "path": "./packages/workflow"
+    },
+    {
+      "path": "./apps/e2e"
     }
   ],
   "compilerOptions": {}
