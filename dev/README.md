@@ -53,7 +53,7 @@ Connection strings for the apps:
 
 ```
 DATABASE_URL=postgres://postomat:postomat@localhost:55432/postomat
-TEST_DATABASE_URL=postgres://postomat:postomat@localhost:55432/postomat_test
+DATABASE_URL_TEST=postgres://postomat:postomat@localhost:55432/postomat_test
 ```
 
 ### Matrix (Synapse)
