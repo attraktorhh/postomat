@@ -52,3 +52,6 @@ vitest.config.*.timestamp*
 .vitest
 
 vite.config.*.timestamp*
+# local env and data
+.env
+.data

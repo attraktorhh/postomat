@@ -14,7 +14,16 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "e2e"
+    "name": "e2e",
+    "targets": {
+      "stack-smoke": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node --conditions=@postomat/source --env-file-if-exists=.env apps/e2e/src/stack-smoke.ts --approve",
+          "cwd": "{workspaceRoot}"
+        }
+      }
+    }
   },
   "dependencies": {
     "@postomat/ai": "workspace:*",
@@ -31,6 +40,7 @@
   },
   "devDependencies": {
     "ai": "^7.0.179",
+    "matrix-bot-sdk": "^0.8.0",
     "sharp": "^0.35.5"
   }
 }

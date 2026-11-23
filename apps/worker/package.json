@@ -54,9 +54,21 @@
       },
       "serve": {
         "continuous": true,
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node --conditions=@postomat/source --env-file-if-exists=.env apps/worker/src/main.ts",
+          "cwd": "{workspaceRoot}"
+        }
+      },
+      "start": {
+        "executor": "nx:run-commands",
         "dependsOn": [
-          "^build"
-        ]
+          "build"
+        ],
+        "options": {
+          "command": "node --env-file-if-exists=.env apps/worker/dist/main.js",
+          "cwd": "{workspaceRoot}"
+        }
       }
     }
   },
