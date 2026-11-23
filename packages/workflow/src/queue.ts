@@ -100,7 +100,10 @@ export class InMemoryQueue implements JobQueue {
   readonly pending: Array<{ name: JobName; data: unknown; attempt: number; key?: string }> = [];
   readonly sent: Array<{ name: JobName; data: unknown }> = [];
   readonly failures: Array<{ name: JobName; error: string }> = [];
-  constructor(readonly retryLimit = 2) {}
+  readonly retryLimit: number;
+  constructor(retryLimit = 2) {
+    this.retryLimit = retryLimit;
+  }
 
   async send<N extends JobName>(name: N, data: JobPayloads[N], opts: { singletonKey?: string } = {}): Promise<void> {
     if (opts.singletonKey && this.pending.some((j) => j.name === name && j.key === opts.singletonKey)) return;

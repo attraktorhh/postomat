@@ -22,6 +22,14 @@
     "@postomat/db": "workspace:*",
     "@postomat/templates": "workspace:*",
     "@postomat/testing": "workspace:*",
-    "@postomat/workflow": "workspace:*"
+    "@postomat/workflow": "workspace:*",
+    "@postomat/media": "workspace:*",
+    "@postomat/render": "workspace:*",
+    "@postomat/ai": "workspace:*",
+    "@postomat/channel-wordpress": "workspace:*",
+    "@postomat/channel-mediawiki": "workspace:*"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.5"
   }
 }

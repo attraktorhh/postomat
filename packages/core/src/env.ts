@@ -57,6 +57,8 @@ export const envSchema = z.object({
   NEXTCLOUD_USERNAME: optional,
   NEXTCLOUD_PASSWORD: optional,
   NEXTCLOUD_BASE_FOLDER: z.string().default('/Postomat-Fotos'),
+  /** Used instead of Nextcloud when NEXTCLOUD_USERNAME/PASSWORD are empty (dev only). */
+  MEDIA_LOCAL_DIR: z.string().default('./.data/media'),
 
   MEETUP_ICAL_URL: z.string().default('http://localhost:8084/attraktor/events/ical/'),
   MEETUP_GROUP_URL: z.string().default('http://localhost:8084/attraktor/'),

@@ -371,15 +371,30 @@ importers:
 
   apps/e2e:
     dependencies:
+      '@postomat/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
+      '@postomat/channel-mediawiki':
+        specifier: workspace:*
+        version: link:../../packages/channels/mediawiki
       '@postomat/channel-meetup':
         specifier: workspace:*
         version: link:../../packages/channels/meetup
+      '@postomat/channel-wordpress':
+        specifier: workspace:*
+        version: link:../../packages/channels/wordpress
       '@postomat/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@postomat/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@postomat/media':
+        specifier: workspace:*
+        version: link:../../packages/media
+      '@postomat/render':
+        specifier: workspace:*
+        version: link:../../packages/render
       '@postomat/templates':
         specifier: workspace:*
         version: link:../../packages/templates
@@ -389,6 +404,10 @@ importers:
       '@postomat/workflow':
         specifier: workspace:*
         version: link:../../packages/workflow
+    devDependencies:
+      sharp:
+        specifier: ^0.35.5
+        version: 0.35.5(@types/node@24.19.2)
 
   apps/web:
     dependencies:

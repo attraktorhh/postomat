@@ -1,4 +1,5 @@
 import { basicAuth, HttpError, trimSlash, type FetchLike } from '@postomat/core';
+import type { MediaStore } from './store.ts';
 
 export interface WebDavConfig {
   /** e.g. http://localhost:8083/remote.php/dav/files/postomat */
@@ -9,7 +10,8 @@ export interface WebDavConfig {
 }
 
 /** Minimal WebDAV client for Nextcloud (MKCOL, PUT, GET, PROPFIND, DELETE). */
-export class WebDavClient {
+export class WebDavClient implements MediaStore {
+  readonly kind = 'webdav' as const;
   private readonly base: string;
   private readonly fetchFn: FetchLike;
   private readonly cfg: WebDavConfig;

@@ -1,1 +1,1 @@
-export * from './lib/e2e.js';
+export * from './harness.ts';

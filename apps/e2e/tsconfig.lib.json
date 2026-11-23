@@ -11,6 +11,21 @@
   "include": ["src/**/*.ts"],
   "references": [
     {
+      "path": "../../packages/channels/mediawiki/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/channels/wordpress/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/ai/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/render/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/media/tsconfig.lib.json"
+    },
+    {
       "path": "../../packages/workflow/tsconfig.lib.json"
     },
     {
