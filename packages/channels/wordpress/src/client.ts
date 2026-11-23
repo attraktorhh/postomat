@@ -107,9 +107,7 @@ export class WordPressClient {
     return p ? { id: p.id, link: p.link, status: p.status } : null;
   }
 
-  async getPost(
-    id: number,
-  ): Promise<
+  async getPost(id: number): Promise<
     WpPostRef & {
       content: string;
       categories: number[];

@@ -70,7 +70,7 @@ export function ChannelPreviews({ view }: { view: PostView }) {
   ].filter((t) => t.node);
 
   return (
-    <Tabs className="w-full">
+    <Tabs className="w-full min-w-0">
       <Tabs.ListContainer className="overflow-x-auto">
         <Tabs.List aria-label="Kanäle">
           <Tabs.Tab id="alle">
@@ -86,7 +86,7 @@ export function ChannelPreviews({ view }: { view: PostView }) {
         </Tabs.List>
       </Tabs.ListContainer>
       <Tabs.Panel id="alle" className="pt-3">
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
           {tabs.map((t) => (
             <div key={t.id}>{t.node}</div>
           ))}

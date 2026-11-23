@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { contractTarget, env, FakeWebDav } from '@postomat/testing';
 import { photoFolder, WebDavClient } from '../src/index.ts';
 
-describe(`WebDAV contract (${contractTarget()})`, () => {
+describe(`WebDAV contract (${contractTarget()})`, { timeout: 30000 }, () => {
   let fake: FakeWebDav | undefined;
   let client: WebDavClient;
   const root = `/Postomat-Fotos/contract-${Date.now()}`;

@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createDb,
+  eq,
   posts,
   runMigrations,
-  sql,
   type DbHandle,
 } from '../src/index.ts';
 
@@ -17,20 +17,26 @@ describe('schema (Postgres)', () => {
     h = createDb(URL, 2);
     await runMigrations(h.db);
     await runMigrations(h.db); // idempotent
-    await h.db.execute(sql`truncate posts restart identity cascade`);
   });
   afterAll(async () => h?.close());
 
+  // No truncate: the e2e suite may use the same test database in parallel.
+  const uid = () => `@t${Date.now()}${Math.floor(Math.random() * 1e6)}:test`;
+
   it('allows only one draft per member', async () => {
+    const author = uid();
     const base = {
       type: 'event' as const,
-      authorMatrixId: '@lena:localhost',
-      authorUsername: 'lena',
+      authorMatrixId: author,
+      authorUsername: 'tester',
     };
     await h.db.insert(posts).values(base);
     await expect(h.db.insert(posts).values(base)).rejects.toThrow();
     await h.db.insert(posts).values({ ...base, status: 'zur_freigabe' });
-    expect((await h.db.select().from(posts)).length).toBe(2);
+    expect(
+      (await h.db.select().from(posts).where(eq(posts.authorMatrixId, author)))
+        .length,
+    ).toBe(2);
   });
 
   it('stores facts as JSON', async () => {
@@ -38,7 +44,7 @@ describe('schema (Postgres)', () => {
       .insert(posts)
       .values({
         type: 'projekt',
-        authorMatrixId: '@kai:localhost',
+        authorMatrixId: uid(),
         authorUsername: 'kai',
         facts: { title: 'Nixie-Uhr', places: 3 },
       })

@@ -260,7 +260,7 @@ function ChannelStatusRows({
         .map((c) => (
           <div
             key={c.channel}
-            className="grid gap-2 rounded-md border border-[var(--border)] p-2 sm:grid-cols-[7rem_1fr_auto] sm:items-center"
+            className="grid grid-cols-[minmax(0,1fr)] gap-2 rounded-md border border-[var(--border)] p-2 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-center"
           >
             <b>{c.name}</b>
             <span className="min-w-0 text-sm text-[var(--muted)] [overflow-wrap:anywhere]">
@@ -364,8 +364,8 @@ export default function RedaktionPost() {
         </Alert>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
-        <section className="grid min-w-0 content-start gap-3">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <section className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3">
           {approvedPhase && (
             <>
               <h2 className="font-semibold">Status der Kanäle</h2>
@@ -540,7 +540,7 @@ export default function RedaktionPost() {
           <ChannelPreviews view={view} />
         </section>
 
-        <aside className="grid content-start gap-4">
+        <aside className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4">
           <div className="grid gap-2">
             {p.status === 'zur_freigabe' && (
               <Form method="post">

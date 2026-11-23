@@ -229,14 +229,12 @@ export async function approvePost(
         c.mode === 'auto' ? 'wartet' : c.mode === 'copy' ? 'kopieren' : 'aus';
       await updateChannel(tx, post.id, c.channel, { status });
     }
-    await tx
-      .insert(approvals)
-      .values({
-        postId: post.id,
-        version: post.version,
-        actor: input.approverUsername,
-        result: 'approved',
-      });
+    await tx.insert(approvals).values({
+      postId: post.id,
+      version: post.version,
+      actor: input.approverUsername,
+      result: 'approved',
+    });
     await addHistory(
       tx,
       post.id,
@@ -287,15 +285,13 @@ export async function requestChange(
     }
     if (post.status !== 'zur_freigabe') return false;
     await updatePost(tx, postId, { status: 'aenderung_gewuenscht' });
-    await tx
-      .insert(approvals)
-      .values({
-        postId,
-        version: post.version,
-        actor,
-        result: 'change_requested',
-        comment,
-      });
+    await tx.insert(approvals).values({
+      postId,
+      version: post.version,
+      actor,
+      result: 'change_requested',
+      comment,
+    });
     await addHistory(tx, postId, actor, 'change_requested', msg, { comment });
     return true;
   });

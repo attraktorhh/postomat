@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { contractTarget, env, FakeWordPress } from '@postomat/testing';
 import { WordPressClient } from '../src/index.ts';
 
-describe(`WordPress contract (${contractTarget()})`, () => {
+describe(`WordPress contract (${contractTarget()})`, { timeout: 30000 }, () => {
   let fake: FakeWordPress | undefined;
   let client: WordPressClient;
   const created: number[] = [];

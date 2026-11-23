@@ -13,6 +13,25 @@ permissions:
 jobs:
   main:
     runs-on: ubuntu-latest
+    services:
+      # DB tests and the e2e flow (apps/e2e) need Postgres.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postomat
+          POSTGRES_PASSWORD: postomat
+          POSTGRES_DB: postomat_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postomat"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postomat:postomat@localhost:5432/postomat_test
+      DATABASE_URL_TEST: postgres://postomat:postomat@localhost:5432/postomat_test
+      NX_NO_CLOUD: true
     steps:
       - uses: actions/checkout@v5
         with:
@@ -31,4 +50,5 @@ jobs:
       - uses: nrwl/nx-set-shas@v4
 
       - run: pnpm nx format:check
+      - run: pnpm nx run db:migrate-test
       - run: pnpm nx affected -t lint test build typecheck

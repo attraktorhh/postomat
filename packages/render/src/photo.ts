@@ -29,9 +29,7 @@ export const NORMALIZED_MAX_EDGE = 2400;
  * dimensions as displayed, i.e. after applying the EXIF orientation.
  * Throws `UnsupportedImageError` for anything but JPEG, PNG and WebP.
  */
-export async function inspectPhoto(
-  buf: Buffer,
-): Promise<{
+export async function inspectPhoto(buf: Buffer): Promise<{
   mime: PhotoMime;
   width: number;
   height: number;

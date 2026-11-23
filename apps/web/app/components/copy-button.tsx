@@ -54,7 +54,7 @@ export function CopyFields({
       {fields.map((f) => (
         <div
           key={f.key}
-          className="grid grid-cols-1 items-start gap-2 rounded-md border border-[var(--border)] p-2 sm:grid-cols-[8rem_1fr_auto]"
+          className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 rounded-md border border-[var(--border)] p-2 sm:grid-cols-[8rem_minmax(0,1fr)_auto]"
         >
           <b className="text-sm">{f.label}</b>
           <span

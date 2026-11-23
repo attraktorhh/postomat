@@ -36,13 +36,11 @@ export const sessionStorage = createSessionStorage<SessionData>({
   async createData(data, expires) {
     const { db } = await getDeps();
     const id = randomUUID();
-    await db
-      .insert(sessions)
-      .values({
-        id,
-        data: data as Record<string, unknown>,
-        expiresAt: expires ?? new Date(Date.now() + MAX_AGE * 1000),
-      });
+    await db.insert(sessions).values({
+      id,
+      data: data as Record<string, unknown>,
+      expiresAt: expires ?? new Date(Date.now() + MAX_AGE * 1000),
+    });
     return id;
   },
   async readData(id) {

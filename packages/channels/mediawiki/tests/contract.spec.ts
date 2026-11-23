@@ -7,7 +7,7 @@ import {
   MediaWikiError,
 } from '../src/index.ts';
 
-describe(`MediaWiki contract (${contractTarget()})`, () => {
+describe(`MediaWiki contract (${contractTarget()})`, { timeout: 30000 }, () => {
   let fake: FakeMediaWiki | undefined;
   let cfg: { apiUrl: string; username: string; password: string };
 
