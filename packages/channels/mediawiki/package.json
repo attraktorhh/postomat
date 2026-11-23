@@ -16,10 +16,25 @@
     }
   },
   "nx": {
-    "name": "channel-mediawiki"
+    "name": "channel-mediawiki",
+    "targets": {
+      "contract": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "vitest run tests/contract.spec.ts",
+          "cwd": "packages/channels/mediawiki",
+          "env": {
+            "CONTRACT_TARGET": "local"
+          }
+        }
+      }
+    }
   },
   "dependencies": {
     "@postomat/core": "workspace:*",
     "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@postomat/testing": "workspace:*"
   }
 }

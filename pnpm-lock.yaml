@@ -510,6 +510,10 @@ importers:
       tslib:
         specifier: ^2.3.0
         version: 2.9.1
+    devDependencies:
+      '@postomat/testing':
+        specifier: workspace:*
+        version: link:../../testing
 
   packages/channels/meetup:
     dependencies:
@@ -522,6 +526,10 @@ importers:
       tslib:
         specifier: ^2.3.0
         version: 2.9.1
+    devDependencies:
+      '@postomat/testing':
+        specifier: workspace:*
+        version: link:../../testing
 
   packages/channels/wordpress:
     dependencies:
@@ -531,6 +539,10 @@ importers:
       tslib:
         specifier: ^2.3.0
         version: 2.9.1
+    devDependencies:
+      '@postomat/testing':
+        specifier: workspace:*
+        version: link:../../testing
 
   packages/core:
     dependencies:
@@ -571,6 +583,10 @@ importers:
       tslib:
         specifier: ^2.3.0
         version: 2.9.1
+    devDependencies:
+      '@postomat/testing':
+        specifier: workspace:*
+        version: link:../testing
 
   packages/render:
     dependencies:

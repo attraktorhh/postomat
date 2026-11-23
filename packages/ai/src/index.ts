@@ -1,1 +1,1 @@
-export * from './lib/ai.js';
+export * from './ai.ts';

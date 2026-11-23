@@ -14,3 +14,4 @@ export * from './slug.ts';
 export * from './dialog/index.ts';
 export * from './ports.ts';
 export * from './http.ts';
+export * from './logger.ts';

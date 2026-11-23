@@ -16,11 +16,26 @@
     }
   },
   "nx": {
-    "name": "channel-meetup"
+    "name": "channel-meetup",
+    "targets": {
+      "contract": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "vitest run tests/contract.spec.ts",
+          "cwd": "packages/channels/meetup",
+          "env": {
+            "CONTRACT_TARGET": "local"
+          }
+        }
+      }
+    }
   },
   "dependencies": {
     "@postomat/core": "workspace:*",
     "@postomat/templates": "workspace:*",
     "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@postomat/testing": "workspace:*"
   }
 }
