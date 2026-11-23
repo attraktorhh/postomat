@@ -58,7 +58,7 @@ const whenEn = (ctx: TemplateContext): string | undefined => {
 
 const titleEn = (ctx: TemplateContext): string => ctx.ai?.titleEn ?? title(ctx);
 
-function shortEn(ctx: TemplateContext): string {
+function shortEn(ctx: TemplateContext, signup = true): string {
   if (ctx.ai?.shortEn) return ctx.ai.shortEn;
   const f = ctx.facts;
   if (ctx.type === 'projekt') return `Built at Attraktor: ${titleEn(ctx)}. Drop by and have a look!`;
@@ -69,12 +69,12 @@ function shortEn(ctx: TemplateContext): string {
   const when = whenEn(ctx);
   return `Join us${when ? ` on ${when}` : ''} at Attraktor makerspace in Hamburg-Altona: ${titleEn(ctx)}.${
     extras.length ? ` ${extras.join(', ')}.` : ''
-  } Sign up via Meetup.`;
+  }${signup ? ' Sign up via Meetup.' : ''}`;
 }
 
-function bodyEn(ctx: TemplateContext): string {
+function bodyEn(ctx: TemplateContext, signup = true): string {
   if (ctx.ai?.bodyEn) return ctx.ai.bodyEn;
-  return shortEn(ctx);
+  return shortEn(ctx, signup);
 }
 
 // ---------- Instagram ----------
@@ -118,7 +118,7 @@ function meetupDraft(ctx: TemplateContext): ChannelDraft {
   if (f.places !== undefined) bullets.push(`🎟️ ${f.places} Plätze`);
   if (f.costs) bullets.push(`💶 ${f.costs}`);
   if (bullets.length) de.push(...bullets);
-  const en = [`🔧 What to expect`, bodyEn(ctx)];
+  const en = [`🔧 What to expect`, bodyEn(ctx, false)];
   const enBullets: string[] = [];
   if (f.places !== undefined) enBullets.push(`🎟️ ${f.places} spots`);
   const c = costsEn(f.costs);
@@ -127,7 +127,8 @@ function meetupDraft(ctx: TemplateContext): ChannelDraft {
   return {
     textDe: de.join('\n').trim(),
     textEn: en.join('\n').trim(),
-    fields: { title: `${title(ctx)} / ${titleEn(ctx)}` },
+    // Without AI there is no English title; the Medienteam adds it in the editor.
+    fields: { title: ctx.ai?.titleEn ? `${title(ctx)} / ${ctx.ai.titleEn}` : title(ctx) },
   };
 }
 

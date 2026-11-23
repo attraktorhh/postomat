@@ -76,7 +76,8 @@ export class Harness {
       bannerAssets: {},
       matrix: this.matrix,
     };
-    this.bot = new BotService({ ...this.deps, matrix: this.matrix });
+    // Same object: tests may swap deps (e.g. the AI) later.
+    this.bot = new BotService(this.deps as WorkflowDeps & { matrix: FakeMatrix });
     await this.bot.registerJobs(this.queue);
     await registerWorkerJobs(this.deps, this.queue);
     return this;
