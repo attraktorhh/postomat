@@ -193,3 +193,18 @@ describe('Matrix messages', () => {
     );
   });
 });
+
+describe('dmSummary', () => {
+  it('shows a Projekt description only once', async () => {
+    const { dmSummary } = await import('../src/messages.ts');
+    const msg = dmSummary({
+      type: 'projekt',
+      facts: { title: 'Nixie-Uhr', description: 'Eine Uhr mit Röhren.' },
+      channels: [{ channel: 'instagram', mode: 'copy' }],
+      url: 'http://postomat.test/b/1',
+      excerpt: 'Eine Uhr mit Röhren.',
+    });
+    expect(msg.body.split('Eine Uhr mit Röhren.').length - 1).toBe(1);
+    expect(msg.body).toContain('Nixie-Uhr\nProjekt\n');
+  });
+});

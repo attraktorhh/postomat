@@ -87,7 +87,8 @@ export function dmSummary(input: {
   excerpt?: string;
 }): MatrixText {
   const f = input.facts;
-  const facts = input.type === 'event' ? factsLineDm(f) : (f.description ?? '');
+  // Projekt: the excerpt already quotes the description, so only the type here.
+  const facts = input.type === 'event' ? factsLineDm(f) : 'Projekt';
   const lines = [
     'Super, so schicke ich es ans Medienteam:',
     '',
