@@ -234,6 +234,11 @@ describe('scenarios', () => {
       .from(channelPosts)
       .where(eq(channelPosts.channel, 'wordpress'));
     expect(after.status).toBe('veroeffentlicht');
+    // the member hears about the late website link, the wiki page gets it too
+    expect(h.matrix.messages(ROOMS.dmLena).at(-1)?.body).toContain(after.url!);
+    expect(
+      h.wiki.pages.get('Termin:Lötkurs für Anfänger 2026-12-11'),
+    ).toContain(`|url=${after.url}`);
   });
 
   it('never overwrites an existing wiki page', async () => {

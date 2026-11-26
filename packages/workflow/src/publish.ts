@@ -17,7 +17,7 @@ import {
 } from './repo.ts';
 import { draftOf, linksOf, templateContext } from './context.ts';
 import { bannerData } from './photos.ts';
-import { settleAfterPublish } from './posts.ts';
+import { notifyMemberLink, settleAfterPublish } from './posts.ts';
 
 const marker = (postId: number) => `<!-- postomat:post=${postId} -->`;
 
@@ -30,6 +30,8 @@ export async function publishChannel(
 ): Promise<void> {
   const c = await getChannel(deps.db, postId, channel);
   if (!c || c.status !== 'wartet') return; // already done, skipped or retried elsewhere
+  // Main "ist online" DM already sent → this is a late publish (e.g. "Erneut versuchen").
+  const late = !!(await getPost(deps.db, postId)).autoNotifiedAt;
   try {
     const url =
       channel === 'wordpress'
@@ -51,6 +53,17 @@ export async function publishChannel(
       { url },
     );
     await settleAfterPublish(deps, postId);
+    if (late) {
+      await notifyMemberLink(deps, postId, channel, url);
+      // The wiki page was created without the website link: add it now.
+      if (channel === 'wordpress')
+        await updatePublished(
+          deps,
+          postId,
+          'wiki',
+          'Wiki: Website-Link ergänzt',
+        );
+    }
   } catch (e) {
     const message =
       e instanceof PageExistsError
@@ -176,6 +189,7 @@ export async function updatePublished(
   deps: WorkflowDeps,
   postId: number,
   channel: 'wordpress' | 'wiki',
+  note?: string,
 ): Promise<void> {
   const post = await getPost(deps.db, postId);
   const channels = await getChannels(deps.db, postId);
@@ -193,7 +207,7 @@ export async function updatePublished(
       postId,
       'postomat',
       'updated',
-      'Website: Meetup-Link ergänzt',
+      note ?? 'Website: Meetup-Link ergänzt',
     );
   } else {
     if (!deps.mediawiki) return;
@@ -207,7 +221,7 @@ export async function updatePublished(
       postId,
       'postomat',
       'updated',
-      'Wiki: meetupid ergänzt',
+      note ?? 'Wiki: meetupid ergänzt',
     );
   }
 }
