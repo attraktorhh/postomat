@@ -52,7 +52,12 @@ export async function publishChannel(
     );
     await settleAfterPublish(deps, postId);
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message =
+      e instanceof PageExistsError
+        ? `Die Wiki-Seite „${e.title}“ gibt es schon. Postomat überschreibt sie nicht – bitte im Wiki prüfen.`
+        : e instanceof Error
+          ? e.message
+          : String(e);
     deps.log.warn('publish failed', {
       postId,
       channel,
@@ -104,13 +109,19 @@ async function publishWordPress(
     });
   }
 
-  const content = wordpressContent(ctx, draftOf(c), linksOf(channels));
+  // The marker identifies our own post (crash recovery below, never someone else's post).
+  const content = `${wordpressContent(ctx, draftOf(c), linksOf(channels))}\n${marker(post.id)}`;
   if (c.remoteId)
     return (await wp.updatePost(Number(c.remoteId), { content })).link;
 
   // A crash between create and storing the id is covered by the deterministic slug.
   const slug = `${slugify(post.facts.title ?? 'termin', 50)}-${post.facts.date ?? post.id}`;
-  const existing = await wp.findPostBySlug(slug);
+  const found = await wp.findPostBySlug(slug);
+  // Same title + date as an earlier, different post: WordPress picks a new slug.
+  const existing =
+    found && (await wp.getPost(found.id)).content.includes(marker(post.id))
+      ? found
+      : null;
   const categories = [
     ...deps.config.wordpress.eventCategories,
     ...(post.facts.isWorkshop ? deps.config.wordpress.workshopCategories : []),
@@ -175,7 +186,7 @@ export async function updatePublished(
   if (channel === 'wordpress') {
     if (!deps.wordpress) return;
     await deps.wordpress.updatePost(Number(c.remoteId), {
-      content: wordpressContent(ctx, draftOf(c), links),
+      content: `${wordpressContent(ctx, draftOf(c), links)}\n${marker(post.id)}`,
     });
     await addHistory(
       deps.db,

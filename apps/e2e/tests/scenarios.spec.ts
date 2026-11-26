@@ -246,9 +246,35 @@ describe('scenarios', () => {
       .from(channelPosts)
       .where(eq(channelPosts.channel, 'wiki'));
     expect(wiki.status).toBe('fehler');
-    expect(wiki.error).toContain('already exists');
+    expect(wiki.error).toContain('gibt es schon');
     expect(h.wiki.pages.get('Termin:Lötkurs für Anfänger 2026-12-11')).toBe(
       'fremde Seite',
+    );
+  });
+
+  it('never takes over the WordPress post of an earlier post with the same title and date', async () => {
+    h.wordpress.posts.push({
+      id: 500,
+      title: 'Lötkurs für Anfänger',
+      content: '<p>fremder Beitrag</p>',
+      status: 'publish',
+      slug: 'loetkurs-fuer-anfaenger-2026-12-11',
+      categories: [],
+      featured_media: 0,
+      link: `${h.wordpress.url}/loetkurs-fuer-anfaenger-2026-12-11/`,
+    });
+    await collectEvent(h);
+    await h.dm(LENA, 'abschicken');
+    await h.react(MIRA, await cardOf(h), '👍');
+    const [wp] = await h.db.db
+      .select()
+      .from(channelPosts)
+      .where(eq(channelPosts.channel, 'wordpress'));
+    expect(wp.status).toBe('veroeffentlicht');
+    expect(wp.remoteId).not.toBe('500');
+    expect(wp.url).toContain('loetkurs-fuer-anfaenger-2026-12-11-2');
+    expect(h.wordpress.posts.find((p) => p.id === 500)?.content).toBe(
+      '<p>fremder Beitrag</p>',
     );
   });
 

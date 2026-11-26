@@ -90,7 +90,11 @@ export class FakeWordPress {
           return json(res, 500, { code: 'internal_server_error' });
         }
         const input = JSON.parse(body.toString());
-        const slug = input.slug ?? `post-${this.nextId}`;
+        // Like WordPress: a taken slug gets a numeric suffix.
+        const base = input.slug ?? `post-${this.nextId}`;
+        let slug = base;
+        for (let n = 2; this.posts.some((x) => x.slug === slug); n++)
+          slug = `${base}-${n}`;
         const p: FakeWpPost = {
           id: this.nextId++,
           title: input.title,
