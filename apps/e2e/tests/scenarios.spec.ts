@@ -215,7 +215,9 @@ describe('scenarios', () => {
       .from(channelPosts)
       .where(eq(channelPosts.channel, 'wordpress'));
     expect(wp.status).toBe('fehler');
-    expect(wp.error).toContain('HTTP 500');
+    expect(wp.error).toBe(
+      'Website nicht erreichbar – später „Erneut versuchen“.',
+    );
     const summary = h.matrix
       .messages(ROOMS.medienteam)
       .filter((m) => !m.opts.threadRoot && !m.opts.replaces)

@@ -31,20 +31,26 @@ export function mediaStoreFromEnv(env: Env, log: Logger): MediaStore {
   return new LocalFileStore(fromRoot(env.MEDIA_LOCAL_DIR));
 }
 
-/** Builds the production dependencies from environment variables. */
+/**
+ * Builds the production dependencies from environment variables. Only the
+ * worker runs pg-boss maintenance and cron; bot and web just send and work jobs.
+ */
 export async function createDepsFromEnv(
   name: string,
-  opts: { startQueue?: boolean } = {},
+  opts: { startQueue?: boolean; queueMaintenance?: boolean } = {},
 ): Promise<{ deps: WorkflowDeps; db: DbHandle; queue: PgBossQueue }> {
   const env = loadEnv();
   const log = createLogger(name, env.LOG_LEVEL);
   const config = loadConfig(env.POSTOMAT_CONFIG);
-  for (const w of channelModeWarnings(config, credentialsFromEnv(env)))
+  // One source of truth for "has credentials": the same check picks the channel modes.
+  const creds = credentialsFromEnv(env);
+  for (const w of channelModeWarnings(config, creds))
     log.warn(`channel mode: ${w}`);
   const db = createDb(env.DATABASE_URL);
   const queue = new PgBossQueue(env.DATABASE_URL, {
     retryLimit: env.JOB_RETRY_LIMIT,
     logger: log.child('jobs'),
+    maintenance: opts.queueMaintenance ?? name === 'worker',
   });
   if (opts.startQueue !== false) await queue.start();
   const deps: WorkflowDeps = {
@@ -56,22 +62,20 @@ export async function createDepsFromEnv(
     now: () => new Date(),
     ai: createAiFromEnv(env, log.child('ai')),
     media: mediaStoreFromEnv(env, log),
-    wordpress:
-      env.WORDPRESS_USERNAME && env.WORDPRESS_APP_PASSWORD
-        ? new WordPressClient({
-            baseUrl: env.WORDPRESS_URL,
-            username: env.WORDPRESS_USERNAME,
-            appPassword: env.WORDPRESS_APP_PASSWORD,
-          })
-        : null,
-    mediawiki:
-      env.MEDIAWIKI_BOT_USERNAME && env.MEDIAWIKI_BOT_PASSWORD
-        ? new MediaWikiClient({
-            apiUrl: env.MEDIAWIKI_API_URL,
-            username: env.MEDIAWIKI_BOT_USERNAME,
-            password: env.MEDIAWIKI_BOT_PASSWORD,
-          })
-        : null,
+    wordpress: creds.wordpress
+      ? new WordPressClient({
+          baseUrl: env.WORDPRESS_URL,
+          username: env.WORDPRESS_USERNAME!,
+          appPassword: env.WORDPRESS_APP_PASSWORD!,
+        })
+      : null,
+    mediawiki: creds.wiki
+      ? new MediaWikiClient({
+          apiUrl: env.MEDIAWIKI_API_URL,
+          username: env.MEDIAWIKI_BOT_USERNAME!,
+          password: env.MEDIAWIKI_BOT_PASSWORD!,
+        })
+      : null,
     fetch,
     bannerAssets: {
       logoPath: env.BANNER_LOGO_PATH,

@@ -19,23 +19,15 @@ describe('InMemoryQueue', () => {
     expect(q.failures).toHaveLength(3);
   });
 
-  it('deduplicates pending jobs with a singleton key', async () => {
+  it('does not de-duplicate jobs, like pg-boss with the standard policy', async () => {
     const q = new InMemoryQueue();
     let runs = 0;
     await q.work('publish.channel', async () => {
       runs++;
     });
-    await q.send(
-      'publish.channel',
-      { postId: 1, channel: 'wordpress' },
-      { singletonKey: '1:wordpress' },
-    );
-    await q.send(
-      'publish.channel',
-      { postId: 1, channel: 'wordpress' },
-      { singletonKey: '1:wordpress' },
-    );
+    await q.send('publish.channel', { postId: 1, channel: 'wordpress' });
+    await q.send('publish.channel', { postId: 1, channel: 'wordpress' });
     await q.drain();
-    expect(runs).toBe(1);
+    expect(runs).toBe(2);
   });
 });

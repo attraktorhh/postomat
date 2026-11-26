@@ -1,6 +1,24 @@
-import { slugify } from '@postomat/core';
-import { PageExistsError, wikiPageUrl } from '@postomat/channel-mediawiki';
+import { HttpError, slugify } from '@postomat/core';
 import {
+  MediaWikiError,
+  PageExistsError,
+  wikiPageUrl,
+} from '@postomat/channel-mediawiki';
+import { CategoryNotFoundError } from '@postomat/channel-wordpress';
+import {
+  and,
+  channelPosts,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  or,
+  posts,
+  sql,
+  type ChannelPost,
+} from '@postomat/db';
+import {
+  CHANNEL_NAMES,
   wikiContent,
   wikiPageTitle,
   wordpressContent,
@@ -19,80 +37,207 @@ import { draftOf, linksOf, templateContext } from './context.ts';
 import { bannerData } from './photos.ts';
 import { notifyMemberLink, settleAfterPublish } from './posts.ts';
 
+export type AutoChannel = 'wordpress' | 'wiki';
+
 const marker = (postId: number) => `<!-- postomat:post=${postId} -->`;
 
-/** Publishes one auto channel. Idempotent: stored remote IDs prevent duplicates on retry. */
+/** How long one publish job may hold a channel before another may take over. */
+const LEASE = sql`now() + interval '5 minutes'`;
+
+/**
+ * Takes the channel for this job: `wartet` and not held by another job.
+ * Two jobs for the same channel (double send, sweeper, retry) can never both
+ * publish, so a retry never creates a second WordPress post or wiki page.
+ */
+async function claimChannel(
+  deps: WorkflowDeps,
+  postId: number,
+  channel: AutoChannel,
+): Promise<ChannelPost | null> {
+  const [row] = await deps.db
+    .update(channelPosts)
+    .set({ claimedUntil: LEASE, updatedAt: new Date() })
+    .where(
+      and(
+        eq(channelPosts.postId, postId),
+        eq(channelPosts.channel, channel),
+        eq(channelPosts.status, 'wartet'),
+        or(
+          isNull(channelPosts.claimedUntil),
+          lt(channelPosts.claimedUntil, sql`now()`),
+        ),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+class NotConfiguredError extends Error {
+  constructor(channel: AutoChannel) {
+    super(`${CHANNEL_NAMES[channel]} ist nicht konfiguriert.`);
+    this.name = 'NotConfiguredError';
+  }
+}
+
+/**
+ * Short German error for the Redaktion and the card. The raw error goes to the
+ * log only (it can contain HTTP bodies).
+ */
+export function channelErrorText(channel: AutoChannel, e: unknown): string {
+  const name = CHANNEL_NAMES[channel];
+  if (e instanceof PageExistsError)
+    return `Die Wiki-Seite „${e.title}“ gibt es schon. Postomat überschreibt sie nicht – bitte im Wiki prüfen.`;
+  if (e instanceof CategoryNotFoundError)
+    return `Kategorie „${e.slugs.join('“, „')}“ fehlt in WordPress.`;
+  if (e instanceof HttpError && (e.status === 401 || e.status === 403))
+    return `${name}: Zugang abgelehnt – Zugangsdaten prüfen.`;
+  if (
+    e instanceof MediaWikiError &&
+    ['login', 'notloggedin', 'assertuserfailed', 'permissiondenied'].includes(
+      e.code,
+    )
+  )
+    return `${name}: Zugang abgelehnt – Zugangsdaten prüfen.`;
+  if (e instanceof MediaWikiError)
+    return `${name} hat die Änderung abgelehnt (${e.code}).`;
+  if (e instanceof HttpError && e.status >= 400 && e.status < 500)
+    return `${name} hat die Anfrage abgelehnt (HTTP ${e.status}).`;
+  if (e instanceof NotConfiguredError) return e.message;
+  return `${name} nicht erreichbar – später „Erneut versuchen“.`;
+}
+
+/**
+ * Publishes one auto channel. Idempotent: the channel is claimed atomically
+ * and stored remote IDs (plus a marker in the content) prevent duplicates.
+ * Only the remote call decides success or failure; follow-ups (summary, DMs,
+ * wiki link update) run afterwards and never turn a published channel into
+ * an error.
+ */
 export async function publishChannel(
   deps: WorkflowDeps,
   postId: number,
-  channel: 'wordpress' | 'wiki',
+  channel: AutoChannel,
   meta: JobMeta,
 ): Promise<void> {
-  const c = await getChannel(deps.db, postId, channel);
-  if (!c || c.status !== 'wartet') return; // already done, skipped or retried elsewhere
+  const c = await claimChannel(deps, postId, channel);
+  if (!c) {
+    // Already published (e.g. a retry after a failing follow-up): the follow-ups
+    // are idempotent, so make sure they ran. Otherwise skipped or held elsewhere.
+    const cur = await getChannel(deps.db, postId, channel);
+    if (cur?.status === 'veroeffentlicht')
+      await settleAfterPublish(deps, postId);
+    return;
+  }
   // Main "ist online" DM already sent → this is a late publish (e.g. "Erneut versuchen").
   const late = !!(await getPost(deps.db, postId)).autoNotifiedAt;
+  let result: { url: string; hadWebsiteLink: boolean };
   try {
-    const url =
+    result =
       channel === 'wordpress'
-        ? await publishWordPress(deps, postId)
+        ? { url: await publishWordPress(deps, postId), hadWebsiteLink: true }
         : await publishWiki(deps, postId);
     await updateChannel(deps.db, postId, channel, {
       status: 'veroeffentlicht',
-      url,
+      url: result.url,
       error: null,
       publishedAt: deps.now(),
       attempts: c.attempts + 1,
+      claimedUntil: null,
     });
-    await addHistory(
-      deps.db,
-      postId,
-      'postomat',
-      'published',
-      `${channel === 'wordpress' ? 'Website' : 'Wiki'} veröffentlicht`,
-      { url },
-    );
-    await settleAfterPublish(deps, postId);
-    if (late) {
-      await notifyMemberLink(deps, postId, channel, url);
-      // The wiki page was created without the website link: add it now.
-      if (channel === 'wordpress')
-        await updatePublished(
-          deps,
-          postId,
-          'wiki',
-          'Wiki: Website-Link ergänzt',
-        );
-    }
   } catch (e) {
-    const message =
-      e instanceof PageExistsError
-        ? `Die Wiki-Seite „${e.title}“ gibt es schon. Postomat überschreibt sie nicht – bitte im Wiki prüfen.`
-        : e instanceof Error
-          ? e.message
-          : String(e);
-    deps.log.warn('publish failed', {
-      postId,
-      channel,
-      attempt: meta.attempt,
-      error: message,
-    });
-    await updateChannel(deps.db, postId, channel, {
-      error: message,
-      attempts: c.attempts + 1,
-    });
-    const final = meta.isLastAttempt || e instanceof PageExistsError;
-    if (!final) throw e;
-    await updateChannel(deps.db, postId, channel, { status: 'fehler' });
-    await addHistory(
-      deps.db,
-      postId,
-      'postomat',
-      'failed',
-      `${channel === 'wordpress' ? 'Website' : 'Wiki'}: Fehler – ${message}`,
-    );
-    await settleAfterPublish(deps, postId);
+    await publishFailed(deps, postId, channel, c, meta, e);
+    return;
   }
+  await addHistory(
+    deps.db,
+    postId,
+    'postomat',
+    'published',
+    `${CHANNEL_NAMES[channel]} veröffentlicht`,
+    { url: result.url },
+  );
+  await settleAfterPublish(deps, postId);
+  if (late) await notifyMemberLink(deps, postId, channel, result.url);
+  // The wiki page needs the website link (url=…). Whichever of the two
+  // finishes last makes sure it is there.
+  const wiki = await getChannel(deps.db, postId, 'wiki');
+  if (
+    wiki?.status === 'veroeffentlicht' &&
+    (channel === 'wordpress' || !result.hadWebsiteLink) &&
+    (await getChannel(deps.db, postId, 'wordpress'))?.status ===
+      'veroeffentlicht'
+  )
+    await deps.queue.send('publish.update', { postId, channel: 'wiki' });
+}
+
+async function publishFailed(
+  deps: WorkflowDeps,
+  postId: number,
+  channel: AutoChannel,
+  c: ChannelPost,
+  meta: JobMeta,
+  e: unknown,
+): Promise<void> {
+  const message = channelErrorText(channel, e);
+  deps.log.warn('publish failed', {
+    postId,
+    channel,
+    attempt: meta.attempt,
+    error: e instanceof Error ? e.message : String(e),
+  });
+  const final =
+    meta.isLastAttempt ||
+    e instanceof PageExistsError ||
+    e instanceof NotConfiguredError;
+  await updateChannel(deps.db, postId, channel, {
+    error: message,
+    attempts: c.attempts + 1,
+    claimedUntil: null,
+    ...(final ? { status: 'fehler' as const } : {}),
+  });
+  if (!final) throw e; // pg-boss retries with backoff
+  await addHistory(
+    deps.db,
+    postId,
+    'postomat',
+    'failed',
+    `${CHANNEL_NAMES[channel]}: Fehler – ${message}`,
+  );
+  await settleAfterPublish(deps, postId);
+}
+
+/**
+ * Worker job: re-enqueues auto channels that wait for longer than 10 minutes
+ * without a job holding them, e.g. after a crash between approval and
+ * enqueueing, or a lost job. Returns the number of channels re-sent.
+ */
+export async function sweepStrandedChannels(
+  deps: WorkflowDeps,
+): Promise<number> {
+  const rows = await deps.db
+    .select({ postId: channelPosts.postId, channel: channelPosts.channel })
+    .from(channelPosts)
+    .innerJoin(posts, eq(posts.id, channelPosts.postId))
+    .where(
+      and(
+        inArray(posts.status, ['geplant', 'online']),
+        eq(channelPosts.mode, 'auto'),
+        eq(channelPosts.status, 'wartet'),
+        lt(channelPosts.updatedAt, sql`now() - interval '10 minutes'`),
+        or(
+          isNull(channelPosts.claimedUntil),
+          lt(channelPosts.claimedUntil, sql`now()`),
+        ),
+      ),
+    );
+  for (const r of rows) {
+    deps.log.warn('re-enqueueing stranded publish job', r);
+    await deps.queue.send('publish.channel', {
+      postId: r.postId,
+      channel: r.channel as AutoChannel,
+    });
+  }
+  return rows.length;
 }
 
 async function publishWordPress(
@@ -100,7 +245,7 @@ async function publishWordPress(
   postId: number,
 ): Promise<string> {
   const wp = deps.wordpress;
-  if (!wp) throw new Error('WordPress ist nicht konfiguriert');
+  if (!wp) throw new NotConfiguredError('wordpress');
   const post = await getPost(deps.db, postId);
   const channels = await getChannels(deps.db, postId);
   const c = channels.find((x) => x.channel === 'wordpress')!;
@@ -159,17 +304,19 @@ async function publishWordPress(
 async function publishWiki(
   deps: WorkflowDeps,
   postId: number,
-): Promise<string> {
+): Promise<{ url: string; hadWebsiteLink: boolean }> {
   const mw = deps.mediawiki;
-  if (!mw) throw new Error('Wiki ist nicht konfiguriert');
+  if (!mw) throw new NotConfiguredError('wiki');
   const post = await getPost(deps.db, postId);
   const channels = await getChannels(deps.db, postId);
   const c = channels.find((x) => x.channel === 'wiki')!;
   const ctx = templateContext(deps, post);
   const title = c.remoteId ?? wikiPageTitle(ctx);
   const url = wikiPageUrl(deps.env.MEDIAWIKI_PAGE_BASE_URL, title);
-  if (c.remoteId) return url;
-  const text = `${wikiContent(ctx, draftOf(c), linksOf(channels))}${marker(post.id)}\n`;
+  const links = linksOf(channels);
+  const hadWebsiteLink = !!links.website;
+  if (c.remoteId) return { url, hadWebsiteLink: false };
+  const text = `${wikiContent(ctx, draftOf(c), links)}${marker(post.id)}\n`;
   try {
     await mw.createPage(title, text, 'Termin von Postomat');
   } catch (e) {
@@ -181,14 +328,14 @@ async function publishWiki(
     }
   }
   await updateChannel(deps.db, postId, 'wiki', { remoteId: title, url });
-  return url;
+  return { url, hadWebsiteLink };
 }
 
 /** Re-renders a published WordPress post / wiki page (after the Meetup link arrived). */
 export async function updatePublished(
   deps: WorkflowDeps,
   postId: number,
-  channel: 'wordpress' | 'wiki',
+  channel: AutoChannel,
   note?: string,
 ): Promise<void> {
   const post = await getPost(deps.db, postId);

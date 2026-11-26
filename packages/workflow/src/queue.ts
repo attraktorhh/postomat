@@ -7,6 +7,10 @@ export interface JobPayloads {
   'publish.channel': { postId: number; channel: 'wordpress' | 'wiki' };
   'publish.update': { postId: number; channel: 'wordpress' | 'wiki' };
   'meetup.poll': Record<string, never>;
+  /** Re-enqueues auto channels whose publish job got lost (crash, queue error). */
+  'publish.sweep': Record<string, never>;
+  /** Deletes old processed Matrix events and expired web sessions. */
+  'maintenance.cleanup': Record<string, never>;
   'bot.card': { postId: number };
   'bot.dm': { matrixUserId: string; text: string; html?: string };
   'bot.after-publish': { postId: number };
@@ -25,6 +29,10 @@ export type JobHandler<N extends JobName> = (
 ) => Promise<void>;
 
 export interface JobQueue {
+  /**
+   * `singletonKey` is passed to pg-boss but is NOT a de-duplication guarantee
+   * with the `standard` queue policy. Handlers must be idempotent.
+   */
   send<N extends JobName>(
     name: N,
     data: JobPayloads[N],
@@ -35,16 +43,21 @@ export interface JobQueue {
   stop(): Promise<void>;
 }
 
-export const ALL_QUEUES: JobName[] = [
-  'banner.render',
-  'publish.channel',
-  'publish.update',
-  'meetup.poll',
-  'bot.card',
-  'bot.dm',
-  'bot.after-publish',
-  'bot.thread',
-];
+/** Every job type; the `satisfies` makes a new job in JobPayloads a compile error here. */
+const QUEUES = {
+  'banner.render': true,
+  'publish.channel': true,
+  'publish.update': true,
+  'publish.sweep': true,
+  'meetup.poll': true,
+  'maintenance.cleanup': true,
+  'bot.card': true,
+  'bot.dm': true,
+  'bot.after-publish': true,
+  'bot.thread': true,
+} as const satisfies Record<JobName, true>;
+
+export const ALL_QUEUES = Object.keys(QUEUES) as JobName[];
 
 /** pg-boss backed queue (production). */
 export class PgBossQueue implements JobQueue {
@@ -53,11 +66,20 @@ export class PgBossQueue implements JobQueue {
   private readonly log: Logger;
   private started = false;
 
+  /**
+   * `maintenance: false` for processes that only send and work jobs (bot, web):
+   * then only one process (the worker) runs pg-boss housekeeping and cron.
+   */
   constructor(
     connectionString: string,
-    opts: { retryLimit: number; logger: Logger },
+    opts: { retryLimit: number; logger: Logger; maintenance?: boolean },
   ) {
-    this.boss = new PgBoss({ connectionString });
+    const maintenance = opts.maintenance ?? true;
+    this.boss = new PgBoss({
+      connectionString,
+      supervise: maintenance,
+      schedule: maintenance,
+    });
     this.retryLimit = opts.retryLimit;
     this.log = opts.logger;
     this.boss.on('error', (e: Error) =>
@@ -79,6 +101,10 @@ export class PgBossQueue implements JobQueue {
     return this;
   }
 
+  /**
+   * Queues use the `standard` policy, so the same job may be queued twice.
+   * Handlers must be idempotent (publishing claims the channel atomically).
+   */
   async send<N extends JobName>(
     name: N,
     data: JobPayloads[N],
@@ -98,7 +124,7 @@ export class PgBossQueue implements JobQueue {
   ): Promise<void> {
     await this.boss.work(
       name,
-      { includeMetadata: true, pollingIntervalSeconds: 1 },
+      { includeMetadata: true, pollingIntervalSeconds: 2 },
       async (jobs) => {
         for (const job of jobs) {
           const retryCount = (job as { retryCount?: number }).retryCount ?? 0;
@@ -132,7 +158,6 @@ export class InMemoryQueue implements JobQueue {
     name: JobName;
     data: unknown;
     attempt: number;
-    key?: string;
   }> = [];
   readonly sent: Array<{ name: JobName; data: unknown }> = [];
   readonly failures: Array<{ name: JobName; error: string }> = [];
@@ -141,18 +166,14 @@ export class InMemoryQueue implements JobQueue {
     this.retryLimit = retryLimit;
   }
 
+  /** Like pg-boss with the `standard` policy: no de-duplication. */
   async send<N extends JobName>(
     name: N,
     data: JobPayloads[N],
-    opts: { singletonKey?: string } = {},
+    _opts?: { singletonKey?: string },
   ): Promise<void> {
-    if (
-      opts.singletonKey &&
-      this.pending.some((j) => j.name === name && j.key === opts.singletonKey)
-    )
-      return;
     this.sent.push({ name, data });
-    this.pending.push({ name, data, attempt: 1, key: opts.singletonKey });
+    this.pending.push({ name, data, attempt: 1 });
   }
 
   async work<N extends JobName>(

@@ -95,6 +95,8 @@ export const channelPosts = pgTable(
     url: text('url'),
     error: text('error'),
     attempts: integer('attempts').notNull().default(0),
+    /** Lease of the publish job working on this channel (one at a time). */
+    claimedUntil: ts('claimed_until'),
     publishedAt: ts('published_at'),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },
@@ -187,10 +189,14 @@ export const settings = pgTable('settings', {
 });
 
 /** Matrix events already handled (sync may deliver events twice). */
-export const processedEvents = pgTable('processed_events', {
-  eventId: text('event_id').primaryKey(),
-  createdAt: ts('created_at').notNull().defaultNow(),
-});
+export const processedEvents = pgTable(
+  'processed_events',
+  {
+    eventId: text('event_id').primaryKey(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('processed_events_created_idx').on(t.createdAt)],
+);
 
 /** Open "Ist eins davon das Meetup-Event?" questions in a card thread. */
 export const meetupQuestions = pgTable('meetup_questions', {
@@ -207,11 +213,15 @@ export const meetupQuestions = pgTable('meetup_questions', {
 });
 
 /** Server-side web sessions. */
-export const sessions = pgTable('sessions', {
-  id: text('id').primaryKey(),
-  data: jsonb('data').$type<Record<string, unknown>>().notNull(),
-  expiresAt: ts('expires_at').notNull(),
-});
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: text('id').primaryKey(),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull(),
+    expiresAt: ts('expires_at').notNull(),
+  },
+  (t) => [index('sessions_expires_idx').on(t.expiresAt)],
+);
 
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;

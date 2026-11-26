@@ -8,6 +8,13 @@
       "when": 1795464641612,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795719488673,
+      "tag": "0001_channel_lease_and_cleanup",
+      "breakpoints": true
     }
   ]
 }

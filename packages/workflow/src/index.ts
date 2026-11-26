@@ -12,3 +12,4 @@ export * from './bot.ts';
 export * from './worker.ts';
 export * from './setup.ts';
 export * from './health.ts';
+export * from './maintenance.ts';
