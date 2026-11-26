@@ -77,7 +77,8 @@ pnpm nx run-many -t contract                    # Adapter-Verträge gegen Fakes;
 pnpm nx run e2e:stack-smoke                     # echter verschlüsselter DM gegen den laufenden Stack (Bot + Worker müssen laufen)
 ```
 
-DB-Tests und E2E brauchen Postgres (`DATABASE_URL_TEST`, Standard: der Compose-Postgres). Die Adapter-Tests
+DB-Tests und E2E brauchen Postgres (`DATABASE_URL_TEST`, Standard: der Compose-Postgres). Die E2E-Suite legt
+sich eine eigene Datenbank `<DATABASE_URL_TEST>_e2e` an, weil sie alle Tabellen leert. Die Adapter-Tests
 laufen ohne Stack gegen In-Process-Fakes; mit `CONTRACT_TARGET=local` dieselbe Suite gegen die Container.
 KI wird in Tests mit dem Mock-Modell des AI SDK simuliert.
 
@@ -110,6 +111,18 @@ docker build -f apps/worker/Dockerfile -t postomat-worker .
 
 Alle drei haben `/healthz` (bot 3001, web 3000, worker 3002). Der Worker führt beim Start die
 Migrationen aus. Der Bot braucht ein dauerhaftes Volume auf `/data` (Krypto-Speicher).
+Das Web-Image (`NODE_ENV=production`) startet nicht mit den Dev-Werten für `SESSION_SECRET` oder
+`OIDC_CLIENT_SECRET`; für einen lokalen Test des Images echte Zufallswerte setzen.
+
+### Bekannte Grenzen
+
+- Wenn der Meetup-Link gefunden wird, schreibt Postomat den WordPress-Beitrag und die Wiki-Seite komplett
+  neu (mit Link bzw. `meetupid`). Wer dort vorher von Hand etwas geändert hat, findet es nur noch in der
+  Versionsgeschichte.
+- Rollen (Gruppen aus Keycloak) gelten bis zur nächsten Anmeldung; eine Sitzung hält höchstens 12 Stunden.
+  Wer aus `medienteam` oder `postomat-admin` entfernt wird, behält die Rechte bis dahin.
+- Änderungen von außen (POST-Formulare) prüft die Web-App über `Origin`/`Sec-Fetch-Site`; Abmelden ist
+  deshalb ein Button (POST), kein Link.
 
 Neue Library anlegen:
 
