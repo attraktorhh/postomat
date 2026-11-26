@@ -13,6 +13,7 @@ import {
   BANNER_COLORS,
   CONSENT_LABELS,
   CONSENTS,
+  isEditable,
   type BannerColor,
   type ChannelId,
   type Consent,
@@ -364,10 +365,7 @@ export default function RedaktionPost() {
       if (result && 'ok' in result) askForm.current?.reset();
     }
   });
-  // TODO(merge): use isEditable(p.status) from @postomat/core (F1).
-  const editable = ['zur_freigabe', 'aenderung_gewuenscht', 'sammeln'].includes(
-    p.status,
-  );
+  const editable = isEditable(p.status);
   const approvedPhase = p.status === 'geplant' || p.status === 'online';
   const active = view.channels.filter((c) => c.mode !== 'off');
   // The category can change until the Meetup event is linked or skipped.

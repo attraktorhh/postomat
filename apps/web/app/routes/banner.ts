@@ -22,9 +22,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     latest.bannerColor === post.bannerColor;
   if (fresh && notModified(request, latest.sha256))
     return new Response(null, { status: 304 });
-  // TODO(merge): F2 → `const banner = await bannerData(deps, post, format, { render: false });`
-  // `if (!banner) throw new Response('Nicht gefunden', { status: 404 });` then use banner.row / banner.data.
-  const { row, data } = await bannerData(deps, post, format);
+  // Never render in a web request: the worker renders (a stale banner queues a
+  // throttled job) and the newest existing banner is served meanwhile.
+  const banner = await bannerData(deps, post, format, { render: false });
+  if (!banner) throw new Response('Nicht gefunden', { status: 404 });
+  const { row, data } = banner;
   const download = url.searchParams.has('download');
   return new Response(new Uint8Array(data), {
     headers: {
