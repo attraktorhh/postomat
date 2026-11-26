@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import {
   CHANNELS,
@@ -7,7 +6,7 @@ import {
   type PostType,
 } from './types.ts';
 import type { Env } from './env.ts';
-import { fromRoot } from './paths.ts';
+import { fromRoot, nodeFs } from './paths.ts';
 
 const mode = z.enum(['auto', 'copy', 'off']);
 const channelMap = z.partialRecord(z.enum(CHANNELS), mode);
@@ -84,7 +83,9 @@ export const DEFAULT_CONFIG: PostomatConfig = {
 
 export function loadConfig(path?: string): PostomatConfig {
   if (!path) return DEFAULT_CONFIG;
-  const raw = JSON.parse(readFileSync(fromRoot(path), 'utf8')) as unknown;
+  const raw = JSON.parse(
+    nodeFs().readFileSync(fromRoot(path), 'utf8'),
+  ) as unknown;
   return configSchema.parse(raw);
 }
 
