@@ -11,6 +11,7 @@ import type { ChannelId } from '@postomat/core';
 import { COPY_IMAGE_FORMAT } from '@postomat/channel-copy';
 import { setChannelLink, skipChannel } from '@postomat/workflow';
 import { requireUser } from '../server/auth.server';
+import { actionError } from '../server/errors';
 import { getDeps } from '../server/deps.server';
 import { loadPostView } from '../server/views.server';
 import { Shell } from '../components/shell';
@@ -57,7 +58,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
     return { ok: 'Link eingetragen.' };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
+    return { error: actionError(e) };
   }
 }
 

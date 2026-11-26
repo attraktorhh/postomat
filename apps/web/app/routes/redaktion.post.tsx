@@ -33,6 +33,7 @@ import {
   skipChannel,
 } from '@postomat/workflow';
 import { requireUser } from '../server/auth.server';
+import { actionError } from '../server/errors';
 import { getDeps } from '../server/deps.server';
 import { loadPostView, type ChannelView } from '../server/views.server';
 import { Shell } from '../components/shell';
@@ -166,7 +167,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return { error: `Unbekannte Aktion ${intent}` };
     }
   } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
+    return { error: actionError(e) };
   }
 }
 

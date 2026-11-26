@@ -12,6 +12,7 @@ import { conversations, eq } from '@postomat/db';
 import { DM } from '@postomat/templates';
 import { getPost, submitPost } from '@postomat/workflow';
 import { requireUser, type CurrentUser } from '../server/auth.server';
+import { actionError } from '../server/errors';
 import { getDeps } from '../server/deps.server';
 import { loadPostView } from '../server/views.server';
 import { LoginNote, Shell } from '../components/shell';
@@ -58,7 +59,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     await submitPost(deps, id, user.username, note);
   } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
+    return { error: actionError(e) };
   }
   // Also reset the DM conversation and confirm there.
   await deps.db

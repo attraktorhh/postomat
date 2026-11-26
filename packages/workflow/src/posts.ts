@@ -1,4 +1,6 @@
 import {
+  BANNER_COLORS,
+  CONSENTS,
   assertTransition,
   credentialsFromEnv,
   decideApproval,
@@ -392,6 +394,11 @@ export async function editFacts(
   const post = await getPost(deps.db, postId);
   if (!EDITABLE.has(post.status))
     throw new WorkflowError('Beitrag kann nicht mehr bearbeitet werden');
+  if (
+    patch.endTime !== undefined &&
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(patch.endTime)
+  )
+    throw new WorkflowError('Endzeit bitte als HH:MM angeben, z. B. 21:00');
   await updatePost(deps.db, postId, { facts: { ...post.facts, ...patch } });
   await addHistory(deps.db, postId, actor, 'edited', 'Angaben bearbeitet', {
     patch,
@@ -406,6 +413,11 @@ export async function setBannerColor(
   color: BannerColor,
   actor: string,
 ): Promise<void> {
+  if (!(BANNER_COLORS as readonly string[]).includes(color))
+    throw new WorkflowError(`Unbekannte Banner-Farbe ${color}`);
+  const post = await getPost(deps.db, postId);
+  if (!EDITABLE.has(post.status))
+    throw new WorkflowError('Beitrag kann nicht mehr bearbeitet werden');
   await updatePost(deps.db, postId, { bannerColor: color });
   await addHistory(deps.db, postId, actor, 'edited', `Banner-Farbe: ${color}`);
   await deps.queue.send('banner.render', { postId });
@@ -436,6 +448,8 @@ export async function setPhotoConsent(
   consent: Consent,
   actor: string,
 ): Promise<void> {
+  if (!(CONSENTS as readonly string[]).includes(consent))
+    throw new WorkflowError(`Unbekannte Einwilligung ${consent}`);
   await deps.db
     .update(photos)
     .set({ consent })

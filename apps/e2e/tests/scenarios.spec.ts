@@ -4,7 +4,10 @@ import { createAiService } from '@postomat/ai';
 import { channelPosts, eq, history, photos, posts } from '@postomat/db';
 import {
   askMember,
+  editFacts,
   resubmit,
+  setBannerColor,
+  setPhotoConsent,
   retryChannel,
   saveRoomSettings,
   submitPost,
@@ -115,6 +118,27 @@ describe('scenarios', () => {
     );
     const [p] = await h.db.db.select().from(posts);
     expect(p.status).toBe('zur_freigabe');
+  });
+
+  it('validates Redaktion inputs and locks the banner after approval', async () => {
+    await collectEvent(h, { consent: '1' });
+    await h.dm(LENA, 'abschicken');
+    const [photo] = await h.db.db.select().from(photos);
+    await expect(
+      setPhotoConsent(h.deps, 1, photo.id, 'hacked' as never, 'mira'),
+    ).rejects.toThrow('Unbekannte Einwilligung');
+    await expect(
+      setBannerColor(h.deps, 1, 'lila' as never, 'mira'),
+    ).rejects.toThrow('Unbekannte Banner-Farbe');
+    await expect(
+      editFacts(h.deps, 1, { endTime: '99:99' }, 'mira'),
+    ).rejects.toThrow('Endzeit bitte als HH:MM');
+    await h.react(MIRA, await cardOf(h), '👍');
+    await expect(setBannerColor(h.deps, 1, 'rot', 'mira')).rejects.toThrow(
+      'kann nicht mehr bearbeitet werden',
+    );
+    const [p] = await h.db.db.select().from(posts);
+    expect(p.bannerColor).toBe('mint');
   });
 
   it('changes membership through the room picker without a restart (≤ 5 min cache)', async () => {
