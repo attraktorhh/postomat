@@ -214,3 +214,23 @@ describe('logo override', () => {
     expect(svg).toContain('data:image/svg+xml;base64,');
   });
 });
+
+describe('default logo lettering', () => {
+  it('uses the band ink colour so it is readable on light bands', async () => {
+    const svg = await renderBannerSvg(
+      { ...base, format: '4x5', color: 'mint' },
+      {},
+      { embedFont: false },
+    );
+    const logo = /<text[^>]*>attraktor<\/text>/.exec(svg)?.[0] ?? '';
+    expect(logo).toContain(`fill="${BANNER_PALETTE.mint.ink}"`);
+    const white = await renderBannerSvg(
+      { ...base, format: '4x5', color: 'rot' },
+      {},
+      { embedFont: false },
+    );
+    expect(/<text[^>]*>attraktor<\/text>/.exec(white)?.[0]).toContain(
+      'fill="#ffffff"',
+    );
+  });
+});

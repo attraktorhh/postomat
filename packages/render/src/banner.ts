@@ -240,12 +240,14 @@ function fallbackBackground(
 async function logoNode(
   logoPath: string | undefined,
   layout: Layout,
+  ink: string,
 ): Promise<Node> {
   const u = layout.unit;
   const box: Style = {
     position: 'absolute',
     right: 4 * u,
-    top: 3 * u,
+    // below the curved edge, so the whole logo sits on the band colour
+    top: Math.round(layout.curve * u),
     display: 'flex',
   };
   if (logoPath) {
@@ -273,8 +275,8 @@ async function logoNode(
         ...box,
         flexDirection: 'column',
         alignItems: 'flex-end',
-        color: '#ffffff',
-        textShadow: `0 ${0.15 * u}px ${0.35 * u}px rgba(0,0,0,0.45)`,
+        // band ink: readable on light (mint, hellblau) and dark (blau, rot) bands
+        color: ink,
       },
     },
     h(
@@ -392,7 +394,7 @@ export async function renderBannerSvg(
     input.photo
       ? coverPhoto(input.photo, width, height)
       : fallbackBackground(input.color, width, height),
-    logoNode(assets.logoPath, layout),
+    logoNode(assets.logoPath, layout, palette.ink),
   ]);
 
   const title = input.title.trim().toUpperCase();

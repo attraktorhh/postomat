@@ -124,6 +124,75 @@ describe('dialog without AI', () => {
     expect(state.type).toBe('projekt');
   });
 
+  it('takes a bare "1" right after the greeting as the type choice', async () => {
+    const { transcript, state } = await run(['hi', '1']);
+    expect(state.type).toBe('event');
+    expect(state.facts.title).toBeUndefined();
+    expect(transcript.at(-1)).toBe('Wie soll der Titel lauten?');
+  });
+
+  it('keeps facts sent instead of a type answer', async () => {
+    const { transcript, state } = await run([
+      'Ich will einen Lötkurs machen',
+      'am 11.12. um 18 Uhr',
+    ]);
+    expect(state.facts).toMatchObject({
+      date: '2026-12-11',
+      startTime: '18:00',
+    });
+    expect(transcript.at(-1)).toContain('Antworte bitte mit 1 oder 2.');
+    expect(transcript.at(-1)).toContain('Freitag 11.12. · 18:00');
+  });
+
+  it('does not take a fact correction as the description', async () => {
+    const { transcript, state } = await run([
+      'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
+      '1',
+      'Nee, den Freitag danach, also 11.12.! 18 Uhr, max. 8 Leute, 5 € fürs Material',
+    ]);
+    expect(state.facts.description).toBeUndefined();
+    expect(state.facts).toMatchObject({ date: '2026-12-11', places: 8 });
+    expect(transcript.at(-1)).toBe(
+      'Alles klar, Freitag 11.12. · 18:00 · 8 Plätze · 5 € Material.\nWorum geht’s? Ein, zwei Sätze reichen.',
+    );
+  });
+
+  it('asks the photo question again after a title correction', async () => {
+    const { transcript, state, effects } = await run([
+      'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
+      '1',
+      'Wir löten Abzeichen.',
+      '11.12. 18 Uhr',
+      'weiter',
+      '-',
+      'Titel: Lötkurs für Einsteiger',
+    ]);
+    expect(state.facts.title).toBe('Lötkurs für Einsteiger');
+    expect(state.expecting).toBe('photo');
+    expect(effects).not.toContain('summary');
+    expect(transcript.at(-1)).toBe(
+      'Alles klar: Lötkurs für Einsteiger.\nHast du ein Foto dazu? Schick es einfach hier rein.',
+    );
+  });
+
+  it('does not store a "Titel:" correction as the description', async () => {
+    const { transcript, state } = await run([
+      'hi',
+      '1',
+      'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
+      'Titel: Lötkurs für Einsteiger',
+      'Wir löten Abzeichen.',
+    ]);
+    expect(state.facts.title).toBe('Lötkurs für Einsteiger');
+    expect(state.facts.description).toBe('Wir löten Abzeichen.');
+    expect(transcript[2]).toBe(
+      'Alles klar, Lötkurs für Anfänger · Freitag 27.11.\nWorum geht’s? Ein, zwei Sätze reichen.',
+    );
+    expect(transcript[3]).toBe(
+      'Alles klar: Lötkurs für Einsteiger.\nWorum geht’s? Ein, zwei Sätze reichen.',
+    );
+  });
+
   it('turns free text in review into a change request without AI', async () => {
     const { effects } = await run([
       'Ich habe eine Nixie-Uhr gebaut',

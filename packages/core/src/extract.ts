@@ -281,11 +281,14 @@ export function extractFacts(text: string, opts: ExtractOptions): PostFacts {
   const labelled = /^(titel|title)\s*:\s*(.+)$/im.exec(trimmed);
   if (labelled) facts.title = labelled[2].trim();
 
+  // A labelled correction ("Titel: …") never answers another free-text question.
   if (expecting === 'title' && !labelled)
-    facts.title = trimmed.replace(/[.!]+$/, '');
-  if (expecting === 'description') facts.description = trimmed;
-  if (expecting === 'trickiest') facts.trickiest = trimmed;
-  if (expecting === 'audience') facts.audience = trimmed;
+    facts.title = guessTitle(trimmed) ?? trimmed.replace(/[.!]+$/, '');
+  if (!labelled) {
+    if (expecting === 'description') facts.description = trimmed;
+    if (expecting === 'trickiest') facts.trickiest = trimmed;
+    if (expecting === 'audience') facts.audience = trimmed;
+  }
 
   const date = extractDate(trimmed, opts.now);
   if (date) facts.date = date;

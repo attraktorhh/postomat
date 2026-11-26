@@ -121,6 +121,12 @@ const NO_RE =
 const GREETING_RE =
   /^\s*(hi|hallo|hey|moin|servus|huhu|guten (morgen|tag|abend)|na|neu|start)\s*[!.]?\s*$/i;
 
+const BARE_TYPE_RE = /^\s*(1|2|1️⃣|2️⃣|event|projekt)\s*[.!]?\s*$/iu;
+/** A correction of earlier facts, not an answer to a free-text question. */
+const CORRECTION_RE =
+  /^\s*(nee|nein|ne|doch|korrektur|sorry|ach|äh|oh|moment)\b/i;
+const STRUCTURED: FactKey[] = ['date', 'startTime', 'places', 'costs'];
+
 function hasFact(state: DialogState, key: FactKey | 'photo'): boolean {
   if (key === 'photo') return state.photoCount > 0;
   const v = state.facts[key];
@@ -331,6 +337,13 @@ export async function advanceDialog(
   }
 
   if (state.step === 'idle') {
+    if (BARE_TYPE_RE.test(text)) {
+      // "1"/"2" straight away (e.g. the member knows the menu already).
+      return askNextOrSummarize(
+        { ...state, type: parseTypeAnswer(text), expecting: null },
+        '',
+      );
+    }
     if (GREETING_RE.test(text)) {
       return {
         state: { ...state, expecting: null },
@@ -364,12 +377,18 @@ export async function advanceDialog(
 
   if (state.step === 'type') {
     const type = parseTypeAnswer(text);
-    if (!type)
+    if (!type) {
+      // Keep facts the member added instead of choosing (e.g. a corrected date).
+      const absorbed = await absorbText(state, text, deps);
+      const got = understood(absorbed.state.facts, absorbed.changed, false);
       return {
-        state,
-        replies: [`Antworte bitte mit 1 oder 2.\n${TYPE_QUESTION}`],
+        state: absorbed.state,
+        replies: [
+          `${got ? `${got}\n` : ''}Antworte bitte mit 1 oder 2.\n${TYPE_QUESTION}`,
+        ],
         effects: [],
       };
+    }
     return askNextOrSummarize({ ...state, type, expecting: null }, '');
   }
 
@@ -420,8 +439,25 @@ export async function advanceDialog(
     return askNextOrSummarize({ ...state, expecting: null }, '');
   }
 
+  const freeText =
+    expecting === 'description' ||
+    expecting === 'trickiest' ||
+    expecting === 'audience';
   const absorbed = await absorbText(state, text, deps);
-  const s = absorbed.state;
+  let s = absorbed.state;
+  if (freeText && expecting && state.facts[expecting] === undefined) {
+    const structured = absorbed.changed.filter((k) => STRUCTURED.includes(k));
+    if (
+      structured.length > 0 &&
+      (CORRECTION_RE.test(text) || structured.length >= 3)
+    ) {
+      // Facts only ("Nee, den 11.12.! 18 Uhr, 8 Leute") – not the description.
+      const facts = { ...s.facts };
+      delete facts[expecting];
+      s = { ...s, facts };
+      absorbed.changed = absorbed.changed.filter((k) => k !== expecting);
+    }
+  }
   if (
     expecting &&
     expecting !== 'photo' &&
@@ -436,11 +472,24 @@ export async function advanceDialog(
     };
   }
   // Don't echo a free-text answer back; repeat only the parsed facts.
+  // A title taken from a longer sentence is repeated, a plain answer is not.
   const changed = absorbed.changed.filter(
-    (k) => !(k === 'title' && expecting === 'title'),
+    (k) =>
+      !(
+        k === 'title' &&
+        expecting === 'title' &&
+        s.facts.title === text.replace(/[.!]+$/, '')
+      ),
   );
   const got = understood(s.facts, changed, false);
-  return askNextOrSummarize({ ...s, expecting: null }, got);
+  // An optional question that was interrupted by other facts is asked again.
+  const stillOpen =
+    expecting &&
+    expecting !== 'type' &&
+    expecting !== 'consent' &&
+    !hasFact(s, expecting);
+  const asked = stillOpen ? s.asked.filter((k) => k !== expecting) : s.asked;
+  return askNextOrSummarize({ ...s, asked, expecting: null }, got);
 }
 
 function handlePhoto(state: DialogState, photoId: number): DialogResult {
