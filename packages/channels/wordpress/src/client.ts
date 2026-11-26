@@ -1,6 +1,7 @@
 import {
   basicAuth,
   HttpError,
+  timeoutSignal,
   trimSlash,
   type FetchLike,
 } from '@postomat/core';
@@ -12,6 +13,18 @@ export interface WordPressConfig {
   /** Application password (spaces allowed). */
   appPassword: string;
   fetch?: FetchLike;
+  /** Per-request timeout in ms (default 15 s; media uploads get 4×). */
+  timeoutMs?: number;
+}
+
+/** Category slugs from the config that don't exist in WordPress. */
+export class CategoryNotFoundError extends Error {
+  readonly slugs: string[];
+  constructor(slugs: string[]) {
+    super(`WordPress categories not found: ${slugs.join(', ')}`);
+    this.name = 'CategoryNotFoundError';
+    this.slugs = slugs;
+  }
 }
 
 export interface WpPostRef {
@@ -25,8 +38,10 @@ export class WordPressClient {
   private readonly api: string;
   private readonly fetchFn: FetchLike;
   private readonly auth: string;
+  private readonly timeoutMs?: number;
 
   constructor(cfg: WordPressConfig) {
+    this.timeoutMs = cfg.timeoutMs;
     this.api = `${trimSlash(cfg.baseUrl)}/wp-json/wp/v2`;
     this.fetchFn = cfg.fetch ?? fetch;
     this.auth = basicAuth(cfg.username, cfg.appPassword.replace(/\s+/g, ''));
@@ -34,14 +49,19 @@ export class WordPressClient {
 
   private async request<T>(
     path: string,
-    init: RequestInit & { headers?: Record<string, string> } = {},
+    init: RequestInit & {
+      headers?: Record<string, string>;
+      timeoutMs?: number;
+    } = {},
   ): Promise<T> {
+    const { timeoutMs, ...rest } = init;
     const res = await this.fetchFn(`${this.api}${path}`, {
-      ...init,
+      ...rest,
+      signal: timeoutSignal(timeoutMs ?? this.timeoutMs),
       headers: {
         authorization: this.auth,
         accept: 'application/json',
-        ...(init.headers ?? {}),
+        ...(rest.headers ?? {}),
       },
     });
     const text = await res.text();
@@ -65,8 +85,7 @@ export class WordPressClient {
       `/categories?per_page=100&slug=${slugs.map(encodeURIComponent).join(',')}`,
     );
     const missing = slugs.filter((s) => !found.some((c) => c.slug === s));
-    if (missing.length)
-      throw new Error(`WordPress categories not found: ${missing.join(', ')}`);
+    if (missing.length) throw new CategoryNotFoundError(missing);
     return slugs.map((s) => found.find((c) => c.slug === s)!.id);
   }
 
@@ -80,6 +99,7 @@ export class WordPressClient {
       '/media',
       {
         method: 'POST',
+        timeoutMs: (this.timeoutMs ?? 15_000) * 4,
         headers: {
           'content-type': mime,
           'content-disposition': `attachment; filename="${filename}"`,

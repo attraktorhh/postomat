@@ -7,6 +7,8 @@ export class FakeMediaWiki {
   readonly password = 'fakebotpasswordfakebotpassword12';
   pages = new Map<string, string>();
   edits: Array<{ title: string; summary: string }> = [];
+  /** Save the next N edits but answer HTTP 500 (a crash after the write). */
+  failAfterNextEdits = 0;
   private server?: FakeServer;
   private sessions = new Map<
     string,
@@ -43,6 +45,8 @@ export class FakeMediaWiki {
       const err = (code: string, info: string) =>
         json(res, 200, { error: { code, info } }, headers);
       const action = params.get('action');
+      if (params.get('assert') === 'user' && !session.loggedIn)
+        return err('assertuserfailed', 'You are no longer logged in.');
       if (action === 'query' && params.get('meta') === 'tokens') {
         const type = params.get('type') ?? 'csrf';
         if (type === 'login')
@@ -108,6 +112,10 @@ export class FakeMediaWiki {
           return err('missingtitle', "The page you specified doesn't exist.");
         this.pages.set(title, params.get('text') ?? '');
         this.edits.push({ title, summary: params.get('summary') ?? '' });
+        if (this.failAfterNextEdits > 0) {
+          this.failAfterNextEdits--;
+          return json(res, 500, { error: 'internal' }, headers);
+        }
         return json(
           res,
           200,
@@ -118,6 +126,11 @@ export class FakeMediaWiki {
       return err('badvalue', `Unsupported action ${action}`);
     });
     return this;
+  }
+
+  /** Ends every session, like the wiki's session store expiring. */
+  expireSessions(): void {
+    this.sessions.clear();
   }
 
   async stop(): Promise<void> {

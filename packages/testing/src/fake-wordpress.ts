@@ -29,6 +29,8 @@ export class FakeWordPress {
   }> = [];
   /** Fail the next N post creations with HTTP 500 (for retry tests). */
   failNextCreates = 0;
+  /** Create the next N posts but answer HTTP 500 (a crash after the write). */
+  failAfterNextCreates = 0;
   private server?: FakeServer;
   private nextId = 1000;
 
@@ -106,6 +108,10 @@ export class FakeWordPress {
           link: `${this.url}/${slug}/`,
         };
         this.posts.push(p);
+        if (this.failAfterNextCreates > 0) {
+          this.failAfterNextCreates--;
+          return json(res, 500, { code: 'internal_server_error' });
+        }
         return json(res, 201, this.view(p));
       }
       if (path === '/posts' && req.method === 'GET') {

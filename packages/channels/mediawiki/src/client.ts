@@ -1,4 +1,4 @@
-import { HttpError, type FetchLike } from '@postomat/core';
+import { HttpError, timeoutSignal, type FetchLike } from '@postomat/core';
 
 export interface MediaWikiConfig {
   /** e.g. http://localhost:8082/api.php */
@@ -7,6 +7,8 @@ export interface MediaWikiConfig {
   username: string;
   password: string;
   fetch?: FetchLike;
+  /** Per-request timeout in ms (default 15 s). */
+  timeoutMs?: number;
 }
 
 export class PageExistsError extends Error {
@@ -27,12 +29,19 @@ export class MediaWikiError extends Error {
   }
 }
 
-/** MediaWiki Action API client: BotPassword login, CSRF token, edit. */
+/** Error codes after which a fresh login (new session + CSRF token) may help. */
+const SESSION_ERRORS = new Set(['badtoken', 'notloggedin', 'assertuserfailed']);
+
+/**
+ * MediaWiki Action API client: BotPassword login, CSRF token, edit. Sessions
+ * expire on the wiki side, so edits log in again once on a session error.
+ */
 export class MediaWikiClient {
   private readonly cfg: MediaWikiConfig;
   private readonly fetchFn: FetchLike;
   private readonly cookies = new Map<string, string>();
   private csrf?: string;
+  private loggedIn = false;
 
   constructor(cfg: MediaWikiConfig) {
     this.cfg = cfg;
@@ -66,6 +75,7 @@ export class MediaWikiClient {
       ...params,
     });
     const init: RequestInit = {
+      signal: timeoutSignal(this.cfg.timeoutMs),
       headers: {
         cookie: this.cookieHeader(),
         'user-agent': 'Postomat/1.0 (dev)',
@@ -91,7 +101,25 @@ export class MediaWikiClient {
     return json;
   }
 
+  /** Forgets the session, so the next edit logs in from scratch. */
+  private resetSession(): void {
+    this.cookies.clear();
+    this.csrf = undefined;
+    this.loggedIn = false;
+  }
+
   async login(): Promise<void> {
+    this.resetSession();
+    try {
+      await this.doLogin();
+    } catch (e) {
+      this.resetSession();
+      throw e;
+    }
+    this.loggedIn = true;
+  }
+
+  private async doLogin(): Promise<void> {
     const t = await this.call({
       action: 'query',
       meta: 'tokens',
@@ -112,7 +140,6 @@ export class MediaWikiClient {
         r['login']?.reason ?? r['login']?.result ?? 'unknown',
       );
     }
-    this.csrf = undefined;
   }
 
   private async token(): Promise<string> {
@@ -130,7 +157,32 @@ export class MediaWikiClient {
   }
 
   private async ensureLogin(): Promise<void> {
-    if (!this.cookies.size) await this.login();
+    if (!this.loggedIn) await this.login();
+  }
+
+  /** An edit as the bot user; on a session error it logs in again and retries once. */
+  private async edit(
+    params: Record<string, string>,
+  ): Promise<Record<string, any>> {
+    await this.ensureLogin();
+    const send = async () =>
+      this.call(
+        {
+          action: 'edit',
+          bot: '1',
+          assert: 'user',
+          ...params,
+          token: await this.token(),
+        },
+        true,
+      );
+    try {
+      return await send();
+    } catch (e) {
+      if (!(e instanceof MediaWikiError && SESSION_ERRORS.has(e.code))) throw e;
+      await this.login();
+      return send();
+    }
   }
 
   async getPageText(title: string): Promise<string | null> {
@@ -156,20 +208,8 @@ export class MediaWikiClient {
     text: string,
     summary: string,
   ): Promise<{ title: string; revid: number }> {
-    await this.ensureLogin();
     try {
-      const r = await this.call(
-        {
-          action: 'edit',
-          title,
-          text,
-          summary,
-          createonly: '1',
-          bot: '1',
-          token: await this.token(),
-        },
-        true,
-      );
+      const r = await this.edit({ title, text, summary, createonly: '1' });
       return { title: r['edit'].title, revid: r['edit'].newrevid };
     } catch (e) {
       if (e instanceof MediaWikiError && e.code === 'articleexists')
@@ -184,19 +224,7 @@ export class MediaWikiClient {
     text: string,
     summary: string,
   ): Promise<{ title: string; revid?: number }> {
-    await this.ensureLogin();
-    const r = await this.call(
-      {
-        action: 'edit',
-        title,
-        text,
-        summary,
-        nocreate: '1',
-        bot: '1',
-        token: await this.token(),
-      },
-      true,
-    );
+    const r = await this.edit({ title, text, summary, nocreate: '1' });
     return { title: r['edit'].title, revid: r['edit'].newrevid };
   }
 }

@@ -1,4 +1,9 @@
-import { berlinToInstant, HttpError, type FetchLike } from '@postomat/core';
+import {
+  berlinToInstant,
+  HttpError,
+  timeoutSignal,
+  type FetchLike,
+} from '@postomat/core';
 
 /** One VEVENT from the Meetup feed. */
 export interface FeedEvent {
@@ -53,12 +58,23 @@ function parseDate(
   return berlinToInstant(`${y}-${mo}-${d}`, `${hh}:${mm}`);
 }
 
-export function meetupIdFrom(uid: string, url: string): string {
+/** Numeric Meetup event id from `UID:event_<id>@meetup.com` or the URL; null if none. */
+export function meetupIdFrom(uid: string, url: string): string | null {
   return (
-    /event_([^@]+)@/.exec(uid)?.[1] ??
-    /\/events\/([^/]+)\/?/.exec(url)?.[1] ??
-    uid
+    /^event_(\d+)@/.exec(uid)?.[1] ??
+    /\/events\/(\d+)(?:[/?#]|$)/.exec(url)?.[1] ??
+    null
   );
+}
+
+/**
+ * The event URL goes into links on the blog, the wiki and DMs, so only a
+ * meetup.com URL is accepted. Otherwise a canonical one is built from the id.
+ */
+function meetupUrlFrom(url: string, id: string): string {
+  return /^https:\/\/www\.meetup\.com\/[^\s"<>]+$/.test(url)
+    ? url
+    : `https://www.meetup.com/events/${id}/`;
 }
 
 /** Parses an iCalendar text into events (only what Postomat needs). */
@@ -80,13 +96,15 @@ export function parseIcal(text: string): FeedEvent[] {
         const start = cur['DTSTART']
           ? parseDate(cur['DTSTART'].value, cur['DTSTART'].params)
           : undefined;
-        if (uid && start) {
+        const meetupId = meetupIdFrom(uid, url);
+        // Feed data is untrusted: skip entries without a numeric event id.
+        if (uid && start && meetupId) {
           events.push({
             uid,
-            meetupId: meetupIdFrom(uid, url),
+            meetupId,
             summary: unescapeText(cur['SUMMARY']?.value ?? ''),
             description: unescapeText(cur['DESCRIPTION']?.value ?? ''),
-            url,
+            url: meetupUrlFrom(url, meetupId),
             start,
             end: cur['DTEND']
               ? parseDate(cur['DTEND'].value, cur['DTEND'].params)
@@ -114,6 +132,7 @@ export async function fetchFeed(
   fetchFn: FetchLike = fetch,
 ): Promise<FeedEvent[]> {
   const res = await fetchFn(url, {
+    signal: timeoutSignal(),
     headers: { accept: 'text/calendar', 'user-agent': 'Postomat/1.0' },
   });
   const text = await res.text();
