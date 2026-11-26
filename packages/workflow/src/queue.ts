@@ -28,15 +28,22 @@ export type JobHandler<N extends JobName> = (
   meta: JobMeta,
 ) => Promise<void>;
 
+export interface SendOptions {
+  singletonKey?: string;
+  singletonSeconds?: number;
+}
+
 export interface JobQueue {
   /**
-   * `singletonKey` is passed to pg-boss but is NOT a de-duplication guarantee
-   * with the `standard` queue policy. Handlers must be idempotent.
+   * `singletonKey` alone is NOT a de-duplication guarantee with the
+   * `standard` queue policy. Together with `singletonSeconds` pg-boss
+   * throttles: at most one job per key in each time slot. Handlers must be
+   * idempotent either way.
    */
   send<N extends JobName>(
     name: N,
     data: JobPayloads[N],
-    opts?: { singletonKey?: string },
+    opts?: SendOptions,
   ): Promise<void>;
   work<N extends JobName>(name: N, handler: JobHandler<N>): Promise<void>;
   schedule(name: JobName, cron: string): Promise<void>;
@@ -108,13 +115,16 @@ export class PgBossQueue implements JobQueue {
   async send<N extends JobName>(
     name: N,
     data: JobPayloads[N],
-    opts: { singletonKey?: string } = {},
+    opts: SendOptions = {},
   ): Promise<void> {
     await this.boss.send(name, data as object, {
       retryLimit: this.retryLimit,
       retryDelay: 10,
       retryBackoff: true,
       ...(opts.singletonKey ? { singletonKey: opts.singletonKey } : {}),
+      ...(opts.singletonSeconds
+        ? { singletonSeconds: opts.singletonSeconds }
+        : {}),
     });
   }
 
@@ -170,7 +180,7 @@ export class InMemoryQueue implements JobQueue {
   async send<N extends JobName>(
     name: N,
     data: JobPayloads[N],
-    _opts?: { singletonKey?: string },
+    _opts?: SendOptions,
   ): Promise<void> {
     this.sent.push({ name, data });
     this.pending.push({ name, data, attempt: 1 });

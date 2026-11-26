@@ -190,7 +190,8 @@ export async function bannerData(
     await deps.queue.send(
       'banner.render',
       { postId: post.id },
-      { singletonKey: `banner:${post.id}` },
+      // Throttled: the web asks on every page view while the worker renders.
+      { singletonKey: `banner:${post.id}`, singletonSeconds: 60 },
     );
     if (!row) return null;
     return { row, data: await deps.media.get(row.path), stale: true };

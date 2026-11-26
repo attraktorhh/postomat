@@ -8,7 +8,7 @@ import {
 import { cleanupOldRows } from './maintenance.ts';
 import { pollMeetup } from './meetup.ts';
 import { renderBanners } from './photos.ts';
-import { getPost } from './repo.ts';
+import { getPost, latestBanner } from './repo.ts';
 
 /** Registers the worker's job handlers (banner, publish, Meetup poll). */
 export async function registerWorkerJobs(
@@ -16,7 +16,19 @@ export async function registerWorkerJobs(
   queue: JobQueue,
 ): Promise<void> {
   await queue.work('banner.render', async ({ postId }) => {
-    await renderBanners(deps, await getPost(deps.db, postId));
+    const post = await getPost(deps.db, postId);
+    // Skip when both formats are already current (duplicate or throttled jobs).
+    const current = await Promise.all(
+      (['4x5', '16x9'] as const).map((f) => latestBanner(deps.db, postId, f)),
+    );
+    if (
+      current.every(
+        (r) =>
+          r && r.version === post.version && r.bannerColor === post.bannerColor,
+      )
+    )
+      return;
+    await renderBanners(deps, post);
   });
   await queue.work('publish.channel', async ({ postId, channel }, meta) =>
     publishChannel(deps, postId, channel, meta),
