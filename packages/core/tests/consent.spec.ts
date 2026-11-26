@@ -5,6 +5,7 @@ describe('parseConsentAnswer', () => {
   it.each([
     ['1', 'frei'],
     ['1️⃣', 'frei'],
+    ['1.', 'frei'],
     ['1️⃣ Ja, alle waren einverstanden', 'frei'],
     ['ja, alle waren einverstanden', 'frei'],
     ['2', 'einwilligung_fehlt'],
@@ -12,12 +13,30 @@ describe('parseConsentAnswer', () => {
     ['nicht gefragt', 'einwilligung_fehlt'],
     ['3', 'frei'],
     ['3️⃣ Nein', 'frei'],
+    ['drei', 'frei'],
     ['nein', 'frei'],
+    ['nö', 'frei'],
+    ['Nö, nur Lötkolben', 'frei'],
+    ['nee', 'frei'],
+    ['keine Personen drauf', 'frei'],
   ])('%s → %s', (answer, expected) => {
     expect(parseConsentAnswer(answer)).toBe(expected);
   });
 
-  it('returns null for unrelated answers', () => {
-    expect(parseConsentAnswer('vielleicht')).toBeNull();
+  it.each([
+    ['keine Ahnung'],
+    ['weiß nicht'],
+    ['1 Person, nicht gefragt'],
+    ['3 Leute drauf, nicht gefragt'],
+    ['Nein, ich habe nicht gefragt'],
+  ])('doubt wins: %s → einwilligung_fehlt', (answer) => {
+    expect(parseConsentAnswer(answer)).toBe('einwilligung_fehlt');
   });
+
+  it.each([['vielleicht'], ['3 Leute drauf'], ['1 Person']])(
+    'asks again for unclear answers: %s',
+    (answer) => {
+      expect(parseConsentAnswer(answer)).toBeNull();
+    },
+  );
 });

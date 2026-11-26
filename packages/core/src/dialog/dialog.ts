@@ -1,7 +1,7 @@
 import type { FactKey, PostFacts, PostType } from '../types.ts';
 import { extractFacts, guessTitle, guessType } from '../extract.ts';
 import { factsLineDm } from '../format.ts';
-import { weekdayDe, dayMonthDe } from '../time.ts';
+import { weekdayDe, dayMonthDe, isValidDate } from '../time.ts';
 import { CONSENT_QUESTION, parseConsentAnswer } from '../consent.ts';
 import type { Consent } from '../types.ts';
 
@@ -59,8 +59,10 @@ export type DialogEffect =
   | { kind: 'set_consent'; photoIds: number[]; consent: Consent }
   /** All facts are collected: generate texts + banner and send the summary. */
   | { kind: 'summary' }
-  /** Member asked for a text change in review. */
-  | { kind: 'change_request'; instruction: string };
+  /** Member explicitly asked for a text change in review ("Text ändern: …"). */
+  | { kind: 'change_request'; instruction: string }
+  /** Other free text in review: a note for the Medienteam. */
+  | { kind: 'note'; text: string };
 
 export interface DialogResult {
   state: DialogState;
@@ -73,6 +75,11 @@ export const GREETING = (name: string) =>
 
 export const TYPE_QUESTION =
   'Was möchtest du einreichen?\n1️⃣ Event (ein Termin im Attraktor)\n2️⃣ Projekt (etwas, das du gebaut hast)';
+
+export const CONFIRM_SUBMIT =
+  'Soll ich es so ans Medienteam schicken? Antworte „abschicken“.';
+export const THANKS_REPLY =
+  'Gern! Antworte „abschicken“, wenn es so ans Medienteam soll.';
 
 const QUESTIONS: Partial<Record<FactKey, string>> = {
   title: 'Wie soll der Titel lauten?',
@@ -146,11 +153,23 @@ export function nextQuestion(state: DialogState): FactKey | 'photo' | null {
   return null;
 }
 
+const PROJEKT_DESCRIPTION_QUESTION =
+  'Was hast du gebaut? Ein, zwei Sätze reichen.';
+
+/** Review step: an explicit change wish ("Text ändern: …", "ändere …"). */
+const CHANGE_RE = /^\s*(bitte\s+)?(texte?\s+)?änder/i;
+const AFFIRM_RE =
+  /^\s*(ok(ay)?|passt( so)?|ja( bitte)?|jo|jap|yes|gut so|perfekt|klingt gut|👍\S*)\s*[.!]*\s*$/iu;
+const THANKS_RE =
+  /^\s*(danke( dir| schön| sehr)?|super|cool|toll|merci|thx|top)\s*[.!🙏😊🙂]*\s*$/iu;
+
 function questionText(state: DialogState, key: FactKey | 'photo'): string {
   if (key === 'photo')
     return state.type === 'projekt'
       ? PHOTO_QUESTION_PROJEKT
       : PHOTO_QUESTION_EVENT;
+  if (key === 'description' && state.type === 'projekt')
+    return PROJEKT_DESCRIPTION_QUESTION;
   return QUESTIONS[key] ?? `${key}?`;
 }
 
@@ -236,7 +255,8 @@ async function absorbText(
       // Deterministic values win for the field that was explicitly asked.
       const aiFacts = Object.fromEntries(
         Object.entries(ai.facts).filter(
-          ([, v]) => v !== undefined && v !== null && v !== '',
+          ([k, v]) =>
+            v !== undefined && v !== null && v !== '' && validAi(k, v),
         ),
       ) as PostFacts;
       extracted = {
@@ -257,6 +277,28 @@ async function absorbText(
     changed,
     typeDetected,
   };
+}
+
+const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * AI output is untrusted: dates and times end up in file paths, wiki
+ * templates and calendar matching, so only well-formed values are kept.
+ */
+function validAi(key: string, value: unknown): boolean {
+  switch (key) {
+    case 'date':
+      return typeof value === 'string' && isValidDate(value);
+    case 'startTime':
+    case 'endTime':
+      return typeof value === 'string' && HH_MM.test(value);
+    case 'places':
+      return Number.isInteger(value) && (value as number) >= 0;
+    case 'isWorkshop':
+      return typeof value === 'boolean';
+    default:
+      return typeof value === 'string';
+  }
 }
 
 function pick(f: PostFacts, key: FactKey): PostFacts {
@@ -404,6 +446,11 @@ export async function advanceDialog(
   }
 
   if (state.step === 'review') {
+    // Short confirmations never change texts or notes.
+    if (AFFIRM_RE.test(text))
+      return { state, replies: [CONFIRM_SUBMIT], effects: [] };
+    if (THANKS_RE.test(text))
+      return { state, replies: [THANKS_REPLY], effects: [] };
     const absorbed = await absorbText(
       { ...state, expecting: null },
       text,
@@ -418,7 +465,19 @@ export async function advanceDialog(
         effects: [{ kind: 'summary' }],
       };
     }
-    const instruction = text.replace(/^text\s+ändern\s*:?\s*/i, '').trim();
+    if (!CHANGE_RE.test(text))
+      return {
+        state: absorbed.state,
+        replies: [],
+        effects: [{ kind: 'note', text }],
+      };
+    const instruction =
+      text
+        .replace(
+          /^\s*(bitte\s+)?(texte?\s+)?änder\p{L}*\s*(bitte\s+)?:?\s*/iu,
+          '',
+        )
+        .trim() || text;
     return {
       state: absorbed.state,
       replies: [],
