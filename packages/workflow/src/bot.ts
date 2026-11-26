@@ -1,6 +1,7 @@
 import {
   advanceDialog,
   initialDialogState,
+  openQuestion,
   type DialogState,
   type MatrixIncoming,
   type MatrixPort,
@@ -297,9 +298,12 @@ export class BotService {
         }
         const state = conv.state ?? initialDialogState();
         if (state.step !== 'review') {
+          const open = openQuestion(state);
           await this.say(
             roomId,
-            `${DM.notReady} Antworte bitte noch auf meine letzte Frage.`,
+            open
+              ? `${DM.notReady}\n${open}`
+              : `${DM.notReady} Antworte bitte noch auf meine letzte Frage.`,
           );
           return;
         }

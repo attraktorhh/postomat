@@ -292,6 +292,17 @@ function askNextOrSummarize(state: DialogState, prefix: string): DialogResult {
   };
 }
 
+/** The question the member still has to answer (for "abschicken" too early). */
+export function openQuestion(state: DialogState): string | undefined {
+  if (state.expecting === 'consent') return CONSENT_QUESTION;
+  if (state.expecting === 'type') return TYPE_QUESTION;
+  if (state.expecting) return questionText(state, state.expecting);
+  if (state.step === 'idle') return GREETING_HINT;
+  return undefined;
+}
+
+const GREETING_HINT = 'Erzähl mir erst in einem Satz, was du vorhast.';
+
 function parseTypeAnswer(text: string): PostType | undefined {
   const t = text.trim().toLowerCase();
   if (

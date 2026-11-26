@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceDialog,
   initialDialogState,
+  openQuestion,
   type DialogDeps,
   type DialogState,
   type DialogInput,
@@ -191,6 +192,12 @@ describe('dialog without AI', () => {
     expect(transcript[3]).toBe(
       'Alles klar: Lötkurs für Einsteiger.\nWorum geht’s? Ein, zwei Sätze reichen.',
     );
+  });
+
+  it('names the open question (for "abschicken" too early)', async () => {
+    const { state } = await run(['hi', '1', 'Repair Café', 'Wir reparieren.']);
+    expect(openQuestion(state)).toBe('An welchem Tag ist es?');
+    expect(openQuestion(initialDialogState())).toContain('Erzähl mir erst');
   });
 
   it('turns free text in review into a change request without AI', async () => {

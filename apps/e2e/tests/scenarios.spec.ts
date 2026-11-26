@@ -67,7 +67,7 @@ describe('scenarios', () => {
       'Deine Beiträge:\n• Lötkurs: Entwurf – http://postomat.test/b/1',
     );
     expect(await h.dm(LENA, 'abschicken')).toEqual([
-      'Mir fehlt noch etwas, bevor ich es abschicken kann. Antworte bitte noch auf meine letzte Frage.',
+      'Mir fehlt noch etwas, bevor ich es abschicken kann.\nWas möchtest du einreichen?\n1️⃣ Event (ein Termin im Attraktor)\n2️⃣ Projekt (etwas, das du gebaut hast)',
     ]);
     expect(await h.dm(LENA, 'abbrechen')).toEqual([
       'Okay, den Entwurf habe ich verworfen. Schreib einfach, wenn du etwas Neues hast.',
