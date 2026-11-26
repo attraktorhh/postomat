@@ -73,7 +73,7 @@ Zugangsdaten in `.env` leer sind, und Fotos landen in `MEDIA_LOCAL_DIR` statt in
 ```sh
 pnpm nx run-many -t lint test build typecheck   # alles, wie in CI
 pnpm nx run e2e:test                            # Hauptablauf DM → Freigabe → Veröffentlichen → Meetup → online
-pnpm nx run-many -t contract                    # Adapter-Verträge gegen die lokalen Container (CONTRACT_TARGET=local)
+pnpm nx run-many -t contract                    # Adapter-Verträge gegen Fakes; mit CONTRACT_TARGET=local gegen die Container
 pnpm nx run e2e:stack-smoke                     # echter verschlüsselter DM gegen den laufenden Stack (Bot + Worker müssen laufen)
 ```
 
