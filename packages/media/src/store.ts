@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 
 /** Where photos and banners are stored. */
 export interface MediaStore {
@@ -18,7 +18,8 @@ export class LocalFileStore implements MediaStore {
   }
   private abs(path: string): string {
     const p = resolve(join(this.root, path));
-    if (!p.startsWith(this.root)) throw new Error('path escapes media root');
+    if (p !== this.root && !p.startsWith(this.root + sep))
+      throw new Error('path escapes media root');
     return p;
   }
   async ensureDir(path: string): Promise<void> {
