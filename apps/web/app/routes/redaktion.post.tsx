@@ -31,6 +31,8 @@ import {
   resubmit,
   retryChannel,
   setBannerColor,
+  renderBanners,
+  getPost,
   setChannelLink,
   setMeetupCategory,
   setPhotoConsent,
@@ -98,7 +100,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
           s('color') as BannerColor,
           user.username,
         );
-        return { ok: 'Banner wird neu erzeugt …' };
+        // An explicit editor action: render right away (~0.3 s) so the
+        // preview after this request already shows the new colour. The
+        // queued worker job then finds the banner current and skips.
+        await renderBanners(deps, await getPost(deps.db, id));
+        return { ok: 'Banner-Farbe gespeichert.' };
       case 'meetup_category':
         await setMeetupCategory(deps, id, s('category'), user.username);
         return { ok: 'Meetup-Kategorie gespeichert.' };

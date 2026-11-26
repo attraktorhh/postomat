@@ -65,12 +65,16 @@ type MembershipCache = {
  * configured "Mitglieder" room, Medienteam is joined to the Medienteam room.
  * Only users on the bot's own homeserver count (a federated room must not let
  * `@lena:elsewhere` act as the club's `lena`).
- * Results are cached for MATRIX_MEMBERSHIP_CACHE_SEC (max. 5 minutes); a load
- * that hit a transient Matrix error is not cached but rethrown.
+ * Results are cached for MATRIX_MEMBERSHIP_CACHE_SEC (max. 5 minutes). A load
+ * that hits a transient Matrix error is never cached: the previous (expired)
+ * result is used meanwhile, so a homeserver hiccup doesn't drop 👍 or DMs;
+ * without one the error is rethrown.
  */
 export class Membership {
   private cache?: MembershipCache;
   private loading?: Promise<MembershipCache>;
+  /** Bumped by invalidate(), so a load started before it isn't cached. */
+  private generation = 0;
   private readonly deps: Pick<WorkflowDeps, 'db' | 'env' | 'now'>;
   private readonly matrix: MatrixPort;
 
@@ -84,6 +88,7 @@ export class Membership {
 
   invalidate(): void {
     this.cache = undefined;
+    this.generation++;
   }
 
   private get serverName(): string {
@@ -109,13 +114,20 @@ export class Membership {
     if (this.cache && this.deps.now().getTime() - this.cache.at < ttl)
       return this.cache;
     // Concurrent callers share one load.
-    this.loading ??= this.fetch().finally(() => {
-      this.loading = undefined;
-    });
+    const stale = this.cache;
+    this.loading ??= this.fetch()
+      .catch((e: unknown) => {
+        if (stale) return stale; // not re-cached: the next call tries again
+        throw e;
+      })
+      .finally(() => {
+        this.loading = undefined;
+      });
     return this.loading;
   }
 
   private async fetch(): Promise<MembershipCache> {
+    const generation = this.generation;
     const cfg = await getRoomSettings(this.deps);
     const memberRoomIds: string[] = [];
     const members = new Set<string>();
@@ -135,14 +147,16 @@ export class Membership {
       set.delete(this.matrix.userId);
       for (const m of set) if (!this.isLocalUser(m)) set.delete(m);
     }
-    this.cache = {
+    const result: MembershipCache = {
       at: this.deps.now().getTime(),
       members,
       medienteam,
       medienteamRoomId,
       memberRoomIds,
     };
-    return this.cache;
+    // invalidate() during the load (room picker saved): don't cache old data.
+    if (generation === this.generation) this.cache = result;
+    return result;
   }
 
   async isMember(userId: string): Promise<boolean> {

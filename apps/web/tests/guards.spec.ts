@@ -13,6 +13,8 @@ describe('safeReturnTo', () => {
     ['https://evil.example', '/'],
     ['redaktion', '/'],
     ['/x\r\nset-cookie: a=b', '/'],
+    ['/\t/evil.example/x', '/'],
+    ['/ /evil.example', '/'],
     ['', '/'],
     [null, '/'],
   ])('%j → %j', (input, expected) => {

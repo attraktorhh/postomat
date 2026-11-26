@@ -124,8 +124,10 @@ export async function publishChannel(
     // Already published (e.g. a retry after a failing follow-up): the follow-ups
     // are idempotent, so make sure they ran. Otherwise skipped or held elsewhere.
     const cur = await getChannel(deps.db, postId, channel);
-    if (cur?.status === 'veroeffentlicht')
+    if (cur?.status === 'veroeffentlicht') {
       await settleAfterPublish(deps, postId);
+      await ensureWikiWebsiteLink(deps, postId);
+    }
     return;
   }
   // Main "ist online" DM already sent → this is a late publish (e.g. "Erneut versuchen").
@@ -160,10 +162,18 @@ export async function publishChannel(
   if (late) await notifyMemberLink(deps, postId, channel, result.url);
   // The wiki page needs the website link (url=…). Whichever of the two
   // finishes last makes sure it is there.
+  if (channel === 'wordpress' || !result.hadWebsiteLink)
+    await ensureWikiWebsiteLink(deps, postId);
+}
+
+/** Queues the (idempotent) wiki update once both WordPress and wiki are online. */
+async function ensureWikiWebsiteLink(
+  deps: WorkflowDeps,
+  postId: number,
+): Promise<void> {
   const wiki = await getChannel(deps.db, postId, 'wiki');
   if (
     wiki?.status === 'veroeffentlicht' &&
-    (channel === 'wordpress' || !result.hadWebsiteLink) &&
     (await getChannel(deps.db, postId, 'wordpress'))?.status ===
       'veroeffentlicht'
   )
@@ -236,6 +246,31 @@ export async function sweepStrandedChannels(
       postId: r.postId,
       channel: r.channel as AutoChannel,
     });
+  }
+  // Approved posts whose auto channels are all settled but whose summary and
+  // member DM never went out (a follow-up failed after the last publish).
+  const unsettled = await deps.db
+    .select({ id: posts.id })
+    .from(posts)
+    .where(
+      and(
+        eq(posts.status, 'geplant'),
+        isNull(posts.autoNotifiedAt),
+        lt(posts.updatedAt, sql`now() - interval '10 minutes'`),
+      ),
+    );
+  for (const p of unsettled) {
+    const chs = await getChannels(deps.db, p.id);
+    if (
+      chs.some(
+        (c) =>
+          c.mode === 'auto' &&
+          (c.status === 'wartet' || c.status === 'entwurf'),
+      )
+    )
+      continue;
+    deps.log.warn('settling post whose follow-ups were lost', { postId: p.id });
+    await settleAfterPublish(deps, p.id);
   }
   return rows.length;
 }

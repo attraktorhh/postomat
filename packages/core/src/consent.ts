@@ -18,7 +18,7 @@ export function parseConsentAnswer(text: string): Consent | null {
   const t = text.trim().toLowerCase();
   // Doubt always wins, even after a number ("1 Person, nicht gefragt").
   if (
-    /nicht gefragt|nicht einverstanden|wei(ß|ss) nicht|keine ahnung|nicht sicher|unsicher/.test(
+    /nicht gefragt|nicht einverstanden|nicht zugestimmt|keiner hat zugestimmt|nicht ok|wei(ß|ss) nicht|keine ahnung|nicht sicher|unsicher/.test(
       t,
     )
   )
@@ -45,6 +45,25 @@ export function parseConsentAnswer(text: string): Consent | null {
     return choice === 2 ? 'einwilligung_fehlt' : 'frei';
   }
   if (/alle (waren )?einverstanden|ja,? alle/.test(t)) return 'frei';
-  if (/^(nein|nö|noe|ne|nee|keine|niemand)(?!\p{L})/u.test(t)) return 'frei';
+  // "Nein" (no recognisable people) only on its own or with a plain
+  // "keine/niemand …"; anything longer is ambiguous and asked again.
+  const no = /^(nein|nö|noe|ne|nee|keine|niemand)(?!\p{L})[\s.,!-]*(.*)$/u.exec(
+    t,
+  );
+  if (no) {
+    const rest = no[2].trim();
+    // "Keine Personen drauf" / "niemand": no people (doubt was handled above).
+    if (no[1] === 'keine' || no[1] === 'niemand') return 'frei';
+    if (!rest || /^(keine|niemand|nichts)(?!\p{L})/u.test(rest)) return 'frei';
+    // "Nö, nur Lötkolben" (only things) is fine; people talk is not.
+    if (
+      /^nur /u.test(rest) &&
+      !/zugestimmt|einverstanden|gefragt|person|leute|mensch|wir|ich|hat|haben/u.test(
+        rest,
+      )
+    )
+      return 'frei';
+    return null;
+  }
   return null;
 }

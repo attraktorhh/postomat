@@ -2,11 +2,18 @@
 
 /**
  * A login return path must stay on this site: one leading slash, not followed
- * by a second slash or a backslash (`//evil.example`, `/\evil.example`).
+ * by a second slash or a backslash (`//evil.example`, `/\evil.example`), and
+ * free of control characters and spaces.
  */
 export function safeReturnTo(value: string | null | undefined): string {
   if (!value) return '/';
-  return /^\/(?![/\\])/.test(value) && !/[\r\n]/.test(value) ? value : '/';
+  // Browsers drop tabs/newlines while parsing a URL ("/\t/evil" → "//evil"),
+  // so no control characters or spaces at all.
+  const hasControlOrSpace = [...value].some((ch) => {
+    const code = ch.charCodeAt(0);
+    return code <= 0x20 || code === 0x7f;
+  });
+  return /^\/(?![/\\])/.test(value) && !hasControlOrSpace ? value : '/';
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);

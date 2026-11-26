@@ -19,6 +19,7 @@ describe('parseConsentAnswer', () => {
     ['Nö, nur Lötkolben', 'frei'],
     ['nee', 'frei'],
     ['keine Personen drauf', 'frei'],
+    ['nein, keine Personen', 'frei'],
   ])('%s → %s', (answer, expected) => {
     expect(parseConsentAnswer(answer)).toBe(expected);
   });
@@ -29,14 +30,18 @@ describe('parseConsentAnswer', () => {
     ['1 Person, nicht gefragt'],
     ['3 Leute drauf, nicht gefragt'],
     ['Nein, ich habe nicht gefragt'],
+    ['nein, keiner hat zugestimmt'],
   ])('doubt wins: %s → einwilligung_fehlt', (answer) => {
     expect(parseConsentAnswer(answer)).toBe('einwilligung_fehlt');
   });
 
-  it.each([['vielleicht'], ['3 Leute drauf'], ['1 Person']])(
-    'asks again for unclear answers: %s',
-    (answer) => {
-      expect(parseConsentAnswer(answer)).toBeNull();
-    },
-  );
+  it.each([
+    ['vielleicht'],
+    ['3 Leute drauf'],
+    ['1 Person'],
+    ['nein, nur Kai hat mitgemacht'],
+    ['nein danke'],
+  ])('asks again for unclear answers: %s', (answer) => {
+    expect(parseConsentAnswer(answer)).toBeNull();
+  });
 });

@@ -22,12 +22,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     latest.bannerColor === post.bannerColor;
   if (fresh && notModified(request, latest.sha256))
     return new Response(null, { status: 304 });
-  // Never render in a web request: the worker renders (a stale banner queues a
-  // throttled job) and the newest existing banner is served meanwhile.
-  const banner = await bannerData(deps, post, format, { render: false });
+  // Previews never render in a web request: the worker renders (a stale
+  // banner queues a throttled job) and the newest existing banner is shown
+  // meanwhile. A download ("Bild laden") is what gets posted, so it must be
+  // current and renders when needed.
+  const download = url.searchParams.has('download');
+  const banner = await bannerData(deps, post, format, { render: download });
   if (!banner) throw new Response('Nicht gefunden', { status: 404 });
   const { row, data } = banner;
-  const download = url.searchParams.has('download');
   return new Response(new Uint8Array(data), {
     headers: {
       'content-type': 'image/png',
