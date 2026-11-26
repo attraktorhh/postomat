@@ -2,6 +2,7 @@ import {
   Form,
   useActionData,
   useLoaderData,
+  useNavigation,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from 'react-router';
@@ -9,7 +10,7 @@ import { Alert, Button } from '@heroui/react';
 import { getRoomSettings, saveRoomSettings } from '@postomat/workflow';
 import { requireUser } from '../server/auth.server';
 import { getDeps } from '../server/deps.server';
-import { loadRoomDirectory } from '../server/views.server';
+import { botMatrixId, loadRoomDirectory } from '../server/views.server';
 import { Shell } from '../components/shell';
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -17,7 +18,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const deps = await getDeps();
   const dir = await loadRoomDirectory();
   const current = await getRoomSettings(deps);
-  const botUser = `@${deps.env.MATRIX_USERNAME ?? 'postomat'}:${new URL(deps.env.MATRIX_HOMESERVER_URL).hostname}`;
+  const botUser = await botMatrixId();
   // Map aliases from env seeding to room IDs where the directory knows them.
   const norm = (r: string) =>
     dir.rooms.find((x) => x.roomId === r || x.alias === r)?.roomId ?? r;
@@ -50,6 +51,7 @@ export async function action({ request }: ActionFunctionArgs) {
 export default function Raeume() {
   const data = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
+  const saving = useNavigation().state === 'submitting';
   return (
     <Shell user={data.user}>
       <h1 className="text-xl font-bold">Räume</h1>
@@ -127,7 +129,7 @@ export default function Raeume() {
             ))}
           </div>
           <div>
-            <Button type="submit" variant="primary">
+            <Button type="submit" variant="primary" isPending={saving}>
               Speichern
             </Button>
           </div>

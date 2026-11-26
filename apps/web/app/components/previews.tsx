@@ -1,11 +1,12 @@
 import { Tabs } from '@heroui/react';
 import type { PostView } from '../server/views.server';
+import { bannerSrc } from '../urls';
 
 /** Read-only previews of every channel ("Alle Kanäle" + one tab per channel). */
 export function ChannelPreviews({ view }: { view: PostView }) {
   const p = view.previews;
-  const banner4x5 = `/banner/${view.post.id}/4x5`;
-  const banner16x9 = `/banner/${view.post.id}/16x9`;
+  const banner4x5 = bannerSrc(view.post.id, '4x5', view.bannerIds['4x5']);
+  const banner16x9 = bannerSrc(view.post.id, '16x9', view.bannerIds['16x9']);
   const ig = p.instagram && (
     <div className="overflow-hidden rounded-lg border border-[var(--border)]">
       <div className="px-3 py-2 text-sm font-semibold">attraktor_org</div>
