@@ -26,11 +26,17 @@ export class NotFoundError extends Error {
   }
 }
 
+/** True for a positive integer that fits a Postgres `integer` column. */
+export const isDbId = (id: number): boolean =>
+  Number.isInteger(id) && id > 0 && id <= 2_147_483_647;
+
 export async function getPost(
   db: DbOrTx,
   id: number,
   lock = false,
 ): Promise<Post> {
+  // Ids come from URLs: anything that is not a Postgres integer is "not found".
+  if (!isDbId(id)) throw new NotFoundError(`post ${id}`);
   const q = db.select().from(posts).where(eq(posts.id, id));
   const [row] = lock ? await q.for('update') : await q;
   if (!row) throw new NotFoundError(`post ${id}`);

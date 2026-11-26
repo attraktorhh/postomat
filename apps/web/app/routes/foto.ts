@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from 'react-router';
 import { eq, photos } from '@postomat/db';
-import { getPost } from '@postomat/workflow';
+import { getPost, isDbId } from '@postomat/workflow';
 import { requireUser } from '../server/auth.server';
 import { getDeps } from '../server/deps.server';
 
@@ -8,10 +8,9 @@ import { getDeps } from '../server/deps.server';
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request);
   const deps = await getDeps();
-  const [photo] = await deps.db
-    .select()
-    .from(photos)
-    .where(eq(photos.id, Number(params['id'])));
+  const id = Number(params['id']);
+  if (!isDbId(id)) throw new Response('Nicht gefunden', { status: 404 });
+  const [photo] = await deps.db.select().from(photos).where(eq(photos.id, id));
   if (!photo?.postId) throw new Response('Nicht gefunden', { status: 404 });
   const post = await getPost(deps.db, photo.postId);
   if (
