@@ -1,5 +1,6 @@
 import {
   BANNER_COLORS,
+  CONSENT_LABELS,
   CONSENTS,
   assertTransition,
   credentialsFromEnv,
@@ -459,7 +460,7 @@ export async function setPhotoConsent(
     postId,
     actor,
     'edited',
-    `Foto-Einwilligung: ${consent}`,
+    `Foto-Einwilligung: ${CONSENT_LABELS[consent]}`,
   );
   const post = await getPost(deps.db, postId);
   if (post.cardEventId) await deps.queue.send('bot.card', { postId });

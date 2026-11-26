@@ -74,8 +74,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
           id,
           channel,
           {
-            textDe: String(form.get('textDe') ?? ''),
-            textEn: String(form.get('textEn') ?? ''),
+            // a field that was not sent stays unchanged
+            textDe: form.has('textDe') ? String(form.get('textDe')) : undefined,
+            textEn: form.has('textEn') ? String(form.get('textEn')) : undefined,
             fields,
           },
           user.username,
@@ -284,7 +285,9 @@ function ChannelStatusRows({
                 (c.error ?? '')
               )}
               {c.channel === 'wordpress' && c.status === 'veroeffentlicht'
-                ? ' · Kategorie Termine · DE + EN'
+                ? view.post.facts.isWorkshop
+                  ? ' · Kategorien Termine + Workshops · DE + EN'
+                  : ' · Kategorie Termine · DE + EN'
                 : ''}
               {c.channel === 'meetup' && c.linkedVia === 'ical'
                 ? ' · im iCal-Feed erkannt'

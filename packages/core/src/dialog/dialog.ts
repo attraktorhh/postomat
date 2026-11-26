@@ -483,11 +483,8 @@ export async function advanceDialog(
   );
   const got = understood(s.facts, changed, false);
   // An optional question that was interrupted by other facts is asked again.
-  const stillOpen =
-    expecting &&
-    expecting !== 'type' &&
-    expecting !== 'consent' &&
-    !hasFact(s, expecting);
+  // (consent was handled above; type is not a collect step)
+  const stillOpen = expecting && expecting !== 'type' && !hasFact(s, expecting);
   const asked = stillOpen ? s.asked.filter((k) => k !== expecting) : s.asked;
   return askNextOrSummarize({ ...s, asked, expecting: null }, got);
 }

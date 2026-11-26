@@ -1,10 +1,19 @@
 import type {
+  ChannelId,
   ChannelPostSnapshot,
   PhotoSnapshot,
   PostSnapshot,
 } from './types.ts';
 import { berlinToInstant } from './time.ts';
 import { missingRequiredFields } from './fields.ts';
+
+const CHANNEL_LABELS: Record<ChannelId, string> = {
+  wordpress: 'Website',
+  wiki: 'Wiki',
+  meetup: 'Meetup',
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+};
 
 export type CheckLevel = 'block' | 'warn';
 
@@ -102,7 +111,7 @@ export function runChecks(input: CheckInput): CheckResult[] {
     label:
       missingEn.length === 0
         ? 'EN-Text vorhanden'
-        : `EN-Text fehlt: ${missingEn.map((c) => c.channel).join(', ')}`,
+        : `EN-Text fehlt: ${missingEn.map((c) => CHANNEL_LABELS[c.channel]).join(', ')}`,
   });
 
   if (active.some((c) => c.channel === 'meetup')) {

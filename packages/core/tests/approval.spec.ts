@@ -146,5 +146,8 @@ describe('runChecks warnings', () => {
     expect(checks.filter((c) => !c.ok).every((c) => c.level === 'warn')).toBe(
       true,
     );
+    expect(checks.find((c) => c.id === 'en_text')?.label).toBe(
+      'EN-Text fehlt: Meetup',
+    );
   });
 });
