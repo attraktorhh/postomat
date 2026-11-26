@@ -11,7 +11,9 @@ import {
   eq,
   history,
   inArray,
+  isNotNull,
   ne,
+  or,
   posts,
   settings,
   sql,
@@ -174,7 +176,12 @@ export async function listMine(username: string) {
     .select()
     .from(posts)
     .where(
-      and(eq(posts.authorUsername, username), ne(posts.status, 'verworfen')),
+      and(
+        eq(posts.authorUsername, username),
+        // discarded posts that reached the Medienteam show as "Verworfen";
+        // drafts the member cancelled in the DM are left out
+        or(ne(posts.status, 'verworfen'), isNotNull(posts.cardEventId)),
+      ),
     )
     .orderBy(desc(posts.createdAt))
     .limit(50);

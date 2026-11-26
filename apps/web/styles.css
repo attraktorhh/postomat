@@ -21,6 +21,10 @@ body {
   overflow-wrap: anywhere;
 }
 
+.pm-html {
+  /* long links (Meetup URL) must wrap at phone width */
+  overflow-wrap: anywhere;
+}
 .pm-html p {
   margin: 0 0 0.6rem;
 }

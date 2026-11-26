@@ -29,6 +29,8 @@ function note(p: Awaited<ReturnType<typeof loader>>['posts'][number]): string {
       return `Freigegeben${p.approvedBy ? ` von @${p.approvedBy}` : ''}. Einige Kanäle folgen noch.`;
     case 'online':
       return `Online: ${p.channels.join(', ')} · DE + EN${p.approvedBy ? ` · freigegeben von @${p.approvedBy}` : ''}`;
+    case 'verworfen':
+      return 'Das Medienteam hat den Beitrag nicht veröffentlicht. Frag gern im Chat nach.';
     default:
       return '';
   }
@@ -76,7 +78,10 @@ export default function Meine() {
             {p.status === 'sammeln' ? (
               <span className="text-xs">Entwurf</span>
             ) : (
-              <Stepper done={p.stage.done} />
+              <Stepper
+                done={p.stage.done}
+                discarded={p.status === 'verworfen'}
+              />
             )}
             <span className="text-xs text-[var(--muted)]">{note(p)}</span>
             {p.links.length > 0 && (
