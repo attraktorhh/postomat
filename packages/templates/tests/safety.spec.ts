@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { build } from './fixtures.ts';
 import { DEFAULT_CONFIG } from '@postomat/core';
 import {
-  buildDrafts,
   dmPublished,
   instagramExcerpt,
   renderCard,

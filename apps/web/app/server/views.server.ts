@@ -2,10 +2,12 @@ import {
   ageDe,
   factsLineShort,
   memberStage,
+  shortWeekdayDateDe,
   TYPE_LABELS,
   WEB_STATUS_LABELS,
   type ChannelId,
   type ChannelPostStatus,
+  type PostFacts,
   type PostStatus,
 } from '@postomat/core';
 import {
@@ -157,6 +159,10 @@ export async function loadPostView(
       meetupCategory: post.meetupCategory,
       approvedBy: forMember ? null : post.approvedBy,
       pendingQuestion: forMember ? null : post.pendingQuestion,
+      /** Facts the AI read from a Rückfrage answer (Redaktion only). */
+      suggestedFacts: forMember ? null : suggestionLines(post),
+      /** Text generation failed after all retries (Redaktion only). */
+      textsError: forMember ? null : post.textsError,
       stage: memberStage(post.status),
     },
     channels: channels.map<ChannelView>((c) => ({
@@ -365,4 +371,38 @@ export async function loadRoomDirectory(): Promise<{
     rooms: row.value as RoomDirectoryEntry[],
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+const SUGGESTION_LABELS: Partial<Record<keyof PostFacts, string>> = {
+  title: 'Titel',
+  description: 'Beschreibung',
+  date: 'Datum',
+  startTime: 'Beginn',
+  endTime: 'Ende',
+  places: 'Plätze',
+  costs: 'Kosten',
+  audience: 'Zielgruppe',
+  trickiest: 'Kniffligste',
+  isWorkshop: 'Workshop',
+};
+
+/** "Zielgruppe: ab 12 Jahren" lines for the suggested facts, or null. */
+function suggestionLines(post: Post): string[] | null {
+  const s = post.suggestedFacts;
+  if (!s) return null;
+  const lines = Object.entries(s)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => {
+      const label = SUGGESTION_LABELS[k as keyof PostFacts] ?? k;
+      const value =
+        k === 'date' && typeof v === 'string'
+          ? shortWeekdayDateDe(v)
+          : typeof v === 'boolean'
+            ? v
+              ? 'ja'
+              : 'nein'
+            : String(v);
+      return `${label}: ${value}`;
+    });
+  return lines.length ? lines : null;
 }

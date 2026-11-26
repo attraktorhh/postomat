@@ -84,7 +84,7 @@ function instagramDraft(ctx: DraftContext, meetupOn: boolean): ChannelDraft {
 }
 
 // ---------- Facebook ----------
-function facebookDraft(ctx: DraftContext, meetupOn: boolean): ChannelDraft {
+function facebookDraft(ctx: DraftContext): ChannelDraft {
   let de: string;
   if (ctx.type === 'event') {
     const when = whenProseDe(ctx);
@@ -158,7 +158,7 @@ export function buildDrafts(
         out[ch] = instagramDraft(ctx, meetupOn);
         break;
       case 'facebook':
-        out[ch] = facebookDraft(ctx, meetupOn);
+        out[ch] = facebookDraft(ctx);
         break;
       case 'meetup':
         out[ch] = meetupDraft(ctx);

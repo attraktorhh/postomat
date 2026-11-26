@@ -3,6 +3,9 @@
  *   docker compose --profile channels up -d --wait
  *   pnpm nx run e2e:stack-smoke      (bot and worker must be running)
  * Uses a real encrypted DM between a scripted @lena and @postomat.
+ * The bot's AI must be the fake LLM (AI_BASE_URL=http://localhost:8085/v1,
+ * AI_MODEL=fake-llm): it knows exactly these messages. With Ollama the
+ * dialog works too, but the wording of the answers is not fixed.
  */
 import sharp from 'sharp';
 import { StackUser } from './stack-client.ts';
@@ -35,8 +38,13 @@ try {
   if (onlyDm) process.exit(0);
 
   step('event dialog');
+  // A draft from an earlier run: "abbrechen" asks first, "ja" discards it.
   await lena.say(dm, 'abbrechen');
-  await lena.waitFor(dm, () => true);
+  const cancel = await lena.waitFor(dm, () => true);
+  if (cancel.content.body.includes('verwerfen?')) {
+    await lena.say(dm, 'ja');
+    await lena.waitFor(dm, (b) => b.includes('verworfen'));
+  }
   const title = `Smoke-Test ${Math.random()
     .toString(36)
     .replace(/[^a-z]/g, '')

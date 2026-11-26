@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { build } from './fixtures.ts';
 import { DEFAULT_CONFIG, runChecks } from '@postomat/core';
 import {
-  buildDrafts,
   facebookText,
   instagramCaption,
   meetupCopyFields,

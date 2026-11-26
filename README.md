@@ -16,12 +16,12 @@ Nx-Monorepo mit pnpm 12 und Node 24.
 | `apps/web`                                    | Web-App und API (React Router 7 + HeroUI v3), Login per Keycloak                                          |
 | `apps/worker`                                 | Jobs (pg-boss): Banner, WordPress, Wiki, Meetup-iCal                                                      |
 | `apps/e2e`                                    | End-to-End-Tests und Smoke-Test gegen den Docker-Stack                                                    |
-| `packages/core`                               | Zustandsautomat, Freigaberegeln, Checks, Dialog, Felder-Parser, Konfiguration                             |
+| `packages/core`                               | Zustandsautomat, Freigaberegeln, Checks, Dialog (Ablauf, Prüfung der KI-Werte), Konfiguration             |
 | `packages/db`                                 | Drizzle-Schema und Migrationen                                                                            |
 | `packages/workflow`                           | Anwendungslogik, die Bot, Web und Worker teilen (Einreichen, Freigeben, Veröffentlichen)                  |
 | `packages/ai`, `templates`, `render`, `media` | KI (AI SDK), Texte DE + EN, Banner (Satori + resvg), Nextcloud (WebDAV)                                   |
 | `packages/channels/*`                         | WordPress, MediaWiki, Meetup (iCal + Abgleich), Kopierhilfe                                               |
-| `packages/testing`                            | Fakes für WordPress, MediaWiki, WebDAV, Meetup-iCal und Matrix                                            |
+| `packages/testing`                            | Fakes für WordPress, MediaWiki, WebDAV, Meetup-iCal und Matrix, Stub-Modell für die KI                    |
 
 ### Lokal starten
 
@@ -32,10 +32,12 @@ Details, Zugangsdaten und Neu-Seeden: [`dev/README.md`](./dev/README.md).
 pnpm install
 cp .env.example .env
 
-# 1. Stack starten (Postgres, Synapse, Element, Keycloak, Fake-Meetup) und seeden
+# 1. Stack starten (Postgres, Synapse, Element, Keycloak, Fake-Meetup, Fake-LLM) und seeden
 docker compose up -d --wait
 #    mit WordPress, MediaWiki und Nextcloud:
 docker compose --profile channels up -d --wait
+#    mit einem echten lokalen Sprachmodell (Ollama, lädt beim ersten Start ~5 GB):
+docker compose --profile ai up -d --wait
 
 # 2. Datenbank migrieren
 pnpm nx run db:migrate
@@ -45,6 +47,9 @@ pnpm nx run bot:serve      # Health: http://localhost:3001/healthz
 pnpm nx run worker:serve   # Health: http://localhost:3002/healthz
 pnpm nx run web:serve      # http://localhost:3000
 ```
+
+Bot und Worker starten nur mit einer erreichbaren KI (siehe [KI](#ki)). `.env.example` zeigt auf
+Ollama; ohne Download geht es mit dem Fake-LLM (`AI_BASE_URL=http://localhost:8085/v1`, `AI_MODEL=fake-llm`).
 
 Ohne `--profile channels` fallen WordPress und Wiki automatisch auf Kopierhilfe zurück, sobald ihre
 Zugangsdaten in `.env` leer sind, und Fotos landen in `MEDIA_LOCAL_DIR` statt in Nextcloud.
@@ -80,21 +85,47 @@ pnpm nx run e2e:stack-smoke                     # echter verschlüsselter DM geg
 DB-Tests und E2E brauchen Postgres (`DATABASE_URL_TEST`, Standard: der Compose-Postgres). Die E2E-Suite legt
 sich eine eigene Datenbank `<DATABASE_URL_TEST>_e2e` an, weil sie alle Tabellen leert. Die Adapter-Tests
 laufen ohne Stack gegen In-Process-Fakes; mit `CONTRACT_TARGET=local` dieselbe Suite gegen die Container.
-KI wird in Tests mit dem Mock-Modell des AI SDK simuliert.
+Die KI ist in allen automatischen Tests ein deterministisches Stub-Modell (`createScriptedAi` aus
+`packages/testing`, das Mock-Modell des AI SDK hinter dem echten `AiService`); CI braucht keinen Schlüssel.
+Der Smoke-Test läuft gegen das Fake-LLM. Wie gut ein echtes Modell die Nachrichten versteht, misst
+`pnpm nx run ai:eval` (nicht in CI; nutzt `AI_BASE_URL`/`AI_MODEL` aus `.env`).
+
+### KI
+
+Postomat versteht jede Chat-Nachricht über ein Sprachmodell (`packages/ai`, OpenAI-kompatible API):
+Art des Beitrags, Angaben und Korrekturen, Einwilligung, Bestätigungen, Befehle wie „hilfe“ oder
+„abbrechen“ in beliebiger Formulierung, Antworten auf Rückfragen und die Antwort des Medienteams auf die
+Meetup-Rückfrage. **Es gibt keinen Parser als Ersatz.** Das Modell liefert strukturierte, per Schema
+geprüfte Ergebnisse; Postomat prüft Datum, Uhrzeit und Zahlen danach selbst und wiederholt das Verstandene
+(mit selbst berechnetem Wochentag), damit Fehler sofort auffallen.
+
+- **Pflicht:** Bot und Worker starten nicht ohne `AI_BASE_URL` und `AI_MODEL` und warten beim Start
+  höchstens `AI_STARTUP_TIMEOUT_MS` auf eine gültige Antwort des Modells. Die Web-App startet ohne KI.
+- **Lokal:** Fake-LLM (Core-Stack, Port 8085) oder Ollama (`--profile ai`, Port 11434), siehe
+  [`dev/README.md`](./dev/README.md#ai-endpoint-fake-llm-and-ollama).
+- **Externer Anbieter:** `AI_BASE_URL` (OpenAI-kompatible Basis-URL), `AI_MODEL`, `AI_API_KEY`.
+- **Datenschutz:** An das Modell gehen nur der Nachrichtentext, die bisher bekannten Angaben und der
+  Gesprächskontext (welche Frage offen ist). Nie Matrix-IDs, Anzeigenamen oder Benutzernamen. Mitglieder-
+  Nachrichten landen damit beim konfigurierten Anbieter; das gehört in die Einwilligungstexte.
+- **Wenn die KI ausfällt:** Mitglieder bekommen „Ich kann deine Nachricht gerade nicht verarbeiten. Bitte
+  versuch es in ein paar Minuten noch mal.“ Der Entwurf bleibt unverändert; sie schicken die Nachricht
+  einfach noch einmal. Konnten Texte nicht geschrieben werden, hilft im Chat „nochmal“; in der Redaktion
+  steht „Texte konnten nicht erstellt werden · Erneut versuchen“. `/healthz` von Bot und Worker zeigt den
+  letzten KI-Fehler (`ai.lastError`, `ai.lastErrorAt`).
 
 ### Auf echte Dienste umstellen
 
 Umgestellt wird nur über Umgebungsvariablen (siehe `.env.example`):
 
-| Dienst    | Variablen                                                                                                                                           |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Matrix    | `MATRIX_HOMESERVER_URL`, `MATRIX_ACCESS_TOKEN` (Synapse ist SSO-only), `MATRIX_DEVICE_ID`, `MATRIX_DATA_DIR` (Volume!), Räume über `/admin/raeume`  |
-| Keycloak  | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `PUBLIC_WEB_URL`, Gruppen `GROUP_*`                                                          |
-| WordPress | `WORDPRESS_URL`, `WORDPRESS_USERNAME`, `WORDPRESS_APP_PASSWORD`, `WORDPRESS_POST_STATUS=draft` für die ersten Tage                                  |
-| Wiki      | `MEDIAWIKI_API_URL`, `MEDIAWIKI_PAGE_BASE_URL`, `MEDIAWIKI_BOT_USERNAME`, `MEDIAWIKI_BOT_PASSWORD`                                                  |
-| Nextcloud | `NEXTCLOUD_WEBDAV_URL`, `NEXTCLOUD_USERNAME`, `NEXTCLOUD_PASSWORD`                                                                                  |
-| Meetup    | `MEETUP_ICAL_URL=https://www.meetup.com/attraktor/events/ical/` (nur lesen), `MEETUP_GROUP_URL`                                                     |
-| KI        | `AI_PROVIDER=openai-compatible`, `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`. Gesendet werden nur Beitragstext und Fakten, keine Matrix-IDs oder Namen. |
+| Dienst    | Variablen                                                                                                                                          |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Matrix    | `MATRIX_HOMESERVER_URL`, `MATRIX_ACCESS_TOKEN` (Synapse ist SSO-only), `MATRIX_DEVICE_ID`, `MATRIX_DATA_DIR` (Volume!), Räume über `/admin/raeume` |
+| Keycloak  | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `PUBLIC_WEB_URL`, Gruppen `GROUP_*`                                                         |
+| WordPress | `WORDPRESS_URL`, `WORDPRESS_USERNAME`, `WORDPRESS_APP_PASSWORD`, `WORDPRESS_POST_STATUS=draft` für die ersten Tage                                 |
+| Wiki      | `MEDIAWIKI_API_URL`, `MEDIAWIKI_PAGE_BASE_URL`, `MEDIAWIKI_BOT_USERNAME`, `MEDIAWIKI_BOT_PASSWORD`                                                 |
+| Nextcloud | `NEXTCLOUD_WEBDAV_URL`, `NEXTCLOUD_USERNAME`, `NEXTCLOUD_PASSWORD`                                                                                 |
+| Meetup    | `MEETUP_ICAL_URL=https://www.meetup.com/attraktor/events/ical/` (nur lesen), `MEETUP_GROUP_URL`                                                    |
+| KI        | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY` (Pflicht für Bot und Worker, siehe [KI](#ki)). Vorher `pnpm nx run ai:eval` gegen das gewählte Modell.     |
 
 Kanal-Modi (`auto` / `copy` / `off`) je Postart stehen in [`postomat.config.json`](./postomat.config.json).
 Fehlen Zugangsdaten für einen `auto`-Kanal, nutzt Postomat Kopierhilfe und warnt beim Start.

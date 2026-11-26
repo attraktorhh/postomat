@@ -1,7 +1,8 @@
 # Postomat local development stack. See dev/README.md.
 #
-#   docker compose up -d --wait                       # core: postgres, synapse, element, keycloak, fake-meetup (+ matrix-seed)
+#   docker compose up -d --wait                       # core: postgres, synapse, element, keycloak, fake-meetup, fake-llm (+ matrix-seed)
 #   docker compose --profile channels up -d --wait    # + wordpress/mariadb, mediawiki, nextcloud
+#   docker compose --profile ai up -d --wait          # + ollama (a real local LLM; pulls OLLAMA_MODEL once)
 #
 # Everything here is LOCAL ONLY and uses throwaway dev credentials.
 name: postomat
@@ -138,6 +139,61 @@ services:
       timeout: 3s
       retries: 20
 
+  # Deterministic OpenAI-compatible stand-in for the LLM (smoke tests, CI-like runs).
+  fake-llm:
+    image: node:24-alpine
+    command: ['node', '/app/server.mjs']
+    environment:
+      PORT: '8085'
+    ports: ['8085:8085']
+    volumes:
+      - ./dev/fake-llm:/app:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8085/healthz']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ------------------------------------------------------------- profile: ai
+  # A real local model for manual testing in Element. First start pulls the
+  # model (several GB); later starts reuse the volume.
+  ollama:
+    profiles: [ai]
+    image: ollama/ollama:0.40.18
+    ports: ['11434:11434']
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ['CMD', 'ollama', 'list']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Pulls the model, then idles and reports healthy (like matrix-seed), so
+  # `up --wait` waits for the download instead of failing on an exited container.
+  ollama-pull:
+    profiles: [ai]
+    image: ollama/ollama:0.40.18
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+    entrypoint:
+      [
+        'sh',
+        '-c',
+        'rm -f /tmp/pulled && ollama pull "$$OLLAMA_MODEL" && touch /tmp/pulled && while :; do sleep 3600; done',
+      ]
+    init: true
+    restart: on-failure:5
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/tmp/pulled']
+      interval: 10s
+      timeout: 3s
+      retries: 360
+
   # ------------------------------------------------------- profile: channels
   mariadb:
     profiles: [channels]
@@ -252,6 +308,7 @@ volumes:
   postgres-data:
   synapse-data:
   fake-meetup-data:
+  ollama-data:
   mariadb-data:
   wordpress-data:
   mediawiki-data:

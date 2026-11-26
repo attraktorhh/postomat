@@ -38,16 +38,18 @@ All seeds are idempotent: run them as often as you like.
 
 ## Services, URLs, credentials
 
-| Service        | URL (host)            | Notes                                                         |
-| -------------- | --------------------- | ------------------------------------------------------------- |
-| Postgres 17    | `localhost:55432`     | user `postomat` / `postomat`, DBs `postomat`, `postomat_test` |
-| Synapse        | http://localhost:8008 | server_name `localhost`, SQLite                               |
-| Element Web    | http://localhost:8080 | preconfigured for the local Synapse                           |
-| Keycloak 26    | http://localhost:8180 | master console `admin` / `admin`                              |
-| fake Meetup    | http://localhost:8084 | iCal feed + control API                                       |
-| WordPress      | http://localhost:8081 | profile `channels`                                            |
-| MediaWiki 1.43 | http://localhost:8082 | profile `channels`                                            |
-| Nextcloud 31   | http://localhost:8083 | profile `channels`                                            |
+| Service        | URL (host)             | Notes                                                         |
+| -------------- | ---------------------- | ------------------------------------------------------------- |
+| Postgres 17    | `localhost:55432`      | user `postomat` / `postomat`, DBs `postomat`, `postomat_test` |
+| Synapse        | http://localhost:8008  | server_name `localhost`, SQLite                               |
+| Element Web    | http://localhost:8080  | preconfigured for the local Synapse                           |
+| Keycloak 26    | http://localhost:8180  | master console `admin` / `admin`                              |
+| fake Meetup    | http://localhost:8084  | iCal feed + control API                                       |
+| fake LLM       | http://localhost:8085  | OpenAI-compatible, deterministic (`AI_MODEL=fake-llm`)        |
+| Ollama         | http://localhost:11434 | profile `ai`, pulls `OLLAMA_MODEL` on first start             |
+| WordPress      | http://localhost:8081  | profile `channels`                                            |
+| MediaWiki 1.43 | http://localhost:8082  | profile `channels`                                            |
+| Nextcloud 31   | http://localhost:8083  | profile `channels`                                            |
 
 Connection strings for the apps:
 
@@ -146,6 +148,21 @@ curl -X DELETE http://localhost:8084/_fake/events
 ```
 
 `start`/`end` are local Europe/Berlin times. Optional field: `location`.
+
+### AI endpoint: fake LLM and Ollama
+
+Postomat needs an OpenAI-compatible LLM for every chat message (no parser fallback).
+
+- **`fake-llm`** (core, port 8085): deterministic stand-in, no download. Knows the
+  walkthrough and the stack smoke test messages plus a few simple patterns; anything
+  else comes back as `unclear`. Use it for `e2e:stack-smoke`:
+  `AI_BASE_URL=http://localhost:8085/v1`, `AI_MODEL=fake-llm`.
+- **`ollama`** (profile `ai`, port 11434): a real local model for trying the dialog in
+  Element. `docker compose --profile ai up -d --wait` pulls `OLLAMA_MODEL`
+  (default `qwen2.5:7b-instruct`, ~5 GB) once into the `ollama-data` volume.
+  `AI_BASE_URL=http://localhost:11434/v1`, `AI_MODEL=qwen2.5:7b-instruct` (the
+  `.env.example` default). A small local model is slower and less exact than a hosted
+  one; `pnpm nx run ai:eval` measures it.
 
 ### WordPress (profile `channels`)
 

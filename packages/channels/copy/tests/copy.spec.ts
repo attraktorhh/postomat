@@ -17,7 +17,19 @@ const ctx = {
 };
 
 describe('copyFieldsFor', () => {
-  const drafts = buildDrafts(ctx, ['instagram', 'facebook', 'meetup']);
+  // AI-written bodies (stub); the templates add the fixed frame.
+  const ai = {
+    hookDe: 'Lust auf Löten? 🔥',
+    bodyDe: 'Löten.',
+    titleEn: 'Soldering',
+    bodyEn: 'Soldering.',
+    shortEn: 'Soldering at Attraktor.',
+  };
+  const drafts = buildDrafts({ ...ctx, ai }, [
+    'instagram',
+    'facebook',
+    'meetup',
+  ]);
 
   it('gives Instagram text and hashtags as separate fields', () => {
     expect(

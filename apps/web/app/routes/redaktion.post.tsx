@@ -28,8 +28,10 @@ import {
   isDbId,
   editFacts,
   requestChange,
+  resolveSuggestedFacts,
   resubmit,
   retryChannel,
+  retryTexts,
   setBannerColor,
   renderBanners,
   getPost,
@@ -177,6 +179,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
           user.username,
         );
         return { ok: 'Wird erneut versucht …' };
+      case 'retry_texts':
+        await retryTexts(deps, id, user.username);
+        return { ok: 'Texte werden neu erstellt …' };
+      case 'suggestion':
+        await resolveSuggestedFacts(
+          deps,
+          id,
+          s('apply') === 'yes',
+          user.username,
+        );
+        return {
+          ok:
+            s('apply') === 'yes'
+              ? 'Änderungen übernommen.'
+              : 'Vorschlag verworfen.',
+        };
       case 'link':
         await setChannelLink(deps, id, channel, s('url'), user.username);
         return { ok: 'Link eingetragen.' };
@@ -401,6 +419,50 @@ export default function RedaktionPost() {
       )}
       {p.pendingQuestion && (
         <p className="text-sm">❓ Offene Rückfrage: „{p.pendingQuestion}“</p>
+      )}
+      {p.textsError && (
+        <Alert status="danger">
+          <Alert.Content>
+            <Alert.Description>
+              Texte konnten nicht erstellt werden (KI nicht erreichbar).
+            </Alert.Description>
+          </Alert.Content>
+          {editable && (
+            <Form method="post">
+              <input type="hidden" name="intent" value="retry_texts" />
+              <Button type="submit" size="sm" variant="outline">
+                Erneut versuchen
+              </Button>
+            </Form>
+          )}
+        </Alert>
+      )}
+      {p.suggestedFacts && editable && (
+        <div className="grid gap-2 rounded-md border border-[var(--border)] p-2 text-sm">
+          <p className="font-semibold">
+            Vorschlag aus der Antwort von @{p.authorUsername}
+          </p>
+          <ul className="list-inside list-disc">
+            {p.suggestedFacts.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <Form method="post" className="flex flex-wrap gap-2">
+            <input type="hidden" name="intent" value="suggestion" />
+            <Button type="submit" size="sm" name="apply" value="yes">
+              Übernehmen
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              variant="outline"
+              name="apply"
+              value="no"
+            >
+              Verwerfen
+            </Button>
+          </Form>
+        </div>
       )}
       {result && 'error' in result && result.error && (
         <Alert status="danger">

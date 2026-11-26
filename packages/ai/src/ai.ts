@@ -12,6 +12,7 @@ import {
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 import {
+  addDays,
   CONSENT_ANSWERS,
   INTENTS,
   localDateOf,
@@ -209,7 +210,14 @@ Lies die Antwort und gib zurück:
 
 function nowLine(now: Date): string {
   const date = localDateOf(now);
-  return `Jetzt: ${weekdayDe(date)}, ${date}, ${localTimeOf(now)} Uhr (Zeitzone ${TIMEZONE}).`;
+  // A small calendar, so the model looks dates up instead of computing them.
+  const days = Array.from({ length: 21 }, (_, i) => {
+    const d = addDays(date, i);
+    return `${weekdayDe(d)} ${d}`;
+  });
+  return `Jetzt: ${weekdayDe(date)}, ${date}, ${localTimeOf(now)} Uhr (Zeitzone ${TIMEZONE}).
+Kalender ab heute: ${days.join(', ')}.
+Datumsangaben immer als YYYY-MM-DD, Uhrzeiten immer als HH:MM.`;
 }
 
 // ---------------------------------------------------------------- errors

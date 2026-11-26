@@ -16,7 +16,16 @@
     }
   },
   "nx": {
-    "name": "ai"
+    "name": "ai",
+    "targets": {
+      "eval": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node --conditions=@postomat/source --env-file-if-exists=.env packages/ai/eval/eval.ts",
+          "cwd": "{workspaceRoot}"
+        }
+      }
+    }
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.94",
