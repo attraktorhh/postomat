@@ -2,7 +2,7 @@ import './env-load.server';
 import { randomUUID } from 'node:crypto';
 import { createCookie, createSessionStorage } from 'react-router';
 import { eq, sessions } from '@postomat/db';
-import { loadEnv } from '@postomat/core';
+import { loadEnv, productionSecretProblems } from '@postomat/core';
 import { getDeps } from './deps.server';
 
 export interface SessionUser {
@@ -19,6 +19,9 @@ export interface SessionData {
 }
 
 const env = loadEnv();
+const secretProblems = productionSecretProblems(env);
+if (secretProblems.length)
+  throw new Error(`Refusing to start: ${secretProblems.join('; ')}`);
 const MAX_AGE = 60 * 60 * 12;
 
 const cookie = createCookie('postomat_session', {

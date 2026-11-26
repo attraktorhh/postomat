@@ -14,7 +14,9 @@ jobs:
   main:
     runs-on: ubuntu-latest
     services:
-      # DB tests and the e2e flow (apps/e2e) need Postgres.
+      # DB tests and the e2e flow (apps/e2e) need Postgres. packages/db tests
+      # use postomat_test; the e2e suite truncates tables, so it creates and
+      # uses its own postomat_test_e2e and both can run in parallel.
       postgres:
         image: postgres:17
         env:

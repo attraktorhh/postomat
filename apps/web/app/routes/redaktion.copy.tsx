@@ -3,13 +3,20 @@ import {
   Link,
   useActionData,
   useLoaderData,
+  useNavigation,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from 'react-router';
 import { Alert, Button } from '@heroui/react';
-import type { ChannelId } from '@postomat/core';
+import { CHANNELS, type ChannelId } from '@postomat/core';
 import { COPY_IMAGE_FORMAT } from '@postomat/channel-copy';
-import { setChannelLink, skipChannel } from '@postomat/workflow';
+import { CHANNEL_NAMES } from '@postomat/templates';
+import {
+  getChannel,
+  isDbId,
+  setChannelLink,
+  skipChannel,
+} from '@postomat/workflow';
 import { requireUser } from '../server/auth.server';
 import { actionError } from '../server/errors';
 import { getDeps } from '../server/deps.server';
@@ -17,20 +24,32 @@ import { loadPostView } from '../server/views.server';
 import { Shell } from '../components/shell';
 import { CopyFields } from '../components/copy-button';
 import { ChannelStatus } from '../components/status';
+import { bannerSrc } from '../urls';
 
-const COPY_CHANNELS: ChannelId[] = ['meetup', 'instagram', 'facebook'];
-const TITLES: Record<string, string> = {
+/**
+ * Copy helper for every channel in copy mode: Meetup, Instagram, Facebook and
+ * also WordPress or the wiki when they fell back to copy (no credentials).
+ */
+const TITLES: Record<ChannelId, string> = {
   meetup: 'Meetup-Kopierhilfe',
   instagram: 'Instagram-Kopiervorlage',
   facebook: 'Facebook-Kopiervorlage',
+  wordpress: 'Website-Kopiervorlage',
+  wiki: 'Wiki-Kopiervorlage',
 };
+
+function channelParam(raw: string | undefined): ChannelId {
+  if (!CHANNELS.includes(raw as ChannelId))
+    throw new Response('Nicht gefunden', { status: 404 });
+  return raw as ChannelId;
+}
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request, ['medienteam']);
-  const channel = params['channel'] as ChannelId;
-  if (!COPY_CHANNELS.includes(channel))
-    throw new Response('Nicht gefunden', { status: 404 });
-  const view = await loadPostView(Number(params['id']));
+  const channel = channelParam(params['channel']);
+  const id = Number(params['id']);
+  if (!isDbId(id)) throw new Response('Nicht gefunden', { status: 404 });
+  const view = await loadPostView(id);
   return {
     user: { username: user.username, roles: user.roles },
     view,
@@ -42,8 +61,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request, ['medienteam']);
   const deps = await getDeps();
   const id = Number(params['id']);
-  const channel = params['channel'] as ChannelId;
+  const channel = channelParam(params['channel']);
+  if (!isDbId(id)) throw new Response('Nicht gefunden', { status: 404 });
   const form = await request.formData();
+  // Only copy channels are handled here; auto channels are published (or
+  // retried) on the post page, so a crafted POST cannot skip them.
+  const row = await getChannel(deps.db, id, channel);
+  if (!row || row.mode !== 'copy')
+    return { error: `${CHANNEL_NAMES[channel]} ist kein Kopier-Kanal.` };
   try {
     if (form.get('intent') === 'skip') {
       await skipChannel(deps, id, channel, user.username);
@@ -65,18 +90,30 @@ export async function action({ request, params }: ActionFunctionArgs) {
 export default function CopyHelper() {
   const { user, view, channel } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
+  const nav = useNavigation();
+  const busy = (intent: string) =>
+    nav.state === 'submitting' && nav.formData?.get('intent') === intent;
   const ch = view.channels.find((c) => c.channel === channel);
   const format = COPY_IMAGE_FORMAT[channel];
-  const others = view.channels.filter(
-    (c) => c.mode === 'copy' && COPY_CHANNELS.includes(c.channel),
-  );
-  if (!ch || ch.mode === 'off') {
+  const others = view.channels.filter((c) => c.mode === 'copy');
+  if (!ch || ch.mode !== 'copy') {
     return (
       <Shell user={user}>
-        <p>Dieser Kanal ist für den Beitrag aus.</p>
+        <Link to={`/redaktion/${view.post.id}`} className="text-sm underline">
+          ← {view.post.title}
+        </Link>
+        <p>
+          {!ch || ch.mode === 'off'
+            ? 'Dieser Kanal ist für den Beitrag aus.'
+            : 'Dieser Kanal wird automatisch veröffentlicht. Den Stand siehst du auf der Beitragsseite.'}
+        </p>
       </Shell>
     );
   }
+  const done = ch.status === 'erledigt' || ch.status === 'uebersprungen';
+  // Links and skips are refused before approval (workflow rule).
+  const approved =
+    view.post.status === 'geplant' || view.post.status === 'online';
   const linkedAt = ch.linkedAt
     ? new Date(ch.linkedAt).toLocaleTimeString('de-DE', {
         timeZone: 'Europe/Berlin',
@@ -128,16 +165,23 @@ export default function CopyHelper() {
           </Alert.Content>
         </Alert>
       )}
+      {result && 'ok' in result && result.ok && (
+        <Alert status="success">
+          <Alert.Content>
+            <Alert.Description>{result.ok}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      )}
       <CopyFields fields={ch.copyFields} />
       <div className="grid grid-cols-1 items-center gap-2 rounded-md border border-[var(--border)] p-2 sm:grid-cols-[8rem_1fr_auto]">
         <b className="text-sm">Bild</b>
         <img
-          src={`/banner/${view.post.id}/${format}`}
+          src={bannerSrc(view.post.id, format, view.bannerIds[format])}
           alt={`Banner ${format}`}
           className="w-32 rounded"
         />
         <a
-          href={`/banner/${view.post.id}/${format}?download=1`}
+          href={bannerSrc(view.post.id, format, view.bannerIds[format], true)}
           className="rounded-md border border-[var(--border)] px-3 py-1 text-sm"
         >
           {channel === 'meetup' ? 'Laden' : 'Bild laden'}
@@ -171,32 +215,32 @@ export default function CopyHelper() {
             Warte auf das Event im iCal-Feed …
           </span>
         )}
-        {ch.status !== 'erledigt' && ch.status !== 'uebersprungen' && (
+        {!approved ? (
+          <span className="text-sm text-[var(--muted)]">
+            Link eintragen und Überspringen gehen erst nach der Freigabe.
+          </span>
+        ) : ch.status === 'uebersprungen' ? null : done ? (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-[var(--muted)]">
+              Link ändern
+            </summary>
+            <LinkForm
+              channel={channel}
+              pending={busy('link')}
+              defaultValue={ch.url ?? ''}
+            />
+          </details>
+        ) : (
           <>
-            <Form method="post" className="flex flex-wrap gap-2">
-              <input type="hidden" name="intent" value="link" />
-              <label htmlFor="url" className="sr-only">
-                Link
-              </label>
-              <input
-                id="url"
-                name="url"
-                type="url"
-                required
-                placeholder={
-                  channel === 'meetup'
-                    ? 'Link zum Meetup-Event eintragen'
-                    : `Link zum ${channel === 'instagram' ? 'Instagram' : 'Facebook'}-Post einfügen`
-                }
-                className="min-w-0 flex-1 rounded-md border border-[var(--border)] px-2 py-1 text-sm"
-              />
-              <Button type="submit" size="sm" variant="primary">
-                Link eintragen
-              </Button>
-            </Form>
+            <LinkForm channel={channel} pending={busy('link')} />
             <Form method="post">
               <input type="hidden" name="intent" value="skip" />
-              <Button type="submit" size="sm" variant="tertiary">
+              <Button
+                type="submit"
+                size="sm"
+                variant="tertiary"
+                isPending={busy('skip')}
+              >
                 Überspringen
               </Button>
             </Form>
@@ -204,5 +248,40 @@ export default function CopyHelper() {
         )}
       </div>
     </Shell>
+  );
+}
+
+function LinkForm({
+  channel,
+  pending,
+  defaultValue,
+}: {
+  channel: ChannelId;
+  pending: boolean;
+  defaultValue?: string;
+}) {
+  return (
+    <Form method="post" className="flex flex-wrap gap-2">
+      <input type="hidden" name="intent" value="link" />
+      <label htmlFor="url" className="sr-only">
+        Link
+      </label>
+      <input
+        id="url"
+        name="url"
+        type="url"
+        required
+        defaultValue={defaultValue}
+        placeholder={
+          channel === 'meetup'
+            ? 'Link zum Meetup-Event eintragen'
+            : `Link zum ${CHANNEL_NAMES[channel]}-Post einfügen`
+        }
+        className="min-w-0 flex-1 rounded-md border border-[var(--border)] px-2 py-1 text-sm"
+      />
+      <Button type="submit" size="sm" variant="primary" isPending={pending}>
+        Link eintragen
+      </Button>
+    </Form>
   );
 }

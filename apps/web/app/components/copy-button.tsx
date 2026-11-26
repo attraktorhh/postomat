@@ -20,26 +20,42 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * Copy button. `field` names what is copied ("Titel kopieren") for screen
+ * readers; the result is announced in a polite live region.
+ */
 export function CopyButton({
   text,
   label = 'Kopieren',
+  field,
 }: {
   text: string;
   label?: string;
+  field?: string;
 }) {
   const [state, setState] = useState<'idle' | 'ok' | 'fail'>('idle');
   return (
-    <Button
-      size="sm"
-      variant="secondary"
-      isDisabled={!text}
-      onPress={async () => {
-        setState((await copy(text)) ? 'ok' : 'fail');
-        setTimeout(() => setState('idle'), 1500);
-      }}
-    >
-      {state === 'ok' ? 'Kopiert ✓' : state === 'fail' ? 'Fehler' : label}
-    </Button>
+    <span className="inline-flex">
+      <Button
+        size="sm"
+        variant="secondary"
+        isDisabled={!text}
+        aria-label={field ? `${field} kopieren` : undefined}
+        onPress={async () => {
+          setState((await copy(text)) ? 'ok' : 'fail');
+          setTimeout(() => setState('idle'), 1500);
+        }}
+      >
+        {state === 'ok' ? 'Kopiert ✓' : state === 'fail' ? 'Fehler' : label}
+      </Button>
+      <span className="sr-only" aria-live="polite">
+        {state === 'ok'
+          ? `${field ?? 'Text'} kopiert`
+          : state === 'fail'
+            ? 'Kopieren hat nicht geklappt'
+            : ''}
+      </span>
+    </span>
   );
 }
 
@@ -63,7 +79,7 @@ export function CopyFields({
           >
             {f.value || <i className="text-[var(--muted)]">leer</i>}
           </span>
-          <CopyButton text={f.value} />
+          <CopyButton text={f.value} field={f.label} />
         </div>
       ))}
     </div>

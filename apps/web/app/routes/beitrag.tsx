@@ -10,46 +10,44 @@ import {
 import { Alert, Button, TextArea } from '@heroui/react';
 import { conversations, eq } from '@postomat/db';
 import { DM } from '@postomat/templates';
-import { getPost, submitPost } from '@postomat/workflow';
-import { requireUser, type CurrentUser } from '../server/auth.server';
+import { submitPost } from '@postomat/workflow';
+import { requirePostAccess } from '../server/access.server';
 import { actionError } from '../server/errors';
 import { getDeps } from '../server/deps.server';
 import { loadPostView } from '../server/views.server';
 import { LoginNote, Shell } from '../components/shell';
-import { StatusTape, Stepper } from '../components/status';
+import { StageTape, StatusTape, Stepper } from '../components/status';
 import { ChannelPreviews } from '../components/previews';
 
-async function access(request: Request, id: number): Promise<CurrentUser> {
-  const user = await requireUser(request);
-  const deps = await getDeps();
-  const post = await getPost(deps.db, id).catch(() => {
-    throw new Response('Beitrag nicht gefunden', { status: 404 });
-  });
-  if (
-    post.authorUsername !== user.username &&
-    !user.roles.includes('medienteam')
-  )
-    throw new Response('Kein Zugang', { status: 403 });
-  return user;
-}
+const SUBMITTED_NOTE =
+  'Ist beim Medienteam 🙌 Wir melden uns im Chat, sobald es online ist.';
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const id = Number(params['id']);
-  const user = await access(request, id);
-  const view = await loadPostView(id);
+  const { user, post, isAuthor } = await requirePostAccess(
+    request,
+    params['id'],
+  );
+  const isTeam = user.roles.includes('medienteam');
+  // Members get a reduced view without internal Medienteam data.
+  const view = await loadPostView(post.id, { forMember: !isTeam });
+  const submitted = new URL(request.url).searchParams.has('abgeschickt');
   return {
     user: { username: user.username, roles: user.roles },
     view,
-    isAuthor: view.post.authorUsername === user.username,
+    isAuthor,
+    isTeam,
+    submitted,
   };
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  const id = Number(params['id']);
-  const user = await access(request, id);
+  const { user, post, isAuthor } = await requirePostAccess(
+    request,
+    params['id'],
+  );
+  const id = post.id;
   const deps = await getDeps();
-  const post = await getPost(deps.db, id);
-  if (post.authorUsername !== user.username)
+  if (!isAuthor)
     return {
       error: 'Nur die Autorin oder der Autor kann den Beitrag abschicken.',
     };
@@ -74,7 +72,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 export default function Beitrag() {
-  const { user, view, isAuthor } = useLoaderData<typeof loader>();
+  const { user, view, isAuthor, isTeam, submitted } =
+    useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   const nav = useNavigation();
   const p = view.post;
@@ -86,10 +85,19 @@ export default function Beitrag() {
           <h1 className="text-xl font-bold">{p.title}</h1>
           <span className="text-sm text-[var(--muted)]">{p.factsLine}</span>
         </div>
-        <StatusTape status={p.status} version={p.version} />
+        {isTeam ? (
+          <StatusTape status={p.status} version={p.version} />
+        ) : (
+          <StageTape stage={p.stage} />
+        )}
       </div>
-      {p.status !== 'sammeln' && (
-        <Stepper done={p.stage.done} discarded={p.stage.discarded} />
+      {p.status !== 'sammeln' && <Stepper stage={p.stage} />}
+      {submitted && p.status !== 'sammeln' && (
+        <Alert status="success">
+          <Alert.Content>
+            <Alert.Description>{SUBMITTED_NOTE}</Alert.Description>
+          </Alert.Content>
+        </Alert>
       )}
       <ChannelPreviews view={view} />
       {p.status === 'sammeln' && isAuthor ? (

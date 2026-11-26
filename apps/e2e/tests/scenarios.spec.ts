@@ -50,7 +50,14 @@ describe('scenarios', () => {
   beforeEach(async () => {
     h = await new Harness().start();
   }, 30000);
-  afterEach(async () => h.stop());
+  // Tests that provoke failures on purpose list them in h.allowedErrors.
+  afterEach(async () => {
+    try {
+      h.assertNoErrors(h.allowedErrors);
+    } finally {
+      await h.stop();
+    }
+  });
 
   it('supports hilfe, status, neu and abbrechen', async () => {
     expect((await h.dm(LENA, 'hilfe'))[0]).toContain(

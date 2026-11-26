@@ -2,11 +2,16 @@ import {
   ageDe,
   factsLineShort,
   memberStage,
+  TYPE_LABELS,
+  WEB_STATUS_LABELS,
   type ChannelId,
+  type ChannelPostStatus,
   type PostStatus,
 } from '@postomat/core';
 import {
   and,
+  asc,
+  channelPosts,
   desc,
   eq,
   history,
@@ -14,10 +19,14 @@ import {
   isNotNull,
   ne,
   or,
+  photos,
   posts,
   settings,
   sql,
+  type Photo,
+  type Post,
 } from '@postomat/db';
+import type { BannerIds } from '../urls';
 import {
   CHANNEL_NAMES,
   facebookText,
@@ -45,7 +54,7 @@ export interface ChannelView {
   channel: ChannelId;
   name: string;
   mode: 'auto' | 'copy' | 'off';
-  status: string;
+  status: ChannelPostStatus;
   textDe: string;
   textEn: string;
   fields: Record<string, string>;
@@ -56,8 +65,57 @@ export interface ChannelView {
   linkedAt?: string;
 }
 
-export async function loadPostView(id: number) {
+/**
+ * The bot's Matrix ID. The bot stores its real ID (whoami) in settings; until
+ * it has, guess it from MATRIX_USERNAME and the homeserver host.
+ */
+export async function botMatrixId(): Promise<string> {
   const deps = await getDeps();
+  const [row] = await deps.db
+    .select()
+    .from(settings)
+    .where(eq(settings.key, 'matrix_bot_user_id'));
+  if (typeof row?.value === 'string' && row.value.startsWith('@'))
+    return row.value;
+  const server = new URL(deps.env.MATRIX_HOMESERVER_URL).hostname;
+  return `@${deps.env.MATRIX_USERNAME ?? 'postomat'}:${server}`;
+}
+
+/** Id of the newest banner per format that matches the post's version and colour. */
+function currentBannerIds(
+  rows: Array<
+    Pick<Photo, 'id' | 'kind' | 'format' | 'version' | 'bannerColor'>
+  >,
+  post: Pick<Post, 'version' | 'bannerColor'>,
+): BannerIds {
+  const pick = (format: '4x5' | '16x9') =>
+    rows
+      .filter(
+        (r) =>
+          r.kind === 'banner' &&
+          r.format === format &&
+          r.version === post.version &&
+          r.bannerColor === post.bannerColor,
+      )
+      .reduce<number | null>(
+        (max, r) => (max && max > r.id ? max : r.id),
+        null,
+      );
+  return { '4x5': pick('4x5'), '16x9': pick('16x9') };
+}
+
+/**
+ * Everything one post page needs. `forMember` (the author without the
+ * Medienteam role) leaves out internal data: history comments, checks, error
+ * texts, storage paths, approver and open questions. React Router sends all
+ * loader data to the browser, so hiding it in the UI is not enough.
+ */
+export async function loadPostView(
+  id: number,
+  opts: { forMember?: boolean } = {},
+) {
+  const deps = await getDeps();
+  const forMember = opts.forMember ?? false;
   let post;
   try {
     post = await getPost(deps.db, id);
@@ -76,12 +134,14 @@ export async function loadPostView(id: number) {
   const mu = byCh('meetup');
   const wp = byCh('wordpress');
   const wiki = byCh('wiki');
-  const log = await deps.db
-    .select()
-    .from(history)
-    .where(eq(history.postId, id))
-    .orderBy(desc(history.id))
-    .limit(50);
+  const log = forMember
+    ? []
+    : await deps.db
+        .select()
+        .from(history)
+        .where(eq(history.postId, id))
+        .orderBy(desc(history.id))
+        .limit(50);
   return {
     post: {
       id: post.id,
@@ -95,8 +155,8 @@ export async function loadPostView(id: number) {
       note: post.note,
       bannerColor: post.bannerColor,
       meetupCategory: post.meetupCategory,
-      approvedBy: post.approvedBy,
-      pendingQuestion: post.pendingQuestion,
+      approvedBy: forMember ? null : post.approvedBy,
+      pendingQuestion: forMember ? null : post.pendingQuestion,
       stage: memberStage(post.status),
     },
     channels: channels.map<ChannelView>((c) => ({
@@ -108,9 +168,9 @@ export async function loadPostView(id: number) {
       textEn: c.textEn,
       fields: c.fields,
       url: c.url,
-      error: c.error,
+      error: forMember ? null : c.error,
       copyFields:
-        c.mode === 'off'
+        c.mode === 'off' || forMember
           ? []
           : copyFieldsFor(
               c.channel,
@@ -145,17 +205,19 @@ export async function loadPostView(id: number) {
             }
           : null,
     },
-    photos: allPhotos
-      .filter((p) => p.kind === 'photo')
-      .map((p) => ({
-        id: p.id,
-        consent: p.consent,
-        path: p.path,
-        width: p.width,
-        height: p.height,
-      })),
+    photos: forMember
+      ? []
+      : allPhotos
+          .filter((p) => p.kind === 'photo')
+          .map((p) => ({
+            id: p.id,
+            consent: p.consent,
+            width: p.width,
+            height: p.height,
+          })),
     hasBanner: allPhotos.some((p) => p.kind === 'banner'),
-    checks: await checksFor(deps, id),
+    bannerIds: currentBannerIds(allPhotos, post),
+    checks: forMember ? [] : await checksFor(deps, id),
     history: log.map((h) => ({
       id: h.id,
       actor: h.actor,
@@ -164,7 +226,10 @@ export async function loadPostView(id: number) {
     })),
     meetupCategories: deps.config.meetup.categories,
     meetupGroupUrl: deps.env.MEETUP_GROUP_URL,
-    matrixBot: deps.env.MATRIX_USERNAME ?? 'postomat',
+    wordpressCategories: {
+      event: deps.config.wordpress.eventCategories,
+      workshop: deps.config.wordpress.workshopCategories,
+    },
   };
 }
 
@@ -185,38 +250,65 @@ export async function listMine(username: string) {
     )
     .orderBy(desc(posts.createdAt))
     .limit(50);
-  const result = [];
-  for (const p of rows) {
-    const channels = await getChannels(deps.db, p.id);
-    const links = channels.filter(
+  const ids = rows.map((p) => p.id);
+  // One query each for all channels and banners (no N+1 per post).
+  const allChannels = ids.length
+    ? await deps.db
+        .select()
+        .from(channelPosts)
+        .where(inArray(channelPosts.postId, ids))
+        .orderBy(asc(channelPosts.id))
+    : [];
+  const banners = ids.length
+    ? await deps.db
+        .select({
+          id: photos.id,
+          postId: photos.postId,
+          kind: photos.kind,
+          format: photos.format,
+          version: photos.version,
+          bannerColor: photos.bannerColor,
+        })
+        .from(photos)
+        .where(and(inArray(photos.postId, ids), eq(photos.kind, 'banner')))
+    : [];
+  return rows.map((p) => {
+    const channels = allChannels.filter((c) => c.postId === p.id);
+    const done = channels.filter(
       (c) =>
         c.url && (c.status === 'veroeffentlicht' || c.status === 'erledigt'),
     );
-    result.push({
+    return {
       id: p.id,
       title: p.facts.title ?? 'Ohne Titel',
       sub: factsLineShort(p.type, p.facts),
       status: p.status,
       stage: memberStage(p.status),
-      channels: channels
-        .filter((c) => c.mode !== 'off')
-        .map((c) => CHANNEL_NAMES[c.channel]),
-      links: links.map((c) => ({
+      /** Channels that are really out (published or linked), for "Online: …". */
+      onlineChannels: done.map((c) => CHANNEL_NAMES[c.channel]),
+      links: done.map((c) => ({
         name: CHANNEL_NAMES[c.channel],
         url: c.url!,
       })),
+      bannerId: currentBannerIds(
+        banners.filter((b) => b.postId === p.id),
+        p,
+      )['4x5'],
       approvedBy: p.approvedBy,
-    });
-  }
-  return result;
+    };
+  });
 }
 
-const GROUPS: Array<{ label: string; statuses: PostStatus[] }> = [
-  { label: 'Zur Freigabe', statuses: ['zur_freigabe'] },
-  { label: 'Änderung gewünscht', statuses: ['aenderung_gewuenscht'] },
-  { label: 'Geplant', statuses: ['geplant'] },
-  { label: 'Online', statuses: ['online'] },
+const QUEUE_STATUSES: PostStatus[] = [
+  'zur_freigabe',
+  'aenderung_gewuenscht',
+  'geplant',
+  'online',
 ];
+const GROUPS = QUEUE_STATUSES.map((s) => ({
+  label: WEB_STATUS_LABELS[s],
+  statuses: [s],
+}));
 
 export async function loadQueue() {
   const deps = await getDeps();
@@ -244,7 +336,7 @@ export async function loadQueue() {
       .map((r) => ({
         id: r.id,
         title: r.facts.title ?? 'Ohne Titel',
-        meta: `${r.type === 'event' ? 'Event' : 'Projekt'} · @${r.authorUsername} · ${ageDe(r.submittedAt ?? r.createdAt, now)}`,
+        meta: `${TYPE_LABELS[r.type]} · @${r.authorUsername} · ${ageDe(r.submittedAt ?? r.createdAt, now)}`,
         version: r.version,
       })),
   }));

@@ -13,6 +13,15 @@ export const STATUS_LABELS: Record<PostStatus, string> = {
   verworfen: 'Verworfen',
 };
 
+/**
+ * Status names in the web app. Same as STATUS_LABELS, except that an approved
+ * post reads "Geplant" (the card keeps "Freigegeben · @name").
+ */
+export const WEB_STATUS_LABELS: Record<PostStatus, string> = {
+  ...STATUS_LABELS,
+  geplant: 'Geplant',
+};
+
 export const CHANNEL_STATUS_LABELS: Record<ChannelPostStatus, string> = {
   entwurf: 'Entwurf',
   wartet: 'Wartet',
@@ -34,30 +43,37 @@ export const MEMBER_STEPS = [
 export interface MemberStage {
   /** Number of completed stepper steps (0–4). 0 means still a draft. */
   done: number;
+  /** Index of the step in progress (shown highlighted, no ✓), -1 for none. */
+  current: number;
   label: string;
   draft: boolean;
   discarded: boolean;
 }
 
-/** Maps the internal status to the member's 4-step stepper. */
+/**
+ * Maps the internal status to the member's 4-step stepper
+ * "Eingereicht → Beim Medienteam → Geplant → Online".
+ */
 export function memberStage(status: PostStatus): MemberStage {
+  const stage = (done: number, current: number, label: string) => ({
+    done,
+    current,
+    label,
+    draft: false,
+    discarded: false,
+  });
   switch (status) {
     case 'sammeln':
-      return { done: 0, label: 'Entwurf', draft: true, discarded: false };
+      return { ...stage(0, -1, 'Entwurf'), draft: true };
     case 'zur_freigabe':
     case 'aenderung_gewuenscht':
-      return {
-        done: 2,
-        label: 'Beim Medienteam',
-        draft: false,
-        discarded: false,
-      };
+      return stage(1, 1, 'Beim Medienteam');
     case 'geplant':
-      return { done: 3, label: 'Geplant', draft: false, discarded: false };
+      return stage(2, 2, 'Geplant');
     case 'online':
-      return { done: 4, label: 'Online', draft: false, discarded: false };
+      return stage(4, -1, 'Online');
     case 'verworfen':
-      return { done: 0, label: 'Verworfen', draft: false, discarded: true };
+      return { ...stage(0, -1, 'Verworfen'), discarded: true };
   }
 }
 

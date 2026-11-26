@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import {
   DEFAULT_CONFIG,
   loadEnv,
-  silentLogger,
+  type Logger,
   type MatrixIncoming,
 } from '@postomat/core';
 import { createDb, runMigrations, sql, type DbHandle } from '@postomat/db';
@@ -23,9 +23,44 @@ import {
   type WorkflowDeps,
 } from '@postomat/workflow';
 
-export const TEST_DB_URL =
+const BASE_TEST_DB_URL =
   process.env['DATABASE_URL_TEST'] ??
   'postgres://postomat:postomat@localhost:55432/postomat_test';
+
+/**
+ * The e2e suite truncates every table, so it gets its own database
+ * (`<test db>_e2e`, or DATABASE_URL_E2E). Other DB tests (packages/db) can then
+ * run in parallel on DATABASE_URL_TEST without seeing rows disappear.
+ */
+export const TEST_DB_URL =
+  process.env['DATABASE_URL_E2E'] ?? e2eUrl(BASE_TEST_DB_URL);
+
+function e2eUrl(base: string): string {
+  const u = new URL(base);
+  u.pathname = `${u.pathname.replace(/\/$/, '')}_e2e`;
+  return u.toString();
+}
+
+let ensured: Promise<void> | undefined;
+/** Creates the e2e database once (needs CREATEDB, as in docker compose and CI). */
+function ensureE2eDatabase(): Promise<void> {
+  ensured ??= (async () => {
+    const name = decodeURIComponent(new URL(TEST_DB_URL).pathname.slice(1));
+    const admin = createDb(BASE_TEST_DB_URL, 1);
+    try {
+      const rows = await admin.db.execute(
+        sql`select 1 from pg_database where datname = ${name}`,
+      );
+      if (!rows.rows.length)
+        await admin.db.execute(
+          sql.raw(`create database "${name.replace(/"/g, '""')}"`),
+        );
+    } finally {
+      await admin.close();
+    }
+  })();
+  return ensured;
+}
 
 export const ROOMS = {
   members: '!mitglieder:localhost',
@@ -35,6 +70,26 @@ export const ROOMS = {
 };
 
 const BOT = '@postomat:localhost';
+
+export interface LoggedError {
+  name: string;
+  msg: string;
+  data?: Record<string, unknown>;
+}
+
+/**
+ * Silent logger that keeps error-level entries. The bot catches and logs
+ * handler errors, so a crash would otherwise look like "nothing happened".
+ */
+export function collectingLogger(errors: LoggedError[], name = 'e2e'): Logger {
+  return {
+    debug: () => undefined,
+    info: () => undefined,
+    warn: () => undefined,
+    error: (msg, data) => errors.push({ name, msg, data }),
+    child: (n) => collectingLogger(errors, `${name}:${n}`),
+  };
+}
 
 /** Wires the real bot and worker logic to Postgres, an in-memory queue and HTTP fakes. */
 export class Harness {
@@ -48,6 +103,10 @@ export class Harness {
   webdav = new FakeWebDav();
   meetup = new FakeMeetupFeed();
   clock = new Date('2026-11-23T13:02:00Z');
+  /** Error-level log entries; see assertNoErrors. */
+  errors: LoggedError[] = [];
+  /** Error logs a test provokes on purpose (checked in afterEach). */
+  allowedErrors: RegExp[] = [];
   private counter = 0;
 
   async start(): Promise<this> {
@@ -57,6 +116,7 @@ export class Harness {
       this.webdav.start(),
       this.meetup.start(),
     ]);
+    await ensureE2eDatabase();
     this.db = createDb(TEST_DB_URL, 4);
     await runMigrations(this.db.db);
     await this.db.db.execute(
@@ -97,7 +157,7 @@ export class Harness {
       env,
       config: DEFAULT_CONFIG,
       queue: this.queue,
-      log: silentLogger,
+      log: collectingLogger(this.errors),
       now: () => this.clock,
       ai: null,
       media: new WebDavClient({
@@ -126,6 +186,23 @@ export class Harness {
     await this.bot.registerJobs(this.queue);
     await registerWorkerJobs(this.deps, this.queue);
     return this;
+  }
+
+  /**
+   * Fails when anything logged an error, except entries matching `allowed`
+   * (for tests that provoke failures on purpose).
+   */
+  assertNoErrors(allowed: RegExp[] = []): void {
+    const unexpected = this.errors.filter(
+      (e) =>
+        !allowed.some((re) =>
+          re.test(`${e.msg} ${JSON.stringify(e.data ?? {})}`),
+        ),
+    );
+    if (unexpected.length)
+      throw new Error(
+        `Unexpected error logs:\n${unexpected.map((e) => `${e.name}: ${e.msg} ${JSON.stringify(e.data ?? {})}`).join('\n')}`,
+      );
   }
 
   async stop(): Promise<void> {

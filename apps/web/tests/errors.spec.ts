@@ -6,9 +6,7 @@ describe('actionError', () => {
   it('explains invalid status changes in German', () => {
     expect(
       actionError(new InvalidTransitionError('geplant', 'verworfen')),
-    ).toBe(
-      'Das geht im Status „Freigegeben“ nicht (nicht möglich: Verworfen).',
-    );
+    ).toBe('Das geht im Status „Geplant“ nicht (nicht möglich: Verworfen).');
   });
   it('passes other messages through', () => {
     expect(actionError(new Error('Bitte eine Frage eingeben.'))).toBe(

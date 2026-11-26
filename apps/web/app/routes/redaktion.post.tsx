@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Form,
   Link,
@@ -17,11 +17,14 @@ import {
   type ChannelId,
   type Consent,
 } from '@postomat/core';
+import { THREAD } from '@postomat/templates';
 import {
   approvePost,
   askMember,
   discardPost,
   editChannelText,
+  getChannels,
+  isDbId,
   editFacts,
   requestChange,
   resubmit,
@@ -33,12 +36,13 @@ import {
   skipChannel,
 } from '@postomat/workflow';
 import { requireUser } from '../server/auth.server';
-import { actionError } from '../server/errors';
+import { actionError, approvedText } from '../server/errors';
 import { getDeps } from '../server/deps.server';
 import { loadPostView, type ChannelView } from '../server/views.server';
 import { Shell } from '../components/shell';
 import { ChannelStatus, ModeTape, StatusTape } from '../components/status';
 import { ChannelPreviews } from '../components/previews';
+import { bannerSrc } from '../urls';
 
 const SWATCH: Record<BannerColor, [string, string]> = {
   mint: ['#8ff0cf', 'Mint'],
@@ -49,9 +53,11 @@ const SWATCH: Record<BannerColor, [string, string]> = {
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request, ['medienteam']);
+  const id = Number(params['id']);
+  if (!isDbId(id)) throw new Response('Nicht gefunden', { status: 404 });
   return {
     user: { username: user.username, roles: user.roles },
-    view: await loadPostView(Number(params['id'])),
+    view: await loadPostView(id),
   };
 }
 
@@ -59,6 +65,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request, ['medienteam']);
   const deps = await getDeps();
   const id = Number(params['id']);
+  if (!isDbId(id)) throw new Response('Nicht gefunden', { status: 404 });
   const form = await request.formData();
   const intent = String(form.get('intent'));
   const s = (k: string) => String(form.get(k) ?? '').trim();
@@ -115,26 +122,31 @@ export async function action({ request, params }: ActionFunctionArgs) {
         );
         return { ok: 'Angaben gespeichert.' };
       case 'approve': {
-        const view = await loadPostView(id);
+        // The version the reviewer saw; a newer version on the server makes
+        // the approval "outdated" instead of approving unseen text.
+        const shown = Number(s('version'));
         const d = await approvePost(deps, {
           postId: id,
           approverUsername: user.username,
           approverIsMedienteam: true,
-          version: view.post.version,
+          version: Number.isInteger(shown) && shown > 0 ? shown : -1,
           via: 'web',
         });
-        if (d.kind === 'approve')
-          return { ok: 'Freigegeben. Website und Wiki werden veröffentlicht.' };
-        if (d.kind === 'self_approval')
-          return {
-            error: 'Eigene Beiträge kann man nicht selbst freigeben 🙂',
-          };
+        if (d.kind === 'approve') {
+          const auto = (await getChannels(deps.db, id))
+            .filter((c) => c.mode === 'auto')
+            .map((c) => c.channel);
+          return { ok: approvedText(auto) };
+        }
+        if (d.kind === 'self_approval') return { error: THREAD.selfApproval };
         if (d.kind === 'blocked')
           return {
             error: `Freigabe nicht möglich: ${d.failures.map((f) => f.label).join(' · ')}`,
           };
         if (d.kind === 'outdated_version')
-          return { error: 'Bitte erst die neue Version zur Freigabe stellen.' };
+          return {
+            error: `${THREAD.outdated} Die Seite zeigt eine ältere Version – bitte neu laden.`,
+          };
         return { error: 'Der Beitrag kann gerade nicht freigegeben werden.' };
       }
       case 'request_change':
@@ -184,8 +196,13 @@ function ChannelEditor({
   lang: Lang;
 }) {
   const nav = useNavigation();
-  const showDe = lang !== 'en';
-  const showEn = lang !== 'de' && ch.channel !== 'wiki';
+  const saving =
+    nav.state === 'submitting' &&
+    nav.formData?.get('intent') === 'save_text' &&
+    nav.formData?.get('channel') === ch.channel;
+  const wikiOnlyDe = ch.channel === 'wiki';
+  const showDe = lang !== 'en' || wikiOnlyDe;
+  const showEn = lang !== 'de' && !wikiOnlyDe;
   return (
     <Form method="post" className="grid gap-2">
       <input type="hidden" name="intent" value="save_text" />
@@ -200,6 +217,9 @@ function ChannelEditor({
             className="rounded-md border border-[var(--border)] bg-[var(--field-background,transparent)] px-2 py-1"
           />
         </label>
+      )}
+      {wikiOnlyDe && lang !== 'de' && (
+        <p className="text-xs text-[var(--muted)]">Wiki ist nur Deutsch.</p>
       )}
       <div className={`grid gap-2 ${showDe && showEn ? 'md:grid-cols-2' : ''}`}>
         <label className={`grid gap-1 text-sm ${showDe ? '' : 'hidden'}`}>
@@ -236,12 +256,7 @@ function ChannelEditor({
       )}
       {editable && (
         <div>
-          <Button
-            type="submit"
-            size="sm"
-            variant="primary"
-            isPending={nav.state === 'submitting'}
-          >
+          <Button type="submit" size="sm" variant="primary" isPending={saving}>
             {ch.name}-Text speichern
           </Button>
         </div>
@@ -255,6 +270,15 @@ function ChannelStatusRows({
 }: {
   view: ReturnType<typeof useLoaderData<typeof loader>>['view'];
 }) {
+  const busy = useBusy();
+  const cats = (slugs: string[]) =>
+    slugs.map((c) => c.charAt(0).toUpperCase() + c.slice(1));
+  const wpCats = [
+    ...cats(view.wordpressCategories.event),
+    ...(view.post.facts.isWorkshop
+      ? cats(view.wordpressCategories.workshop)
+      : []),
+  ];
   return (
     <div className="grid gap-2">
       {view.channels
@@ -285,9 +309,7 @@ function ChannelStatusRows({
                 (c.error ?? '')
               )}
               {c.channel === 'wordpress' && c.status === 'veroeffentlicht'
-                ? view.post.facts.isWorkshop
-                  ? ' · Kategorien Termine + Workshops · DE + EN'
-                  : ' · Kategorie Termine · DE + EN'
+                ? ` · ${wpCats.length > 1 ? 'Kategorien' : 'Kategorie'} ${wpCats.join(' + ')} · DE + EN`
                 : ''}
               {c.channel === 'meetup' && c.linkedVia === 'ical'
                 ? ' · im iCal-Feed erkannt'
@@ -299,19 +321,25 @@ function ChannelStatusRows({
                 <Form method="post">
                   <input type="hidden" name="intent" value="retry" />
                   <input type="hidden" name="channel" value={c.channel} />
-                  <Button type="submit" size="sm" variant="danger">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="danger"
+                    isPending={busy('retry', c.channel)}
+                  >
                     Erneut versuchen
                   </Button>
                 </Form>
               )}
-              {c.mode === 'copy' && c.status === 'kopieren' && (
-                <Link
-                  to={`/redaktion/${view.post.id}/${c.channel}`}
-                  className="text-sm underline"
-                >
-                  Kopierhilfe
-                </Link>
-              )}
+              {c.mode === 'copy' &&
+                (c.status === 'kopieren' || c.status === 'erledigt') && (
+                  <Link
+                    to={`/redaktion/${view.post.id}/${c.channel}`}
+                    className="text-sm underline"
+                  >
+                    Kopierhilfe
+                  </Link>
+                )}
             </span>
           </div>
         ))}
@@ -323,12 +351,29 @@ export default function RedaktionPost() {
   const { user, view } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   const [lang, setLang] = useState<Lang>('de');
+  const busy = useBusy();
+  const nav = useNavigation();
   const p = view.post;
+  // Clear the Rückfrage field once it was sent successfully.
+  const askForm = useRef<HTMLFormElement>(null);
+  const asking = useRef(false);
+  useEffect(() => {
+    if (busy('ask')) asking.current = true;
+    else if (nav.state === 'idle' && asking.current) {
+      asking.current = false;
+      if (result && 'ok' in result) askForm.current?.reset();
+    }
+  });
+  // TODO(merge): use isEditable(p.status) from @postomat/core (F1).
   const editable = ['zur_freigabe', 'aenderung_gewuenscht', 'sammeln'].includes(
     p.status,
   );
   const approvedPhase = p.status === 'geplant' || p.status === 'online';
   const active = view.channels.filter((c) => c.mode !== 'off');
+  // The category can change until the Meetup event is linked or skipped.
+  const meetupCh = active.find((c) => c.channel === 'meetup');
+  const categoryEditable =
+    !!meetupCh && (editable || meetupCh.status === 'kopieren');
   const isAuthor = p.authorUsername === user.username;
 
   return (
@@ -432,18 +477,18 @@ export default function RedaktionPost() {
                     title={SWATCH[c][1]}
                     className={`h-8 w-8 rounded-full border-2 ${p.bannerColor === c ? 'border-[var(--foreground)]' : 'border-transparent'}`}
                     style={{ background: SWATCH[c][0] }}
-                    disabled={!editable}
+                    disabled={!editable || busy('banner_color')}
                   />
                 </Form>
               ))}
               <a
-                href={`/banner/${p.id}/4x5?download=1`}
+                href={bannerSrc(p.id, '4x5', view.bannerIds['4x5'], true)}
                 className="text-sm underline"
               >
                 4:5 laden
               </a>
               <a
-                href={`/banner/${p.id}/16x9?download=1`}
+                href={bannerSrc(p.id, '16x9', view.bannerIds['16x9'], true)}
                 className="text-sm underline"
               >
                 16:9 laden
@@ -451,12 +496,12 @@ export default function RedaktionPost() {
             </div>
             {view.hasBanner && (
               <img
-                src={`/banner/${p.id}/4x5?c=${p.bannerColor}&v=${p.version}`}
+                src={bannerSrc(p.id, '4x5', view.bannerIds['4x5'])}
                 alt="Banner"
                 className="w-40 rounded"
               />
             )}
-            {active.some((c) => c.channel === 'meetup') && (
+            {meetupCh && (
               <Form
                 method="post"
                 className="flex flex-wrap items-center gap-2 text-sm"
@@ -469,6 +514,7 @@ export default function RedaktionPost() {
                   id="mcat"
                   name="category"
                   defaultValue={p.meetupCategory ?? ''}
+                  disabled={!categoryEditable}
                   className="rounded-md border border-[var(--border)] px-2 py-1"
                 >
                   <option value="">– bitte wählen –</option>
@@ -476,9 +522,16 @@ export default function RedaktionPost() {
                     <option key={c}>{c}</option>
                   ))}
                 </select>
-                <Button type="submit" size="sm" variant="secondary">
-                  Speichern
-                </Button>
+                {categoryEditable && (
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="secondary"
+                    isPending={busy('meetup_category')}
+                  >
+                    Speichern
+                  </Button>
+                )}
               </Form>
             )}
             {view.photos.map((ph) => (
@@ -499,6 +552,7 @@ export default function RedaktionPost() {
                   id={`consent-${ph.id}`}
                   name="consent"
                   defaultValue={ph.consent}
+                  disabled={!editable}
                   className="rounded-md border border-[var(--border)] px-2 py-1"
                 >
                   {CONSENTS.map((c) => (
@@ -507,9 +561,16 @@ export default function RedaktionPost() {
                     </option>
                   ))}
                 </select>
-                <Button type="submit" size="sm" variant="secondary">
-                  Speichern
-                </Button>
+                {editable && (
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="secondary"
+                    isPending={busy('consent', String(ph.id), 'photoId')}
+                  >
+                    Speichern
+                  </Button>
+                )}
               </Form>
             ))}
             {p.type === 'event' && editable && (
@@ -534,7 +595,12 @@ export default function RedaktionPost() {
                   />{' '}
                   Workshop (Kategorie „Workshops“)
                 </label>
-                <Button type="submit" size="sm" variant="secondary">
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="secondary"
+                  isPending={busy('facts')}
+                >
                   Speichern
                 </Button>
               </Form>
@@ -544,16 +610,19 @@ export default function RedaktionPost() {
           <ChannelPreviews view={view} />
         </section>
 
-        <aside className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4">
+        {/* On a phone the actions come first (people arrive from the card link). */}
+        <aside className="order-first grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 lg:order-none">
           <div className="grid gap-2">
             {p.status === 'zur_freigabe' && (
               <Form method="post">
                 <input type="hidden" name="intent" value="approve" />
+                <input type="hidden" name="version" value={p.version} />
                 <Button
                   type="submit"
                   variant="primary"
                   className="w-full"
-                  isDisabled={isAuthor}
+                  isDisabled={isAuthor || nav.state !== 'idle'}
+                  isPending={busy('approve')}
                 >
                   Freigeben
                 </Button>
@@ -569,7 +638,12 @@ export default function RedaktionPost() {
                   aria-label="Kommentar"
                   className="w-full"
                 />
-                <Button type="submit" variant="secondary">
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  isPending={busy('request_change')}
+                  isDisabled={nav.state !== 'idle'}
+                >
                   Änderung anfragen
                 </Button>
               </Form>
@@ -577,7 +651,13 @@ export default function RedaktionPost() {
             {p.status === 'aenderung_gewuenscht' && (
               <Form method="post">
                 <input type="hidden" name="intent" value="resubmit" />
-                <Button type="submit" variant="primary" className="w-full">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="w-full"
+                  isPending={busy('resubmit')}
+                  isDisabled={nav.state !== 'idle'}
+                >
                   Erneut zur Freigabe (v{p.version + 1})
                 </Button>
               </Form>
@@ -585,16 +665,21 @@ export default function RedaktionPost() {
             {['sammeln', 'zur_freigabe', 'aenderung_gewuenscht'].includes(
               p.status,
             ) && (
-              <Form method="post" className="grid gap-1">
+              <Form method="post" className="grid gap-1" ref={askForm}>
                 <input type="hidden" name="intent" value="ask" />
                 <TextArea
                   name="question"
                   rows={2}
-                  placeholder="Frage an @… (geht per Matrix-DM)"
+                  placeholder={`Frage an @${p.authorUsername} (kommt per Matrix-DM)`}
                   aria-label="Rückfrage"
                   className="w-full"
                 />
-                <Button type="submit" variant="outline">
+                <Button
+                  type="submit"
+                  variant="outline"
+                  isPending={busy('ask')}
+                  isDisabled={nav.state !== 'idle'}
+                >
                   Rückfrage ans Mitglied
                 </Button>
               </Form>
@@ -610,7 +695,13 @@ export default function RedaktionPost() {
                 }
               >
                 <input type="hidden" name="intent" value="discard" />
-                <Button type="submit" variant="danger" className="w-full">
+                <Button
+                  type="submit"
+                  variant="danger"
+                  className="w-full"
+                  isPending={busy('discard')}
+                  isDisabled={nav.state !== 'idle'}
+                >
                   Verwerfen
                 </Button>
               </Form>
@@ -667,4 +758,13 @@ export default function RedaktionPost() {
       </div>
     </Shell>
   );
+}
+
+/** True while the form with this intent (and optional field value) is being sent. */
+function useBusy() {
+  const nav = useNavigation();
+  return (intent: string, value?: string, field = 'channel') =>
+    nav.state === 'submitting' &&
+    nav.formData?.get('intent') === intent &&
+    (value === undefined || nav.formData?.get(field) === value);
 }

@@ -73,8 +73,6 @@
     }
   },
   "dependencies": {
-    "@postomat/core": "workspace:*",
-    "@postomat/db": "workspace:*",
     "@postomat/workflow": "workspace:*"
   }
 }

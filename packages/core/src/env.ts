@@ -44,6 +44,7 @@ export const envSchema = z.object({
   GROUP_MITGLIEDER: z.string().default('mitglieder'),
   GROUP_MEDIENTEAM: z.string().default('medienteam'),
   GROUP_ADMIN: z.string().default('postomat-admin'),
+  /** Dev default only; the web refuses to start with it in production. */
   SESSION_SECRET: z.string().default('dev-only-session-secret-change-me'),
 
   AI_PROVIDER: z.enum(['none', 'openai-compatible']).default('none'),
@@ -95,6 +96,30 @@ export function loadEnv(
   source: Record<string, string | undefined> = process.env,
 ): Env {
   return envSchema.parse(source);
+}
+
+/** Dev defaults that must never reach production (see .env.example). */
+const DEV_SESSION_SECRET = 'dev-only-session-secret-change-me';
+const DEV_OIDC_SECRET = 'postomat-dev-secret';
+
+/**
+ * Web-only startup check: with NODE_ENV=production the session secret and the
+ * OIDC client secret must be real values, not the dev defaults. Returns the
+ * problems (empty when fine), so the caller decides whether to throw.
+ */
+export function productionSecretProblems(env: Env): string[] {
+  if (env.NODE_ENV !== 'production') return [];
+  const problems: string[] = [];
+  if (
+    env.SESSION_SECRET === DEV_SESSION_SECRET ||
+    env.SESSION_SECRET.length < 32
+  )
+    problems.push(
+      'SESSION_SECRET must be a random value of at least 32 characters',
+    );
+  if (!env.OIDC_CLIENT_SECRET || env.OIDC_CLIENT_SECRET === DEV_OIDC_SECRET)
+    problems.push('OIDC_CLIENT_SECRET must be the real Keycloak client secret');
+  return problems;
 }
 
 /** Splits a comma separated env list. */
