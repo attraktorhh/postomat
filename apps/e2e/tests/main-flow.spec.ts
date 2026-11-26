@@ -66,7 +66,7 @@ describe('main flow: DM → approval → publish → Meetup → online', () => {
       .from(photos)
       .where(eq(photos.kind, 'photo'));
     expect(photo.path).toBe(
-      '/Postomat-Fotos/2026/2026-12-11-loetkurs-fuer-anfaenger/1.jpg',
+      '/Postomat-Fotos/2026/2026-12-11-loetkurs-fuer-anfaenger-1/1.jpg',
     );
     expect(photo.width).toBe(1200);
     expect(photo.sha256).toHaveLength(64);
@@ -99,7 +99,7 @@ describe('main flow: DM → approval → publish → Meetup → online', () => {
     expect(cards).toHaveLength(1);
     cardId = cards[0].eventId;
     expect(h.card(cardId)).toContain(
-      'Lötkurs für Anfänger · von @lena · v1 — Zur Freigabe',
+      'Lötkurs für Anfänger · von @lena · v1 · Zur Freigabe',
     );
     expect(h.card(cardId)).toContain(
       'Event · Fr 11.12. · 18:00 · 8 Plätze · 5 €',
@@ -138,7 +138,7 @@ describe('main flow: DM → approval → publish → Meetup → online', () => {
     );
     await resubmit(h.deps, 1, 'kai');
     await h.queue.drain();
-    expect(h.card(cardId)).toContain('v2 — v2 · Zur Freigabe');
+    expect(h.card(cardId)).toContain('v2 · Zur Freigabe');
     const cards = h.matrix
       .messages(ROOMS.medienteam)
       .filter((m) => !m.opts.threadRoot && !m.opts.replaces);
@@ -233,7 +233,7 @@ describe('main flow: DM → approval → publish → Meetup → online', () => {
     await h.queue.drain();
     const [p] = await h.db.db.select().from(posts);
     expect(p.status).toBe('online');
-    expect(h.card(cardId)).toContain('— Online');
+    expect(h.card(cardId)).toContain('· Online');
     expect(h.matrix.messages(ROOMS.dmLena).at(-1)?.body).toContain(
       'Instagram zu „Lötkurs für Anfänger“ ist da',
     );

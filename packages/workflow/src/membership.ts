@@ -37,20 +37,40 @@ export async function saveRoomSettings(
       set: { value, updatedBy: actor, updatedAt: new Date() },
     });
 }
+/**
+ * True for Matrix errors that will not go away on retry (room not found,
+ * bot not in the room). Those count as "nobody" and may be cached; anything
+ * else (network, 5xx, rate limit) is transient and must not be cached.
+ */
+export function isPermanentMatrixError(e: unknown): boolean {
+  const err = e as { statusCode?: number; errcode?: string } | null;
+  return (
+    err?.statusCode === 403 ||
+    err?.statusCode === 404 ||
+    err?.errcode === 'M_FORBIDDEN' ||
+    err?.errcode === 'M_NOT_FOUND'
+  );
+}
+
+type MembershipCache = {
+  at: number;
+  members: Set<string>;
+  medienteam: Set<string>;
+  medienteamRoomId?: string;
+  memberRoomIds: string[];
+};
 
 /**
  * Membership from the bot's room state: a member is joined to at least one
  * configured "Mitglieder" room, Medienteam is joined to the Medienteam room.
- * Results are cached for MATRIX_MEMBERSHIP_CACHE_SEC (max. 5 minutes).
+ * Only users on the bot's own homeserver count (a federated room must not let
+ * `@lena:elsewhere` act as the club's `lena`).
+ * Results are cached for MATRIX_MEMBERSHIP_CACHE_SEC (max. 5 minutes); a load
+ * that hit a transient Matrix error is not cached but rethrown.
  */
 export class Membership {
-  private cache?: {
-    at: number;
-    members: Set<string>;
-    medienteam: Set<string>;
-    medienteamRoomId?: string;
-    memberRoomIds: string[];
-  };
+  private cache?: MembershipCache;
+  private loading?: Promise<MembershipCache>;
   private readonly deps: Pick<WorkflowDeps, 'db' | 'env' | 'now'>;
   private readonly matrix: MatrixPort;
 
@@ -66,30 +86,55 @@ export class Membership {
     this.cache = undefined;
   }
 
-  private async load() {
+  private get serverName(): string {
+    return this.matrix.userId.split(':').slice(1).join(':');
+  }
+
+  /** True when `userId` belongs to the bot's own homeserver. */
+  isLocalUser(userId: string): boolean {
+    return userId.split(':').slice(1).join(':') === this.serverName;
+  }
+
+  private async members(roomId: string): Promise<string[]> {
+    try {
+      return await this.matrix.getJoinedMembers(roomId);
+    } catch (e) {
+      if (isPermanentMatrixError(e)) return [];
+      throw e;
+    }
+  }
+
+  private async load(): Promise<MembershipCache> {
     const ttl = this.deps.env.MATRIX_MEMBERSHIP_CACHE_SEC * 1000;
     if (this.cache && this.deps.now().getTime() - this.cache.at < ttl)
       return this.cache;
+    // Concurrent callers share one load.
+    this.loading ??= this.fetch().finally(() => {
+      this.loading = undefined;
+    });
+    return this.loading;
+  }
+
+  private async fetch(): Promise<MembershipCache> {
     const cfg = await getRoomSettings(this.deps);
     const memberRoomIds: string[] = [];
     const members = new Set<string>();
     for (const r of cfg.memberRooms) {
-      const id = await this.matrix.resolveRoom(r).catch(() => undefined);
+      const id = await this.matrix.resolveRoom(r);
       if (!id) continue;
       memberRoomIds.push(id);
-      for (const m of await this.matrix.getJoinedMembers(id).catch(() => []))
-        members.add(m);
+      for (const m of await this.members(id)) members.add(m);
     }
     const medienteamRoomId = cfg.medienteamRoom
-      ? await this.matrix.resolveRoom(cfg.medienteamRoom).catch(() => undefined)
+      ? await this.matrix.resolveRoom(cfg.medienteamRoom)
       : undefined;
     const medienteam = new Set(
-      medienteamRoomId
-        ? await this.matrix.getJoinedMembers(medienteamRoomId).catch(() => [])
-        : [],
+      medienteamRoomId ? await this.members(medienteamRoomId) : [],
     );
-    members.delete(this.matrix.userId);
-    medienteam.delete(this.matrix.userId);
+    for (const set of [members, medienteam]) {
+      set.delete(this.matrix.userId);
+      for (const m of set) if (!this.isLocalUser(m)) set.delete(m);
+    }
     this.cache = {
       at: this.deps.now().getTime(),
       members,
