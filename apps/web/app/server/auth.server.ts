@@ -4,6 +4,7 @@ import { redirect } from 'react-router';
 import { loadEnv } from '@postomat/core';
 import { getSession, sessionStorage, type SessionUser } from './session.server';
 import { rolesFromGroups, type Role } from './roles';
+import { isSameOriginRequest, safeReturnTo } from './guards';
 
 const env = loadEnv();
 export const GROUPS = {
@@ -54,7 +55,7 @@ export async function startLogin(
   session.set('oidc', {
     state,
     verifier,
-    returnTo: returnTo.startsWith('/') ? returnTo : '/',
+    returnTo: safeReturnTo(returnTo),
   });
   return redirect(url.href, {
     headers: { 'set-cookie': await sessionStorage.commitSession(session) },
@@ -93,15 +94,19 @@ export async function finishLogin(request: Request): Promise<Response> {
     name: typeof info['name'] === 'string' ? info['name'] : undefined,
     groups,
   };
-  session.unset('oidc');
-  session.set('user', user);
-  session.set('idToken', tokens.id_token);
-  return redirect(pending.returnTo, {
-    headers: { 'set-cookie': await sessionStorage.commitSession(session) },
+  // New session id after login (no session fixation): drop the old row and
+  // start a fresh session that only holds the user.
+  await sessionStorage.destroySession(session);
+  const fresh = await sessionStorage.getSession();
+  fresh.set('user', user);
+  if (tokens.id_token) fresh.set('idToken', tokens.id_token);
+  return redirect(safeReturnTo(pending.returnTo), {
+    headers: { 'set-cookie': await sessionStorage.commitSession(fresh) },
   });
 }
 
 export async function logout(request: Request): Promise<Response> {
+  assertSameOrigin(request);
   const session = await getSession(request);
   const idToken = session.get('idToken');
   const headers = {
@@ -130,14 +135,36 @@ export async function getUser(request: Request): Promise<CurrentUser | null> {
   return { ...user, roles: rolesFromGroups(user.groups, GROUPS) };
 }
 
+/** Rejects cross-site state-changing requests (CSRF) with 403. */
+export function assertSameOrigin(request: Request): void {
+  if (!isSameOriginRequest(request, env.PUBLIC_WEB_URL))
+    throw new Response('Anfrage von einer fremden Seite abgelehnt.', {
+      status: 403,
+    });
+}
+
+/** 403 body when the user has a Postomat group but not the needed role. */
+export function roleMissingText(roles: Role[]): string {
+  return roles.includes('medienteam')
+    ? 'Diese Seite ist nur fürs Medienteam.'
+    : roles.includes('admin')
+      ? 'Diese Seite ist nur für Postomat-Admins.'
+      : 'Kein Zugang';
+}
+
+export const NOT_YOUR_POST =
+  'Das ist nicht dein Beitrag. Deine Beiträge findest du unter „Meine Beiträge“.';
+
 /**
  * Requires a logged-in user with one of the roles. Not logged in → login,
  * logged in without any Postomat group (or without the role) → "Kein Zugang".
+ * Non-GET requests must come from this site (CSRF guard).
  */
 export async function requireUser(
   request: Request,
   roles?: Role[],
 ): Promise<CurrentUser> {
+  assertSameOrigin(request);
   const user = await getUser(request);
   if (!user) {
     const url = new URL(request.url);
@@ -145,11 +172,8 @@ export async function requireUser(
       `/auth/login?returnTo=${encodeURIComponent(url.pathname + url.search)}`,
     );
   }
-  if (
-    !user.roles.length ||
-    (roles && !roles.some((r) => user.roles.includes(r)))
-  ) {
-    throw new Response('Kein Zugang', { status: 403 });
-  }
+  if (!user.roles.length) throw new Response('Kein Zugang', { status: 403 });
+  if (roles && !roles.some((r) => user.roles.includes(r)))
+    throw new Response(roleMissingText(roles), { status: 403 });
   return user;
 }

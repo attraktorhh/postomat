@@ -48,10 +48,7 @@ export function Shell({
             ))}
           </nav>
           <span className="ml-auto text-xs text-[var(--muted)]">
-            @{user.username} ·{' '}
-            <a className="underline" href="/auth/logout">
-              Abmelden
-            </a>
+            @{user.username} · <LogoutButton />
           </span>
         </div>
       </header>
@@ -61,6 +58,17 @@ export function Shell({
         {children}
       </main>
     </div>
+  );
+}
+
+/** "Abmelden" as a POST form, styled like a link. */
+export function LogoutButton() {
+  return (
+    <form method="post" action="/auth/logout" className="inline">
+      <button type="submit" className="cursor-pointer underline">
+        Abmelden
+      </button>
+    </form>
   );
 }
 

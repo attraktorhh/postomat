@@ -9,6 +9,7 @@ import {
   useRouteError,
   type MetaFunction,
 } from 'react-router';
+import { LogoutButton } from './components/shell';
 import stylesHref from '../styles.css?url';
 
 export const meta: MetaFunction = () => [{ title: 'Postomat' }];
@@ -40,25 +41,31 @@ export function ErrorBoundary() {
   const error = useRouteError();
   const forbidden = isRouteErrorResponse(error) && error.status === 403;
   const notFound = isRouteErrorResponse(error) && error.status === 404;
+  // A 403 with a specific reason ("nur fürs Medienteam", "nicht dein
+  // Beitrag") shows that reason; the plain one means "no Postomat group".
+  const reason =
+    forbidden && typeof error.data === 'string' && error.data !== 'Kein Zugang'
+      ? error.data
+      : null;
   return (
     <main className="mx-auto grid max-w-xl gap-3 p-4">
       <h1 className="text-xl font-bold">
         {forbidden ? 'Kein Zugang' : notFound ? 'Nicht gefunden' : 'Fehler'}
       </h1>
       <p className="text-sm">
-        {forbidden
-          ? 'Dein Attraktor-Login gehört zu keiner Postomat-Gruppe (mitglieder, medienteam, postomat-admin). Frag das Medienteam, wenn das nicht stimmt.'
-          : isRouteErrorResponse(error)
-            ? String(error.data)
-            : 'Da ist etwas schiefgegangen.'}
+        {reason
+          ? reason
+          : forbidden
+            ? 'Dein Attraktor-Login gehört zu keiner Postomat-Gruppe (mitglieder, medienteam, postomat-admin). Frag das Medienteam, wenn das nicht stimmt.'
+            : isRouteErrorResponse(error)
+              ? String(error.data)
+              : 'Da ist etwas schiefgegangen.'}
       </p>
       <p className="flex gap-3 text-sm">
         <Link className="underline" to="/">
           Zur Startseite
         </Link>
-        <a className="underline" href="/auth/logout">
-          Abmelden
-        </a>
+        <LogoutButton />
       </p>
     </main>
   );
