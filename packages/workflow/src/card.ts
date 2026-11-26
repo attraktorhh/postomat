@@ -1,5 +1,5 @@
 import {
-  instagramCaption,
+  instagramExcerpt,
   renderCard,
   type MatrixText,
 } from '@postomat/templates';
@@ -7,11 +7,6 @@ import type { WorkflowDeps } from './deps.ts';
 import { getChannels, getPost } from './repo.ts';
 import { checksFor } from './posts.ts';
 import { draftOf, redaktionUrl } from './context.ts';
-
-const excerpt = (s: string, n = 140) => {
-  const flat = s.replace(/\s+/g, ' ').trim();
-  return flat.length > n ? `${flat.slice(0, n - 1)}…` : flat;
-};
 
 /** Renders the #medienteam card for a post from the DB. */
 export async function buildCard(
@@ -33,7 +28,7 @@ export async function buildCard(
     type: post.type,
     facts: post.facts,
     instagramExcerpt: ig
-      ? excerpt(instagramCaption(draftOf(ig)).split('\n\n')[0])
+      ? instagramExcerpt(draftOf(ig)) || undefined
       : undefined,
     channels: channels.map((c) => ({
       channel: c.channel,

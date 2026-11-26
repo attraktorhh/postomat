@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`Matrix messages > renders the card 1`] = `
-"Lötkurs für Anfänger · von @lena · v1 — Zur Freigabe
+"Lötkurs für Anfänger · von @lena · v1 · Zur Freigabe
 Event · Fr 11.12. · 18:00 · 8 Plätze · 5 €
 IG: „Lust auf „Lötkurs für Anfänger“? 🔥“
 Website + Wiki: sofort · Meetup: Kopierhilfe · IG: Kopiervorlage · FB: Kopiervorlage
@@ -16,7 +16,7 @@ exports[`channel texts without AI > event drafts (DE + EN) per channel 1`] = `
     "fields": {
       "hashtags": "#makerspace #hamburg #altona #attraktor #workshop",
     },
-    "textDe": "Lötkurs für Anfänger – Freitag, den 11.12.26 | 18 – 21 Uhr im Attraktor. An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig. 8 Plätze, 5 € Material.",
+    "textDe": "Lötkurs für Anfänger am Fr 11.12. um 18 Uhr im Attraktor. An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig. 8 Plätze, 5 € Material.",
     "textEn": "🇬🇧 Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: Lötkurs für Anfänger. 8 spots, €5 for material. Sign up via Meetup.",
   },
   "instagram": {
@@ -39,7 +39,6 @@ exports[`channel texts without AI > event drafts (DE + EN) per channel 1`] = `
     "textDe": "🔧 Was dich erwartet
 An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig.
 
-✅ Keine Vorkenntnisse nötig
 🎟️ 8 Plätze
 💶 5 € Material",
     "textEn": "🔧 What to expect
@@ -67,7 +66,7 @@ An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse
 `;
 
 exports[`channel texts without AI > event outputs > facebook 1`] = `
-"Lötkurs für Anfänger – Freitag, den 11.12.26 | 18 – 21 Uhr im Attraktor. An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig. 8 Plätze, 5 € Material.
+"Lötkurs für Anfänger am Fr 11.12. um 18 Uhr im Attraktor. An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig. 8 Plätze, 5 € Material.
 
 Anmeldung: https://www.meetup.com/attraktor/events/312070001/
 
@@ -121,7 +120,6 @@ exports[`channel texts without AI > event outputs > meetup 1`] = `
     "value": "🔧 Was dich erwartet
 An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig.
 
-✅ Keine Vorkenntnisse nötig
 🎟️ 8 Plätze
 💶 5 € Material
 
@@ -174,13 +172,13 @@ exports[`channel texts without AI > event outputs > wordpress 1`] = `
 `;
 
 exports[`channel texts without AI > projekt drafts and outputs > facebook 1`] = `
-"Frisch aus der Werkstatt: Nixie-Uhr! ✨ Eine Uhr mit alten Röhren aus der DDR. Das Kniffligste: Die Hochspannung. Kommt vorbei und schaut es euch an!
+"Frisch aus der Werkstatt: Nixie-Uhr! 🛠️ Eine Uhr mit alten Röhren aus der DDR. Das Kniffligste: Die Hochspannung. Kommt vorbei und schaut es euch an!
 
 🇬🇧 Built at Attraktor: Nixie-Uhr. Drop by and have a look!"
 `;
 
 exports[`channel texts without AI > projekt drafts and outputs > instagram 1`] = `
-"Frisch aus der Werkstatt: Nixie-Uhr! ✨
+"Frisch aus der Werkstatt: Nixie-Uhr! 🛠️
 
 ✨ Eine Uhr mit alten Röhren aus der DDR. Das Kniffligste: Die Hochspannung.
 
