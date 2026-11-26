@@ -24,6 +24,12 @@ const FORMATS: Record<
 /** Longest edge of a normalized photo. */
 export const NORMALIZED_MAX_EDGE = 2400;
 
+/** Refuse to decode images larger than this (decompression bombs). */
+export const MAX_INPUT_PIXELS = 50_000_000;
+
+const open = (buf: Buffer) =>
+  sharp(buf, { limitInputPixels: MAX_INPUT_PIXELS });
+
 /**
  * Detects the image type by content (not by file name) and returns the
  * dimensions as displayed, i.e. after applying the EXIF orientation.
@@ -37,7 +43,7 @@ export async function inspectPhoto(buf: Buffer): Promise<{
 }> {
   let meta: Awaited<ReturnType<ReturnType<typeof sharp>['metadata']>>;
   try {
-    meta = await sharp(buf).metadata();
+    meta = await open(buf).metadata();
   } catch {
     throw new UnsupportedImageError(
       'Unsupported image: the data could not be decoded',
@@ -52,6 +58,8 @@ export async function inspectPhoto(buf: Buffer): Promise<{
   const height = meta.autoOrient?.height ?? meta.height;
   if (!width || !height)
     throw new UnsupportedImageError('Unsupported image: missing dimensions');
+  if (width * height > MAX_INPUT_PIXELS)
+    throw new UnsupportedImageError('Unsupported image: too many pixels');
   return { ...format, width, height };
 }
 
@@ -64,7 +72,7 @@ export async function normalizePhoto(
   buf: Buffer,
 ): Promise<{ jpeg: Buffer; width: number; height: number }> {
   await inspectPhoto(buf);
-  const { data, info } = await sharp(buf)
+  const { data, info } = await open(buf)
     .autoOrient()
     .resize({
       width: NORMALIZED_MAX_EDGE,
@@ -85,7 +93,7 @@ export async function coverPhoto(
   height: number,
 ): Promise<Buffer> {
   await inspectPhoto(buf);
-  return sharp(buf)
+  return open(buf)
     .autoOrient()
     .resize({ width, height, fit: 'cover', position: 'centre' })
     .flatten({ background: '#ffffff' })

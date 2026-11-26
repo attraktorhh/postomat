@@ -61,9 +61,11 @@ export const DM = {
     'Das Format kenne ich leider nicht. Schick das Foto bitte als JPEG, PNG oder WebP.',
   photoFailed:
     'Das Foto konnte ich gerade nicht speichern. Versuch es bitte gleich noch einmal.',
+  photoTooLarge:
+    'Das Foto ist mir zu groß (über 25 MB). Schick es bitte etwas kleiner, zum Beispiel als normales Handyfoto.',
   rueckfrageAck: 'Danke, ich gebe das ans Medienteam weiter.',
   noteStored:
-    'Notiert. Das Medienteam sieht deinen Hinweis. Antworte „abschicken“, wenn alles passt.',
+    'Ich habe das als Notiz fürs Medienteam gespeichert. Texte ändern kannst du mit „Text ändern: …“. Antworte „abschicken“, wenn alles passt.',
   textsUpdated:
     'Ich habe die Texte angepasst. Antworte „abschicken“ oder ergänze im Browser eine Notiz.',
   noPosts: 'Du hast noch keine Beiträge. Erzähl einfach, was du vorhast!',
@@ -112,12 +114,19 @@ export function dmSummary(input: {
 export const DM_SUBMIT_HINT =
   'Antworte „abschicken“ oder ergänze im Browser eine Notiz.';
 
+/**
+ * DM after approval and the auto channels. Says "online" only when at least
+ * one link exists; otherwise (copy channels only, or every auto channel
+ * failed) it only confirms the approval.
+ */
 export function dmPublished(
   title: string,
   links: Array<{ channel: ChannelId; url: string }>,
 ): string {
+  if (!links.length)
+    return `👍 Dein Beitrag „${title}“ ist freigegeben. Ich schicke dir die Links, sobald er online ist.`;
   const lines = links.map((l) => `• ${CHANNEL_NAMES[l.channel]}: ${l.url}`);
-  return `✅ Dein ${title} ist online!${lines.length ? `\n${lines.join('\n')}` : ''}`;
+  return `✅ Dein ${title} ist online!\n${lines.join('\n')}`;
 }
 
 export function dmFollowUp(
@@ -192,14 +201,11 @@ export interface CardInput {
   editUrl: string;
 }
 
+/** Status part of the card header; the header already carries "vN". */
 export function cardStatusLabel(
-  input: Pick<CardInput, 'status' | 'version' | 'approvedBy'>,
+  input: Pick<CardInput, 'status' | 'approvedBy'>,
 ): string {
   switch (input.status) {
-    case 'zur_freigabe':
-      return input.version > 1
-        ? `v${input.version} · Zur Freigabe`
-        : 'Zur Freigabe';
     case 'geplant':
       return `Freigegeben · @${input.approvedBy ?? '?'}`;
     default:
@@ -235,6 +241,7 @@ function channelResult(c: CardChannel): string {
 export function renderCard(input: CardInput): MatrixText {
   const header = `${input.title} · von @${input.authorUsername} · v${input.version}`;
   const status = cardStatusLabel(input);
+  const footer = cardFooter(input.status);
   const facts = factsLineShort(input.type, input.facts);
   const chips = channelChips(input.channels);
   const checks = input.checks.map((c) => `${c.ok ? '✓' : '!'} ${c.label}`);
@@ -242,23 +249,21 @@ export function renderCard(input: CardInput): MatrixText {
   const results = approvedPhase
     ? input.channels.filter((c) => c.mode !== 'off').map(channelResult)
     : [];
-  const footer = `👍 freigeben · im Thread antworten = Änderung · Im Browser bearbeiten ↗ ${input.editUrl}`;
-
   const body = [
-    `${header} — ${status}`,
+    `${header} · ${status}`,
     facts,
     input.instagramExcerpt ? `IG: „${input.instagramExcerpt}“` : '',
     chips.join(' · '),
     input.note ? `Notiz von @${input.authorUsername}: „${input.note}“` : '',
     checks.join(' · '),
     results.length ? results.join('\n') : '',
-    footer,
+    `${footer.text ? `${footer.text} · ` : ''}${footer.link} ↗ ${input.editUrl}`,
   ]
     .filter(Boolean)
     .join('\n');
 
   const html = [
-    `<b>${esc(input.title)}</b> · von @${esc(input.authorUsername)} · v${input.version} — <b>${esc(status)}</b>`,
+    `<b>${esc(input.title)}</b> · von @${esc(input.authorUsername)} · v${input.version} · <b>${esc(status)}</b>`,
     `<b>${esc(facts)}</b>`,
     input.instagramExcerpt ? `<i>IG: „${esc(input.instagramExcerpt)}“</i>` : '',
     chips.map((c) => `<code>${esc(c)}</code>`).join(' '),
@@ -269,11 +274,29 @@ export function renderCard(input: CardInput): MatrixText {
     results.length
       ? `<ul>${results.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`
       : '',
-    `<sub>👍 freigeben · im Thread antworten = Änderung · <a href="${esc(input.editUrl)}">Im Browser bearbeiten ↗</a></sub>`,
+    `<sub>${footer.text ? `${esc(footer.text)} · ` : ''}<a href="${esc(input.editUrl)}">${esc(footer.link)} ↗</a></sub>`,
   ]
     .filter(Boolean)
     .join('<br>');
   return { body, html };
+}
+
+/** Card footer: what the Medienteam can do in the current state. */
+function cardFooter(status: PostStatus): { text: string; link: string } {
+  switch (status) {
+    case 'zur_freigabe':
+      return {
+        text: '👍 freigeben · im Thread antworten = Änderung',
+        link: 'Im Browser bearbeiten',
+      };
+    case 'aenderung_gewuenscht':
+      return {
+        text: 'Im Browser ändern und „Erneut zur Freigabe“ klicken',
+        link: 'Im Browser bearbeiten',
+      };
+    default:
+      return { text: '', link: 'Im Browser ansehen' };
+  }
 }
 
 export const THREAD = {

@@ -3,7 +3,7 @@ import { bannerWhenDe, slugify, type Consent } from '@postomat/core';
 import { inArray, photos, type Photo, type Post } from '@postomat/db';
 import { photoFolder } from '@postomat/media';
 import {
-  inspectPhoto,
+  normalizePhoto,
   renderBanner,
   UnsupportedImageError,
   type BannerFormat,
@@ -15,20 +15,35 @@ import { templateContext } from './context.ts';
 
 export { UnsupportedImageError };
 
-const MIME_EXT = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-} as const;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Folder for a post's photos and banners in Nextcloud. */
+/**
+ * Folder for a post's photos and banners in Nextcloud:
+ * /Postomat-Fotos/YYYY/YYYY-MM-DD-<slug>-<id>. The post id keeps two posts
+ * with the same title and date apart.
+ */
 export function folderFor(deps: WorkflowDeps, post: Post): string {
-  const date = post.facts.date ?? post.createdAt.toISOString().slice(0, 10);
+  const fact = post.facts.date;
+  const date =
+    fact && ISO_DATE.test(fact)
+      ? fact
+      : post.createdAt.toISOString().slice(0, 10);
+  const slug = slugify(post.facts.title ?? 'beitrag', 40) || 'beitrag';
   return photoFolder(
     deps.env.NEXTCLOUD_BASE_FOLDER,
     date,
-    slugify(post.facts.title ?? `beitrag-${post.id}`, 40),
+    `${slug}-${post.id}`,
   );
+}
+
+/** Next free photo number: one more than the highest stored "<n>.<ext>". */
+function nextPhotoNumber(existing: Photo[]): number {
+  let max = 0;
+  for (const p of existing) {
+    const n = Number(/\/(\d+)\.[a-z]+$/.exec(p.path)?.[1] ?? 0);
+    if (n > max) max = n;
+  }
+  return Math.max(max, existing.length) + 1;
 }
 
 async function store(
@@ -42,9 +57,12 @@ async function store(
 }
 
 /**
- * Validates a member photo, stores it in Nextcloud under
- * /Postomat-Fotos/YYYY/YYYY-MM-DD-<slug>/<n>.<ext> and records metadata.
+ * Validates a member photo, normalises it (EXIF orientation applied, metadata
+ * such as GPS stripped, max. 2400 px, JPEG), stores it in Nextcloud under
+ * /Postomat-Fotos/YYYY/YYYY-MM-DD-<slug>-<id>/<n>.jpg and records metadata.
  * Throws UnsupportedImageError for anything but JPEG/PNG/WebP.
+ * Callers must not run two uploads for the same post at once (the bot
+ * serialises events per sender).
  */
 export async function storeMemberPhoto(
   deps: WorkflowDeps,
@@ -52,22 +70,22 @@ export async function storeMemberPhoto(
   data: Buffer,
   uploader: string,
 ): Promise<Photo> {
-  const info = await inspectPhoto(data);
+  const photo = await normalizePhoto(data);
   const existing = (await getPhotos(deps.db, post.id)).filter(
     (p) => p.kind === 'photo',
   );
-  const path = `${folderFor(deps, post)}/${existing.length + 1}.${MIME_EXT[info.mime]}`;
-  await store(deps, path, data, info.mime);
+  const path = `${folderFor(deps, post)}/${nextPhotoNumber(existing)}.jpg`;
+  await store(deps, path, photo.jpeg, 'image/jpeg');
   const [row] = await deps.db
     .insert(photos)
     .values({
       postId: post.id,
       kind: 'photo',
       path,
-      mime: info.mime,
-      width: info.width,
-      height: info.height,
-      sha256: createHash('sha256').update(data).digest('hex'),
+      mime: 'image/jpeg',
+      width: photo.width,
+      height: photo.height,
+      sha256: createHash('sha256').update(photo.jpeg).digest('hex'),
       uploaderMatrixId: uploader,
       consent: 'einwilligung_fehlt',
       tags: [post.type, ...(post.facts.isWorkshop ? ['workshop'] : [])],
@@ -139,19 +157,44 @@ export async function renderBanners(
   return out;
 }
 
-/** Loads the latest banner of a format, rendering it first if needed. */
+/**
+ * Loads the latest banner of a format.
+ * - `render: true` (default): renders it first when missing or stale.
+ * - `render: false` (web requests): never renders; returns the newest stored
+ *   banner (or null) and queues `banner.render` when it is missing or stale.
+ */
 export async function bannerData(
   deps: WorkflowDeps,
   post: Post,
   format: BannerFormat,
-): Promise<{ row: Photo; data: Buffer }> {
+  opts?: { render?: true },
+): Promise<{ row: Photo; data: Buffer }>;
+export async function bannerData(
+  deps: WorkflowDeps,
+  post: Post,
+  format: BannerFormat,
+  opts: { render: boolean },
+): Promise<{ row: Photo; data: Buffer; stale: boolean } | null>;
+export async function bannerData(
+  deps: WorkflowDeps,
+  post: Post,
+  format: BannerFormat,
+  opts: { render?: boolean } = {},
+): Promise<{ row: Photo; data: Buffer; stale?: boolean } | null> {
   let row = await latestBanner(deps.db, post.id, format);
-  if (
+  const stale =
     !row ||
     row.version !== post.version ||
-    row.bannerColor !== post.bannerColor
-  ) {
-    row = (await renderBanners(deps, post))[format];
+    row.bannerColor !== post.bannerColor;
+  if (stale && opts.render === false) {
+    await deps.queue.send(
+      'banner.render',
+      { postId: post.id },
+      { singletonKey: `banner:${post.id}` },
+    );
+    if (!row) return null;
+    return { row, data: await deps.media.get(row.path), stale: true };
   }
-  return { row, data: await deps.media.get(row.path) };
+  if (!row || stale) row = (await renderBanners(deps, post))[format];
+  return { row, data: await deps.media.get(row.path), stale: false };
 }

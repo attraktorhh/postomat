@@ -212,6 +212,37 @@ describe('dialog without AI', () => {
     ]);
     expect(effects).toEqual(['set_consent', 'summary', 'change_request']);
   });
+
+  it('asks a Projekt what was built', async () => {
+    const { transcript } = await run(['Ich habe eine Nixie-Uhr gebaut', '2']);
+    expect(transcript.at(-1)).toBe(
+      'Was hast du gebaut? Ein, zwei Sätze reichen.',
+    );
+  });
+
+  it('treats only explicit wishes in review as text changes', async () => {
+    const base = [
+      'Ich habe eine Nixie-Uhr gebaut',
+      '2',
+      'Uhr.',
+      'Röhren.',
+      7,
+      '3',
+    ] as const;
+    const ok = await run([...base, 'passt']);
+    expect(ok.effects).toEqual(['set_consent', 'summary']);
+    expect(ok.transcript.at(-1)).toContain('Antworte „abschicken“');
+    const thanks = await run([...base, 'Danke!']);
+    expect(thanks.effects).toEqual(['set_consent', 'summary']);
+    const note = await run([...base, 'Bitte erwähnt den Lötclub']);
+    expect(note.effects).toEqual(['set_consent', 'summary', 'note']);
+    const change = await run([...base, 'Ändere bitte den Text, lustiger']);
+    expect(change.effects).toEqual([
+      'set_consent',
+      'summary',
+      'change_request',
+    ]);
+  });
 });
 
 describe('dialog with AI', () => {

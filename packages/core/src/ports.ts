@@ -25,6 +25,8 @@ export interface MatrixRoomInfo {
   alias?: string;
   memberCount: number;
   encrypted: boolean;
+  /** Known to be a direct-message room (m.direct). */
+  direct?: boolean;
 }
 
 export interface MatrixPort {

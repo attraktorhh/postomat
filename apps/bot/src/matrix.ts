@@ -16,13 +16,9 @@ import type {
 } from '@postomat/core';
 import type { BotSession } from './session.ts';
 
-type RawEvent = {
-  type: string;
-  sender: string;
-  event_id: string;
-  content: Record<string, any>;
-  state_key?: string;
-};
+import { normalise, type RawEvent } from './normalise.ts';
+
+export { normalise };
 
 /** MatrixPort implemented with matrix-bot-sdk and the Rust crypto store (E2EE). */
 export class SdkMatrix implements MatrixPort {
@@ -215,6 +211,10 @@ export class SdkMatrix implements MatrixPort {
   }
 
   async getRoomInfo(roomId: string): Promise<MatrixRoomInfo> {
+    if (this.client.dms.isDm(roomId)) {
+      // DMs are never offered in the room picker; skip the state requests.
+      return { roomId, encrypted: true, memberCount: 2, direct: true };
+    }
     const [name, alias, enc, members] = await Promise.all([
       this.state<{ name?: string }>(roomId, 'm.room.name'),
       this.state<{ alias?: string }>(roomId, 'm.room.canonical_alias'),
@@ -227,6 +227,7 @@ export class SdkMatrix implements MatrixPort {
       alias: alias?.alias,
       encrypted: !!enc?.algorithm,
       memberCount: members.length,
+      direct: false,
     };
   }
 
@@ -247,8 +248,13 @@ export class SdkMatrix implements MatrixPort {
     if (idOrAlias.startsWith('!')) return idOrAlias;
     try {
       return await this.client.resolveRoom(idOrAlias);
-    } catch {
-      return undefined;
+    } catch (e) {
+      // Unknown alias: undefined. Network/server errors are rethrown, so a
+      // hiccup is not cached as "room does not exist".
+      const err = e as { statusCode?: number; errcode?: string };
+      if (err?.statusCode === 404 || err?.errcode === 'M_NOT_FOUND')
+        return undefined;
+      throw e;
     }
   }
 
@@ -259,41 +265,4 @@ export class SdkMatrix implements MatrixPort {
   async ensureDm(userId: string): Promise<string> {
     return this.client.dms.getOrCreateDm(userId);
   }
-}
-
-/** Converts raw (decrypted) events into MatrixIncoming. */
-export function normalise(
-  roomId: string,
-  event: RawEvent,
-): MatrixIncoming | null {
-  const c = event.content ?? {};
-  if (event.type === 'm.reaction') {
-    const rel = c['m.relates_to'];
-    if (rel?.rel_type !== 'm.annotation') return null;
-    return {
-      kind: 'reaction',
-      roomId,
-      eventId: event.event_id,
-      sender: event.sender,
-      relatesTo: rel.event_id,
-      key: String(rel.key ?? ''),
-    };
-  }
-  if (event.type !== 'm.room.message') return null;
-  const rel = c['m.relates_to'];
-  if (rel?.rel_type === 'm.replace') return null; // ignore edits
-  let body = String(c['body'] ?? '');
-  // Strip reply fallbacks ("> <@user> …").
-  if (rel?.['m.in_reply_to'] && !rel?.is_falling_back)
-    body = body.replace(/^(>.*\n)+\n?/, '');
-  return {
-    kind: 'message',
-    roomId,
-    eventId: event.event_id,
-    sender: event.sender,
-    msgtype: String(c['msgtype'] ?? ''),
-    body: body.trim(),
-    threadRoot: rel?.rel_type === 'm.thread' ? rel.event_id : undefined,
-    content: c,
-  };
 }

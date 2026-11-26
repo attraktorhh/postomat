@@ -70,6 +70,59 @@ describe('AI service', () => {
     ).toEqual(texts);
   });
 
+  it('never forwards member identity, even when a caller passes it along', async () => {
+    const texts = {
+      hookDe: 'H',
+      bodyDe: 'B',
+      titleEn: 'T',
+      bodyEn: 'E',
+      shortEn: 'S',
+    };
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => result({ type: null }) as never,
+    });
+    const ai = createAiService(model, { timeoutMs: 1000, logger: quiet });
+    // The post row carries the author's Matrix ID and name; a careless caller
+    // spreading it into the input must not leak them to the provider.
+    const identity = {
+      authorMatrixId: '@lena:localhost',
+      authorUsername: 'lena',
+      authorDisplayName: 'Lena Lötfee',
+      displayName: 'Lena Lötfee',
+      sender: '@lena:localhost',
+    };
+    await ai.extract({
+      ...identity,
+      text: 'Ich will einen Lötkurs machen',
+      facts: { title: 'Lötkurs' },
+      now: NOW,
+    } as never);
+    const textModel = new MockLanguageModelV4({
+      doGenerate: async () => result(texts) as never,
+    });
+    await createAiService(textModel, {
+      timeoutMs: 1000,
+      logger: quiet,
+    }).writeTexts({
+      ...identity,
+      type: 'event',
+      facts: { title: 'Lötkurs' },
+      instruction: 'lustiger',
+    } as never);
+    for (const call of [
+      ...model.doGenerateCalls,
+      ...textModel.doGenerateCalls,
+    ]) {
+      const sent = JSON.stringify(call.prompt);
+      expect(sent).toContain('Lötkurs');
+      expect(sent).not.toContain('@lena');
+      expect(sent).not.toMatch(/lena/i);
+      expect(sent).not.toMatch(/@\w+:/);
+    }
+    expect(model.doGenerateCalls).toHaveLength(1);
+    expect(textModel.doGenerateCalls).toHaveLength(1);
+  });
+
   it('returns null and logs a warning on errors', async () => {
     const logger = { warn: vi.fn() };
     const model = new MockLanguageModelV4({

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { Resvg } from '@resvg/resvg-js';
+import { renderAsync } from '@resvg/resvg-js';
 import satori from 'satori';
 import type { Font } from 'satori';
 import sharp from 'sharp';
@@ -517,10 +517,11 @@ export async function renderBanner(
 ): Promise<{ png: Buffer; width: number; height: number }> {
   const { width } = BANNER_SIZES[input.format];
   const svg = await renderBannerSvg(input, assets);
-  const rendered = new Resvg(svg, {
+  // renderAsync runs on the libuv thread pool, so the event loop stays free.
+  const rendered = await renderAsync(svg, {
     fitTo: { mode: 'width', value: width },
     font: { loadSystemFonts: false },
-  }).render();
+  });
   const png = Buffer.from(rendered.asPng());
   return { png, width: rendered.width, height: rendered.height };
 }

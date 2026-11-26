@@ -12,15 +12,21 @@ export interface ExtractOptions {
   expecting?: FactKey;
 }
 
+// Abbreviations ("Fr.") only count with a following number ("Fr. 18 Uhr"),
+// so "einfach so." or "mo." in a sentence is not a weekday.
 const WEEKDAY_PATTERNS: Array<[RegExp, number]> = [
-  [/\b(sonntags?|so\.)(?=\s|$|[,.!?])/i, 0],
-  [/\b(montags?|mo\.)(?=\s|$|[,.!?])/i, 1],
-  [/\b(dienstags?|di\.)(?=\s|$|[,.!?])/i, 2],
-  [/\b(mittwochs?|mi\.)(?=\s|$|[,.!?])/i, 3],
-  [/\b(donnerstags?|do\.)(?=\s|$|[,.!?])/i, 4],
-  [/\b(freitags?|fr\.)(?=\s|$|[,.!?])/i, 5],
-  [/\b(samstags?|sonnabends?|sa\.)(?=\s|$|[,.!?])/i, 6],
+  [/\b(sonntags?(?=\s|$|[,.!?])|so\.(?=\s*\d))/i, 0],
+  [/\b(montags?(?=\s|$|[,.!?])|mo\.(?=\s*\d))/i, 1],
+  [/\b(dienstags?(?=\s|$|[,.!?])|di\.(?=\s*\d))/i, 2],
+  [/\b(mittwochs?(?=\s|$|[,.!?])|mi\.(?=\s*\d))/i, 3],
+  [/\b(donnerstags?(?=\s|$|[,.!?])|do\.(?=\s*\d))/i, 4],
+  [/\b(freitags?(?=\s|$|[,.!?])|fr\.(?=\s*\d))/i, 5],
+  [/\b(samstags?(?=\s|$|[,.!?])|sonnabends?(?=\s|$|[,.!?])|sa\.(?=\s*\d))/i, 6],
 ];
+
+/** Units after a number that make it a count, price or age, never a time. */
+const NOT_TIME_UNIT =
+  '\\s*(?:leute|leuten|plätze|plaetze|personen|teilnehmer|tn|menschen|kinder|jahre|jahren|jahr|j\\.|€|euro|eur\\b|%|stück|min|minuten|stunden)';
 
 const MONTHS: Record<string, number> = {
   januar: 1,
@@ -69,8 +75,16 @@ function nextOccurrence(
   return undefined;
 }
 
-/** Extracts a local date from German text. Explicit dates win over weekdays. */
-export function extractDate(text: string, now: Date): string | undefined {
+/**
+ * Extracts a local date from German text. Explicit dates win over weekdays.
+ * `explicitOnly`: only numeric/named dates ("11.12.", "11. Dezember"), no
+ * weekdays or "morgen" (for free-text answers like a description).
+ */
+export function extractDate(
+  text: string,
+  now: Date,
+  explicitOnly = false,
+): string | undefined {
   const today = localDateOf(now);
   const t = text.toLowerCase();
 
@@ -100,6 +114,7 @@ export function extractDate(text: string, now: Date): string | undefined {
   // ISO 2026-12-11
   const iso = /\b(\d{4})-(\d{2})-(\d{2})\b/.exec(t);
   if (iso && isValidDate(iso[0])) return iso[0];
+  if (explicitOnly) return undefined;
 
   if (/(?<!\p{L})übermorgen(?!\p{L})/u.test(t)) return addDays(today, 2);
   if (/\bmorgen\b/.test(t) && !/\bmorgens\b/.test(t)) return addDays(today, 1);
@@ -125,24 +140,34 @@ const toTime = (h: string, m?: string): string | undefined => {
   return `${pad2(hh)}:${pad2(mm)}`;
 };
 
-/** Extracts start (and optional end) time. */
+/**
+ * Extracts start (and optional end) time.
+ * A bare range ("18-21") only counts with "Uhr"/"h" right after it, with
+ * minutes ("18:00-21:00") or as "von 18 bis 21"; "6-8 Leute" or "5-10 €" are
+ * never times. `explicitOnly`: only "18 Uhr" and "18:00" style (free text).
+ */
 export function extractTimes(
   text: string,
   bare = false,
+  explicitOnly = false,
 ): { startTime?: string; endTime?: string } {
   const t = text.toLowerCase().replace(/[–—]/g, '-');
   const hm = '(\\d{1,2})(?:[:.](\\d{2}))?';
   // 18-21 Uhr, 18:00 - 21:00, von 18 bis 21 Uhr
   const range = new RegExp(
-    `(?:von\\s+)?(?<![\\d.])${hm}\\s*(?:uhr\\s*)?(?:-|bis)\\s*${hm}\\s*(uhr|h\\b)?`,
+    `(von\\s+)?(?<![\\d.])${hm}\\s*(uhr\\s*)?(-|bis)\\s*${hm}(?!\\d)(?!${NOT_TIME_UNIT})\\s*(uhr|h\\b)?`,
     'i',
   ).exec(t);
   if (
     range &&
-    (range[5] || range[2] || range[4] || /\buhr\b/.test(t.slice(range.index)))
+    (range[8] ||
+      range[4] ||
+      range[3] ||
+      range[7] ||
+      (range[1] && range[5] === 'bis'))
   ) {
-    const start = toTime(range[1], range[2]);
-    const end = toTime(range[3], range[4]);
+    const start = toTime(range[2], range[3]);
+    const end = toTime(range[6], range[7]);
     if (start && end) return { startTime: start, endTime: end };
   }
   // 18:00 / 18.30 Uhr / 18 Uhr / um 18
@@ -156,7 +181,10 @@ export function extractTimes(
     const start = toTime(withUhr[1], withUhr[2]);
     if (start) return { startTime: start };
   }
-  const um = /\b(?:um|ab)\s+(\d{1,2})(?:[:.](\d{2}))?(?![\d.])/.exec(t);
+  if (explicitOnly) return {};
+  const um = new RegExp(
+    `\\b(?:um|ab)\\s+(\\d{1,2})(?:[:.](\\d{2}))?(?![\\d.])(?!${NOT_TIME_UNIT})`,
+  ).exec(t);
   if (um) {
     const start = toTime(um[1], um[2]);
     if (start) return { startTime: start };
@@ -177,7 +205,7 @@ export function extractPlaces(text: string, bare = false): number | undefined {
     /(\d{1,3})\s*(?:leute|plätze|plaetze|personen|teilnehmer(?:\*innen|innen)?|tn|menschen|leuten)\b/.exec(
       t,
     ) ??
-    /\b(?:max\.?|maximal|höchstens|bis zu|für)\s*(\d{1,3})\b(?!\s*(?:€|euro|uhr))/.exec(
+    /\b(?:max\.?|maximal|höchstens|bis zu|für)\s*(\d{1,3})\b(?!\s*(?:€|euro|uhr|jahr|j\.|-))/.exec(
       t,
     );
   if (m) return Number(m[1]);
@@ -212,8 +240,8 @@ export function extractCosts(text: string, bare = false): string | undefined {
   return undefined;
 }
 
-const WORKSHOP_RE =
-  /(workshop|kurs\b|kurs[ e]|lötkurs|einführung|anfänger|lernen|schulung)/i;
+/** Spec: a workshop is recognised by "workshop" or "kurs" (Lötkurs, Kurs …). */
+const WORKSHOP_RE = /(workshop|kurs(?!iv))/i;
 
 export function isWorkshopText(text: string): boolean {
   return WORKSHOP_RE.test(text);
@@ -290,9 +318,15 @@ export function extractFacts(text: string, opts: ExtractOptions): PostFacts {
     if (expecting === 'audience') facts.audience = trimmed;
   }
 
-  const date = extractDate(trimmed, opts.now);
+  // In a free-text answer only unambiguous facts count: "11.12.", "18 Uhr".
+  // (A title answer is often the whole plan, "nächsten Freitag einen …".)
+  const freeText =
+    expecting === 'description' ||
+    expecting === 'trickiest' ||
+    expecting === 'audience';
+  const date = extractDate(trimmed, opts.now, freeText);
   if (date) facts.date = date;
-  const times = extractTimes(trimmed, expecting === 'startTime');
+  const times = extractTimes(trimmed, expecting === 'startTime', freeText);
   if (times.startTime) facts.startTime = times.startTime;
   if (times.endTime) facts.endTime = times.endTime;
   const places = extractPlaces(trimmed, expecting === 'places');

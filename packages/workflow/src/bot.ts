@@ -26,7 +26,7 @@ import {
   dmSummary,
   DM,
   DM_SUBMIT_HINT,
-  instagramCaption,
+  instagramExcerpt,
   THREAD,
 } from '@postomat/templates';
 import type { WorkflowDeps } from './deps.ts';
@@ -73,7 +73,11 @@ const asCommand = (text: string): Command | undefined => {
   const t = text
     .trim()
     .toLowerCase()
-    .replace(/[!.?„“"]/g, '');
+    .replace(/[!.?„“"]/g, '')
+    // "abschicken bitte", "bitte jetzt abschicken"
+    .replace(/\b(bitte|jetzt|gerne?)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return (COMMANDS as readonly string[]).includes(t)
     ? (t as Command)
     : undefined;
@@ -83,6 +87,12 @@ const isThumbsUp = (key: string) => key.startsWith('👍');
 const isPencil = (key: string) => key.startsWith('✏') || key.startsWith('📝');
 
 export type BotDeps = WorkflowDeps & { matrix: MatrixPort };
+
+/** Photos larger than this are refused before downloading. */
+export const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
+
+const sameJson = (a: unknown, b: unknown) =>
+  JSON.stringify(a) === JSON.stringify(b);
 
 /** Matrix-facing behaviour of Postomat. `apps/bot` feeds it events. */
 export class BotService {
@@ -108,7 +118,41 @@ export class BotService {
     return rows.length > 0;
   }
 
-  async handle(evt: MatrixIncoming): Promise<void> {
+  /** Pending work per sender, so one member's events run one after another. */
+  private readonly chains = new Map<string, Promise<void>>();
+  /** roomId → is it a 1:1 room with the bot (cached like membership). */
+  private readonly dmRooms = new Map<string, { at: number; dm: boolean }>();
+
+  /**
+   * Handles one event. matrix-bot-sdk does not wait for async listeners, so
+   * events of the same sender (several photos from a multi-select, quick
+   * messages) are queued here and processed in order; different senders run
+   * in parallel.
+   */
+  handle(evt: MatrixIncoming): Promise<void> {
+    const key = evt.kind === 'invite' ? `invite:${evt.roomId}` : evt.sender;
+    const next = (this.chains.get(key) ?? Promise.resolve()).then(() =>
+      this.process(evt),
+    );
+    this.chains.set(key, next);
+    void next.finally(() => {
+      if (this.chains.get(key) === next) this.chains.delete(key);
+    });
+    return next;
+  }
+
+  private async isDmRoom(roomId: string): Promise<boolean> {
+    const ttl = this.deps.env.MATRIX_MEMBERSHIP_CACHE_SEC * 1000;
+    const now = this.deps.now().getTime();
+    const hit = this.dmRooms.get(roomId);
+    if (hit && now - hit.at < ttl) return hit.dm;
+    const members = await this.matrix.getJoinedMembers(roomId);
+    const dm = members.length <= 2;
+    this.dmRooms.set(roomId, { at: now, dm });
+    return dm;
+  }
+
+  private async process(evt: MatrixIncoming): Promise<void> {
     if (evt.sender === this.matrix.userId) return;
     try {
       if (evt.kind === 'invite')
@@ -124,8 +168,7 @@ export class BotService {
       if (evt.kind !== 'message') return;
       if ((await this.membership.configuredRoomIds()).includes(evt.roomId))
         return;
-      const members = await this.matrix.getJoinedMembers(evt.roomId);
-      if (members.length > 2) return; // only direct messages
+      if (!(await this.isDmRoom(evt.roomId))) return; // only direct messages
       await this.onDm(evt);
     } catch (e) {
       this.deps.log.error('event handling failed', {
@@ -302,7 +345,9 @@ export class BotService {
           return;
         }
         const state = conv.state ?? initialDialogState();
-        if (state.step !== 'review') {
+        // A photo sent after the summary opens the consent question again;
+        // without the answer the photo would block approval.
+        if (state.step !== 'review' || state.expecting === 'consent') {
           const open = openQuestion(state);
           await this.say(
             roomId,
@@ -327,6 +372,13 @@ export class BotService {
     const draft = await this.draftOf(evt.sender);
     if (!draft) {
       await this.say(evt.roomId, DM.photoWithoutDraft);
+      return;
+    }
+    const size = Number(
+      (evt.content['info'] as { size?: unknown } | undefined)?.size ?? 0,
+    );
+    if (size > MAX_PHOTO_BYTES) {
+      await this.say(evt.roomId, DM.photoTooLarge);
       return;
     }
     let photoId: number;
@@ -413,64 +465,68 @@ export class BotService {
       if (effect.kind === 'set_consent')
         await setConsent(deps, effect.photoIds, effect.consent);
       if (effect.kind === 'summary') await this.sendSummary(roomId, draft.id);
-      if (effect.kind === 'change_request') {
-        if (deps.ai) {
-          await generateTexts(deps, draft.id, effect.instruction);
-          await addHistory(
-            deps.db,
-            draft.id,
-            localpart(sender),
-            'edited',
-            `Text ändern: „${effect.instruction}“`,
-          );
-          await this.sendSummary(roomId, draft.id, DM.textsUpdated);
-        } else {
-          const post = await getPost(deps.db, draft.id);
-          const note = [post.note, effect.instruction]
-            .filter(Boolean)
-            .join('\n');
-          await updatePost(deps.db, draft.id, { note });
-          await addHistory(
-            deps.db,
-            draft.id,
-            localpart(sender),
-            'note',
-            `Hinweis: „${effect.instruction}“`,
-          );
-          await this.say(roomId, DM.noteStored);
-        }
+      if (effect.kind === 'change_request' && deps.ai) {
+        await generateTexts(deps, draft.id, effect.instruction);
+        await addHistory(
+          deps.db,
+          draft.id,
+          localpart(sender),
+          'edited',
+          `Text ändern: „${effect.instruction}“`,
+        );
+        // The texts were just generated with the instruction: show them as they are.
+        await this.sendSummary(roomId, draft.id, DM.textsUpdated, {
+          regenerate: false,
+        });
+      } else if (effect.kind === 'change_request' || effect.kind === 'note') {
+        // Without AI a change wish, and any other free text, is a note.
+        const text = effect.kind === 'note' ? effect.text : effect.instruction;
+        const post = await getPost(deps.db, draft.id);
+        const note = [post.note, text].filter(Boolean).join('\n');
+        await updatePost(deps.db, draft.id, { note });
+        await addHistory(
+          deps.db,
+          draft.id,
+          localpart(sender),
+          'note',
+          `Hinweis: „${text}“`,
+        );
+        await this.say(roomId, DM.noteStored);
       }
     }
   }
 
-  /** "Super, so schicke ich es ans Medienteam:" + banner + hint. */
+  /**
+   * "Super, so schicke ich es ans Medienteam:" + banner + hint.
+   * `regenerate: false` keeps the stored texts and an up-to-date banner.
+   */
   private async sendSummary(
     roomId: string,
     postId: number,
     hint: string = DM_SUBMIT_HINT,
+    opts: { regenerate?: boolean } = {},
   ): Promise<void> {
-    await generateTexts(this.deps, postId);
+    const regenerate = opts.regenerate ?? true;
+    if (regenerate) await generateTexts(this.deps, postId);
     const post = await getPost(this.deps.db, postId);
     const channels = await getChannels(this.deps.db, postId);
-    const banners = await renderBanners(this.deps, post);
+    // Facts (title, date) may have changed while collecting: render afresh.
+    const banner4x5 = regenerate
+      ? (await renderBanners(this.deps, post))['4x5']
+      : (await bannerData(this.deps, post, '4x5')).row;
     const ig = channels.find(
       (c) => c.channel === 'instagram' && c.mode !== 'off',
     );
-    const excerpt = ig
-      ? instagramCaption(draftOf(ig))
-          .split('\n\n')[1]
-          ?.replace(/^✨\s*/, '')
-          .slice(0, 160)
-      : undefined;
+    const excerpt = ig ? instagramExcerpt(draftOf(ig), 160) : undefined;
     const msg = dmSummary({
       type: post.type,
       facts: post.facts,
       channels: channels.map((c) => ({ channel: c.channel, mode: c.mode })),
       url: postUrl(this.deps, postId),
-      excerpt,
+      excerpt: excerpt || undefined,
     });
     await this.matrix.sendText(roomId, msg.body, msg.html);
-    const banner = banners['4x5'];
+    const banner = banner4x5;
     await this.matrix.sendImage(roomId, {
       data: await this.deps.media.get(banner.path),
       mime: 'image/png',
@@ -505,8 +561,11 @@ export class BotService {
     if (!post) return;
     const actor = localpart(evt.sender);
     if (isPencil(evt.key)) {
-      if (await this.membership.isMedienteam(evt.sender))
-        await requestChange(this.deps, post.id, actor);
+      if (
+        (await this.membership.isMedienteam(evt.sender)) &&
+        (await requestChange(this.deps, post.id, actor))
+      )
+        await this.thread(post, THREAD.changeRequested(actor));
       return;
     }
     if (!isThumbsUp(evt.key)) return;
@@ -547,7 +606,8 @@ export class BotService {
       post.status === 'zur_freigabe' ||
       post.status === 'aenderung_gewuenscht'
     ) {
-      await requestChange(this.deps, post.id, actor, evt.body.trim());
+      if (await requestChange(this.deps, post.id, actor, evt.body.trim()))
+        await this.thread(post, THREAD.changeRequested(actor));
     } else {
       await addHistory(
         this.deps.db,
@@ -572,10 +632,10 @@ export class BotService {
     const roomId =
       post.cardRoomId ?? (await this.membership.medienteamRoomId());
     if (!roomId) {
-      this.deps.log.warn('no Medienteam room configured – card not sent', {
-        postId,
-      });
-      return;
+      // Throw so the job is retried (the room may be configured or resolvable later).
+      throw new Error(
+        `no Medienteam room configured or resolvable – card for post ${postId} not sent`,
+      );
     }
     const card = await buildCard(this.deps, postId);
     if (!post.cardEventId) {
@@ -669,24 +729,47 @@ export class BotService {
     );
   }
 
-  /** Publishes the joined rooms for the web room picker (/admin/raeume). */
-  async publishRoomDirectory(): Promise<void> {
-    const rooms = [];
-    for (const roomId of await this.matrix.getJoinedRooms()) {
-      const info = await this.matrix.getRoomInfo(roomId).catch(() => null);
-      if (info && info.memberCount > 2) rooms.push(info); // skip DMs
-    }
+  /** Upserts a settings row, but only writes when the value changed. */
+  private async saveSetting(key: string, value: unknown): Promise<void> {
+    const [row] = await this.deps.db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, key));
+    if (row && sameJson(row.value, value)) return;
     await this.deps.db
       .insert(settings)
-      .values({
-        key: 'matrix_room_directory',
-        value: rooms,
-        updatedBy: 'postomat',
-      })
+      .values({ key, value, updatedBy: 'postomat' })
       .onConflictDoUpdate({
         target: settings.key,
-        set: { value: rooms, updatedAt: new Date() },
+        set: { value, updatedAt: new Date() },
       });
+  }
+
+  /**
+   * Publishes the joined rooms for the web room picker (/admin/raeume) and the
+   * bot's own user id (key `matrix_bot_user_id`, for matrix.to links).
+   * DMs are left out: rooms with a member conversation and rooms marked as
+   * direct; small group rooms (e.g. a Medienteam of two) stay pickable.
+   */
+  async publishRoomDirectory(): Promise<void> {
+    await this.saveSetting('matrix_bot_user_id', this.matrix.userId);
+    const dmRooms = new Set(
+      (
+        await this.deps.db
+          .select({ roomId: conversations.dmRoomId })
+          .from(conversations)
+      ).map((r) => r.roomId),
+    );
+    const rooms = [];
+    for (const roomId of await this.matrix.getJoinedRooms()) {
+      if (dmRooms.has(roomId)) continue;
+      const info = await this.matrix.getRoomInfo(roomId).catch(() => null);
+      if (!info || info.direct) continue;
+      if (info.direct === undefined && info.memberCount < 2) continue; // only the bot
+      rooms.push(info);
+    }
+    rooms.sort((a, b) => a.roomId.localeCompare(b.roomId));
+    await this.saveSetting('matrix_room_directory', rooms);
   }
 
   async registerJobs(queue: JobQueue): Promise<void> {

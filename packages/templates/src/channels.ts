@@ -1,7 +1,9 @@
 import {
+  addDays,
   bannerWhenDe,
   dateEn,
   fullDateDe,
+  shortWeekdayDateDe,
   timeRangeEn,
   type ChannelId,
   wikiDateTime,
@@ -26,7 +28,7 @@ export interface ChannelDraft {
 const hookDe = (ctx: TemplateContext): string => {
   if (ctx.ai?.hookDe) return ctx.ai.hookDe;
   if (ctx.type === 'projekt')
-    return `Frisch aus der Werkstatt: ${title(ctx)}! ✨`;
+    return `Frisch aus der Werkstatt: ${title(ctx)}! 🛠️`;
   return ctx.facts.isWorkshop
     ? `Lust auf „${title(ctx)}“? 🔥`
     : `Kommt vorbei: ${title(ctx)}! 🔥`;
@@ -87,8 +89,23 @@ function bodyEn(ctx: TemplateContext, signup = true): string {
   return shortEn(ctx, signup);
 }
 
+/** "am Fr 11.12. um 18 Uhr" / "am Fr 11.12. von 18 bis 21 Uhr" (Facebook prose). */
+const whenProseDe = (ctx: TemplateContext): string | undefined => {
+  const f = ctx.facts;
+  if (!f.date) return undefined;
+  const day = `am ${shortWeekdayDateDe(f.date)}`;
+  if (!f.startTime) return day;
+  const hour = (t: string) => {
+    const [h, m] = t.split(':');
+    return m === '00' ? String(Number(h)) : `${Number(h)}:${m}`;
+  };
+  return f.endTime
+    ? `${day} von ${hour(f.startTime)} bis ${hour(f.endTime)} Uhr`
+    : `${day} um ${hour(f.startTime)} Uhr`;
+};
+
 // ---------- Instagram ----------
-function instagramDraft(ctx: TemplateContext): ChannelDraft {
+function instagramDraft(ctx: TemplateContext, meetupOn: boolean): ChannelDraft {
   const lines = [hookDe(ctx), '', `✨ ${bodyDe(ctx)}`];
   if (ctx.type === 'event') {
     const when = whenDe(ctx);
@@ -96,28 +113,31 @@ function instagramDraft(ctx: TemplateContext): ChannelDraft {
     if (when) lines.push(`🕓 ${when}`);
     lines.push(`📍 ${ctx.config.location.short}`);
     const pc = placesCostsDe(ctx);
-    lines.push(`🎟️ ${pc ? `${pc}, ` : ''}Anmeldung über Meetup (Link in Bio)`);
+    const ticket = [pc, meetupOn ? 'Anmeldung über Meetup (Link in Bio)' : '']
+      .filter(Boolean)
+      .join(', ');
+    if (ticket) lines.push(`🎟️ ${ticket}`);
   }
   return {
     textDe: lines.join('\n'),
-    textEn: `🇬🇧 ${shortEn(ctx)}`,
+    textEn: `🇬🇧 ${shortEn(ctx, meetupOn)}`,
     fields: { hashtags: hashtags(ctx) },
   };
 }
 
 // ---------- Facebook ----------
-function facebookDraft(ctx: TemplateContext): ChannelDraft {
+function facebookDraft(ctx: TemplateContext, meetupOn: boolean): ChannelDraft {
   let de: string;
   if (ctx.type === 'event') {
-    const when = whenDe(ctx);
+    const when = whenProseDe(ctx);
     const pc = placesCostsDe(ctx);
-    de = `${title(ctx)}${when ? ` – ${when}` : ''} im Attraktor. ${bodyDe(ctx)}${pc ? ` ${pc}.` : ''}`;
+    de = `${title(ctx)}${when ? ` ${when}` : ''} im Attraktor. ${bodyDe(ctx)}${pc ? ` ${pc}.` : ''}`;
   } else {
     de = `${hookDe(ctx)} ${bodyDe(ctx)} Kommt vorbei und schaut es euch an!`;
   }
   return {
     textDe: de.replace(/\s+/g, ' ').trim(),
-    textEn: `🇬🇧 ${shortEn(ctx)}`,
+    textEn: `🇬🇧 ${shortEn(ctx, meetupOn)}`,
     fields: { hashtags: hashtags(ctx) },
   };
 }
@@ -127,7 +147,9 @@ function meetupDraft(ctx: TemplateContext): ChannelDraft {
   const f = ctx.facts;
   const de = [`🔧 Was dich erwartet`, bodyDe(ctx), ''];
   const bullets: string[] = [];
-  if (f.isWorkshop) bullets.push('✅ Keine Vorkenntnisse nötig');
+  // Only claim "no experience needed" when the member said so.
+  if (/vorkenntnis|anfänger|einsteiger/i.test(f.audience ?? ''))
+    bullets.push('✅ Keine Vorkenntnisse nötig');
   if (f.audience) bullets.push(`👥 Für: ${f.audience}`);
   if (f.places !== undefined) bullets.push(`🎟️ ${f.places} Plätze`);
   if (f.costs) bullets.push(`💶 ${f.costs}`);
@@ -175,13 +197,14 @@ export function buildDrafts(
   channels: ChannelId[],
 ): Partial<Record<ChannelId, ChannelDraft>> {
   const out: Partial<Record<ChannelId, ChannelDraft>> = {};
+  const meetupOn = channels.includes('meetup');
   for (const ch of channels) {
     switch (ch) {
       case 'instagram':
-        out[ch] = instagramDraft(ctx);
+        out[ch] = instagramDraft(ctx, meetupOn);
         break;
       case 'facebook':
-        out[ch] = facebookDraft(ctx);
+        out[ch] = facebookDraft(ctx, meetupOn);
         break;
       case 'meetup':
         out[ch] = meetupDraft(ctx);
@@ -214,6 +237,24 @@ export function instagramCaption(draft: ChannelDraft): string {
   ]
     .filter(Boolean)
     .join('\n\n');
+}
+
+/**
+ * Short Instagram teaser for the card and the DM summary: the ✨ body
+ * paragraph (not the hook, which often quotes the title already).
+ */
+export function instagramExcerpt(draft: ChannelDraft, max = 140): string {
+  const paragraphs = draft.textDe.split(/\n{2,}/).map((p) => p.trim());
+  const body =
+    paragraphs.find((p) => p.startsWith('✨')) ??
+    paragraphs[1] ??
+    paragraphs[0] ??
+    '';
+  const flat = body
+    .replace(/^✨\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
 export function facebookText(draft: ChannelDraft, links: Links): string {
@@ -367,11 +408,49 @@ export function wordpressContent(
   return html.filter(Boolean).join('\n');
 }
 
+/**
+ * WordPress post title. The REST API stores it as HTML (and editors may post
+ * unfiltered HTML), so tags are dropped and the rest is escaped.
+ */
 export function wordpressTitle(
   ctx: TemplateContext,
   draft: ChannelDraft,
 ): string {
-  return draft.fields['title'] ?? title(ctx);
+  const raw = draft.fields['title'] ?? title(ctx);
+  return raw
+    .replace(/<[^>]*>?/g, '')
+    .replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;'))
+    .trim();
+}
+
+const WIKI_ENTITIES: Record<string, string> = {
+  '{': '&#123;',
+  '}': '&#125;',
+  '[': '&#91;',
+  ']': '&#93;',
+  '|': '&#124;',
+  '<': '&lt;',
+  '>': '&gt;',
+};
+
+/**
+ * Escapes member text for wikitext: no templates, links, tags, signatures,
+ * magic words or bold/italic; list/heading/indent markers at a line start
+ * are neutralised. Normal sentences stay readable in the page source.
+ */
+export function wikiEscape(text: string): string {
+  return text
+    .replace(/[{}[\]|<>]/g, (c) => WIKI_ENTITIES[c]!)
+    .replace(/'(?=')/g, '&#39;') // bold/italic
+    .replace(/_(?=_)/g, '&#95;') // __NOTOC__ etc.
+    .replace(/~(?=~~)/g, '&#126;') // signatures
+    .split('\n')
+    .map((line) =>
+      line
+        .replace(/^([*#:;= ])/, (c) => `&#${c.charCodeAt(0)};`)
+        .replace(/^-{4,}/, (d) => `&#45;${d.slice(1)}`),
+    )
+    .join('\n');
 }
 
 /** Wiki page title: "Termin:<Titel> <YYYY-MM-DD>". */
@@ -392,14 +471,21 @@ export function wikiContent(
   const f = ctx.facts;
   const start = f.date && f.startTime ? wikiDateTime(f.date, f.startTime) : '';
   const endTime = effectiveEnd(ctx);
-  const end = f.date && endTime ? wikiDateTime(f.date, endTime) : '';
+  // An end at or before the start (e.g. 22:00 + 3 h) is on the next day.
+  const endDate =
+    f.date && f.startTime && endTime && endTime <= f.startTime
+      ? addDays(f.date, 1)
+      : f.date;
+  const end = endDate && endTime ? wikiDateTime(endDate, endTime) : '';
+  const website = links.website?.replace(/[\s|{}[\]<>]/g, '') ?? '';
   const params = [
     `|date=${start}`,
     `|enddate=${end}`,
-    `|title=${title(ctx).replace(/\|/g, '-')}`,
-    `|url=${links.website ?? ''}`,
+    `|title=${wikiEscape(title(ctx))}`,
+    `|url=${website}`,
     `|visible=Yes`,
   ];
-  if (links.meetupId) params.push(`|meetupid=${links.meetupId}`);
-  return `{{Termin\n${params.join('\n')}\n}}\n\n${draft.textDe.trim()}\n`;
+  if (links.meetupId && /^\d+$/.test(links.meetupId))
+    params.push(`|meetupid=${links.meetupId}`);
+  return `{{Termin\n${params.join('\n')}\n}}\n\n${wikiEscape(draft.textDe.trim())}\n`;
 }

@@ -12,6 +12,8 @@ export interface WebDavConfig {
   username?: string;
   password?: string;
   fetch?: FetchLike;
+  /** Per-request timeout in ms (default 15000). */
+  timeoutMs?: number;
 }
 
 /** Minimal WebDAV client for Nextcloud (MKCOL, PUT, GET, PROPFIND, DELETE). */
@@ -24,15 +26,20 @@ export class WebDavClient implements MediaStore {
   constructor(cfg: WebDavConfig) {
     this.cfg = cfg;
     this.base = trimSlash(cfg.baseUrl);
-    this.fetchFn = cfg.fetch ?? fetch;
+    const raw = cfg.fetch ?? fetch;
+    const timeout = cfg.timeoutMs ?? 15_000;
+    this.fetchFn = (input, init) =>
+      raw(input, {
+        ...init,
+        signal: init?.signal ?? AbortSignal.timeout(timeout),
+      });
   }
 
   private url(path: string): string {
-    const clean = path
-      .split('/')
-      .filter(Boolean)
-      .map((s) => encodeURIComponent(s))
-      .join('/');
+    const segments = path.split('/').filter(Boolean);
+    if (segments.some((s) => s === '.' || s === '..'))
+      throw new Error(`invalid WebDAV path: ${path}`);
+    const clean = segments.map((s) => encodeURIComponent(s)).join('/');
     return `${this.base}/${clean}`;
   }
 
