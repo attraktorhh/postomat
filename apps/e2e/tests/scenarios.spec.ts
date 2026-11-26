@@ -92,6 +92,24 @@ describe('scenarios', () => {
     expect(await h.photo(LENA, Buffer.from('GIF89a........'))).toEqual([
       'Das Format kenne ich leider nicht. Schick das Foto bitte als JPEG, PNG oder WebP.',
     ]);
+    // a PDF arrives as m.file and gets the same answer instead of silence
+    const before = h.matrix.sent.length;
+    await h.bot.handle({
+      kind: 'message',
+      roomId: ROOMS.dmLena,
+      eventId: '$pdf',
+      sender: LENA,
+      msgtype: 'm.file',
+      body: 'flyer.pdf',
+      content: {
+        msgtype: 'm.file',
+        body: 'flyer.pdf',
+        info: { mimetype: 'application/pdf' },
+      },
+    });
+    expect(h.matrix.sent.slice(before).map((m) => m.body)).toEqual([
+      'Das Format kenne ich leider nicht. Schick das Foto bitte als JPEG, PNG oder WebP.',
+    ]);
     await h.photo(LENA, await testPhoto());
     const summary = await h.dm(LENA, '2');
     expect(summary[0]).toContain('Instagram · Facebook · DE + EN');

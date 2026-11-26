@@ -212,6 +212,11 @@ export class BotService {
             ?.mimetype ?? '',
         ).startsWith('image/'));
     if (isImage) return this.onPhoto(evt, conv);
+    if (['m.file', 'm.video', 'm.audio'].includes(evt.msgtype ?? '')) {
+      // e.g. a PDF: answer instead of staying silent
+      await this.say(roomId, DM.photoUnsupported);
+      return;
+    }
     if (evt.msgtype !== 'm.text' && evt.msgtype !== 'm.notice') return;
 
     const text = evt.body.trim();
