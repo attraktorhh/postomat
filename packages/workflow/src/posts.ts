@@ -5,6 +5,7 @@ import {
   assertTransition,
   credentialsFromEnv,
   decideApproval,
+  isEditable,
   nextVersion,
   overallStatusAfterApproval,
   resolveChannelModes,
@@ -24,6 +25,7 @@ import {
   eq,
   photos,
   posts,
+  type ChannelPost,
   type Post,
 } from '@postomat/db';
 import {
@@ -228,6 +230,12 @@ export async function approvePost(
       approvedAt: deps.now(),
     });
     for (const c of channels) {
+      // A copy channel that is already done (link entered or skipped) stays done.
+      if (
+        c.mode === 'copy' &&
+        (c.status === 'erledigt' || c.status === 'uebersprungen')
+      )
+        continue;
       const status =
         c.mode === 'auto' ? 'wartet' : c.mode === 'copy' ? 'kopieren' : 'aus';
       await updateChannel(tx, post.id, c.channel, { status });
@@ -251,11 +259,12 @@ export async function approvePost(
     const channels = await getChannels(deps.db, input.postId);
     const auto = channels.filter((c) => c.mode === 'auto');
     for (const c of auto) {
-      await deps.queue.send(
-        'publish.channel',
-        { postId: input.postId, channel: c.channel as 'wordpress' | 'wiki' },
-        { singletonKey: `${input.postId}:${c.channel}` },
-      );
+      // If this send is lost (crash right after the commit), the worker's
+      // publish.sweep job re-sends it after 10 minutes.
+      await deps.queue.send('publish.channel', {
+        postId: input.postId,
+        channel: c.channel as 'wordpress' | 'wiki',
+      });
     }
     await deps.queue.send('bot.card', { postId: input.postId });
     if (!auto.length) await settleAfterPublish(deps, input.postId);
@@ -341,12 +350,6 @@ export async function discardPost(
   if (notifyCard) await deps.queue.send('bot.card', { postId });
 }
 
-const EDITABLE: ReadonlySet<string> = new Set([
-  'sammeln',
-  'zur_freigabe',
-  'aenderung_gewuenscht',
-]);
-
 /** Redaktion: save a channel text (DE/EN/fields). */
 export async function editChannelText(
   deps: WorkflowDeps,
@@ -356,7 +359,7 @@ export async function editChannelText(
   actor: string,
 ): Promise<void> {
   const post = await getPost(deps.db, postId);
-  if (!EDITABLE.has(post.status))
+  if (!isEditable(post.status))
     throw new WorkflowError(
       'Veröffentlichte Beiträge können nicht mehr bearbeitet werden',
     );
@@ -393,7 +396,7 @@ export async function editFacts(
   actor: string,
 ): Promise<void> {
   const post = await getPost(deps.db, postId);
-  if (!EDITABLE.has(post.status))
+  if (!isEditable(post.status))
     throw new WorkflowError('Beitrag kann nicht mehr bearbeitet werden');
   if (
     patch.endTime !== undefined &&
@@ -417,7 +420,7 @@ export async function setBannerColor(
   if (!(BANNER_COLORS as readonly string[]).includes(color))
     throw new WorkflowError(`Unbekannte Banner-Farbe ${color}`);
   const post = await getPost(deps.db, postId);
-  if (!EDITABLE.has(post.status))
+  if (!isEditable(post.status))
     throw new WorkflowError('Beitrag kann nicht mehr bearbeitet werden');
   await updatePost(deps.db, postId, { bannerColor: color });
   await addHistory(deps.db, postId, actor, 'edited', `Banner-Farbe: ${color}`);
@@ -430,6 +433,13 @@ export async function setMeetupCategory(
   category: string,
   actor: string,
 ): Promise<void> {
+  const post = await getPost(deps.db, postId);
+  // After approval only while the Meetup event still has to be created by hand.
+  const meetup = await getChannel(deps.db, postId, 'meetup');
+  if (!isEditable(post.status) && meetup?.status !== 'kopieren')
+    throw new WorkflowError(
+      'Die Meetup-Kategorie kann nicht mehr geändert werden',
+    );
   await updatePost(deps.db, postId, { meetupCategory: category || null });
   await addHistory(
     deps.db,
@@ -438,7 +448,6 @@ export async function setMeetupCategory(
     'edited',
     `Meetup-Kategorie: ${category || '–'}`,
   );
-  const post = await getPost(deps.db, postId);
   if (post.cardEventId) await deps.queue.send('bot.card', { postId });
 }
 
@@ -451,6 +460,12 @@ export async function setPhotoConsent(
 ): Promise<void> {
   if (!(CONSENTS as readonly string[]).includes(consent))
     throw new WorkflowError(`Unbekannte Einwilligung ${consent}`);
+  const post = await getPost(deps.db, postId);
+  // After approval the photo may already be published: consent is fixed then.
+  if (!isEditable(post.status))
+    throw new WorkflowError(
+      'Nach der Freigabe kann die Einwilligung nicht mehr geändert werden',
+    );
   await deps.db
     .update(photos)
     .set({ consent })
@@ -462,7 +477,6 @@ export async function setPhotoConsent(
     'edited',
     `Foto-Einwilligung: ${CONSENT_LABELS[consent]}`,
   );
-  const post = await getPost(deps.db, postId);
   if (post.cardEventId) await deps.queue.send('bot.card', { postId });
 }
 
@@ -535,7 +549,32 @@ export async function settleAfterPublish(
   await deps.queue.send('bot.card', { postId });
 }
 
-/** Copy helpers: "Link eintragen" (Instagram, Facebook, also Meetup by hand). */
+/** Links and skips are for approved posts only: before, nothing may be posted. */
+async function approvedCopyChannel(
+  deps: WorkflowDeps,
+  postId: number,
+  channel: ChannelId,
+): Promise<ChannelPost> {
+  const post = await getPost(deps.db, postId);
+  if (post.status !== 'geplant' && post.status !== 'online')
+    throw new WorkflowError('Das geht erst, wenn der Beitrag freigegeben ist');
+  const c = await getChannel(deps.db, postId, channel);
+  if (!c || c.mode === 'off')
+    throw new WorkflowError(
+      `${CHANNEL_NAMES[channel]} ist für diesen Beitrag aus`,
+    );
+  if (c.mode !== 'copy')
+    throw new WorkflowError(
+      `${CHANNEL_NAMES[channel]} wird automatisch veröffentlicht`,
+    );
+  return c;
+}
+
+/**
+ * Copy helpers: "Link eintragen" for every copy channel (Meetup, Instagram,
+ * Facebook, and Website/Wiki when they fell back to copy mode). Throws a
+ * WorkflowError with a German message when the link can't be stored.
+ */
 export async function setChannelLink(
   deps: WorkflowDeps,
   postId: number,
@@ -543,33 +582,31 @@ export async function setChannelLink(
   url: string,
   actor: string,
 ): Promise<void> {
-  if (!/^https?:\/\/\S+$/.test(url.trim()))
+  const link = url.trim();
+  if (!/^https?:\/\/\S+$/.test(link))
     throw new WorkflowError(
       'Bitte einen vollständigen Link (https://…) eintragen',
     );
   if (channel === 'meetup') {
     // The id goes into the wiki template (meetupid=…), so it must be numeric.
-    const id = /\/events\/(\d+)(?:[/?#]|$)/.exec(url.trim())?.[1];
-    if (!id)
+    const id = /\/events\/(\d+)(?:[/?#]|$)/.exec(link)?.[1];
+    if (!id || !/^https:\/\/(www\.)?meetup\.com\//.test(link))
       throw new WorkflowError(
         'Bitte den Link zum Meetup-Event eintragen, z. B. https://www.meetup.com/attraktor/events/123456789/',
       );
     await linkMeetup(
       deps,
       postId,
-      { meetupId: id, url: url.trim(), via: 'manual' },
+      { meetupId: id, url: link, via: 'manual' },
       actor,
     );
     return;
   }
-  const c = await getChannel(deps.db, postId, channel);
-  if (!c || c.mode !== 'copy')
-    throw new WorkflowError(
-      'Für diesen Kanal kann kein Link eingetragen werden',
-    );
+  const c = await approvedCopyChannel(deps, postId, channel);
+  if (c.status === 'erledigt' && c.url === link) return;
   await updateChannel(deps.db, postId, channel, {
     status: 'erledigt',
-    url: url.trim(),
+    url: link,
     publishedAt: deps.now(),
   });
   await addHistory(
@@ -577,24 +614,27 @@ export async function setChannelLink(
     postId,
     actor,
     'linked',
-    `${CHANNEL_NAMES[channel]}-Link eingetragen`,
-    { url },
+    `${CHANNEL_NAMES[channel]}-Link ${c.status === 'erledigt' ? 'geändert' : 'eingetragen'}`,
+    { url: link },
   );
-  await notifyMemberLink(deps, postId, channel, url.trim());
+  await notifyMemberLink(deps, postId, channel, link);
   await recomputeOverall(deps, postId);
   await deps.queue.send('bot.card', { postId });
 }
 
+/** "Überspringen": only copy channels; auto channels must really be published. */
 export async function skipChannel(
   deps: WorkflowDeps,
   postId: number,
   channel: ChannelId,
   actor: string,
 ): Promise<void> {
-  const c = await getChannel(deps.db, postId, channel);
-  if (!c || c.mode === 'off') throw new WorkflowError('Kanal ist aus');
-  if (c.status === 'veroeffentlicht')
-    throw new WorkflowError('Kanal ist schon veröffentlicht');
+  const c = await approvedCopyChannel(deps, postId, channel);
+  if (c.status === 'uebersprungen') return;
+  if (c.status === 'erledigt')
+    throw new WorkflowError(
+      `${CHANNEL_NAMES[channel]} ist schon erledigt (Link eingetragen)`,
+    );
   await updateChannel(deps.db, postId, channel, { status: 'uebersprungen' });
   await addHistory(
     deps.db,
@@ -607,7 +647,19 @@ export async function skipChannel(
   await deps.queue.send('bot.card', { postId });
 }
 
-/** "Erneut versuchen" for a failed auto channel. */
+/** A `wartet` channel without a job holding it for this long counts as stuck. */
+const STALE_WAIT_MS = 10 * 60_000;
+
+/** True when an auto channel waits but no job has touched it for 10 minutes. */
+export function isStuckWaiting(c: ChannelPost, now = new Date()): boolean {
+  return (
+    c.status === 'wartet' &&
+    now.getTime() - c.updatedAt.getTime() > STALE_WAIT_MS &&
+    (!c.claimedUntil || c.claimedUntil.getTime() < now.getTime())
+  );
+}
+
+/** "Erneut versuchen" for a failed (or stuck waiting) auto channel. */
 export async function retryChannel(
   deps: WorkflowDeps,
   postId: number,
@@ -615,13 +667,14 @@ export async function retryChannel(
   actor: string,
 ): Promise<void> {
   const c = await getChannel(deps.db, postId, channel);
-  if (!c || c.status !== 'fehler')
+  if (!c || (c.status !== 'fehler' && !isStuckWaiting(c)))
     throw new WorkflowError(
       'Nur fehlgeschlagene Kanäle können erneut versucht werden',
     );
   await updateChannel(deps.db, postId, channel, {
     status: 'wartet',
     error: null,
+    claimedUntil: null,
   });
   await addHistory(
     deps.db,
@@ -630,11 +683,7 @@ export async function retryChannel(
     'retry',
     `${CHANNEL_NAMES[channel]}: erneut versuchen`,
   );
-  await deps.queue.send(
-    'publish.channel',
-    { postId, channel },
-    { singletonKey: `${postId}:${channel}` },
-  );
+  await deps.queue.send('publish.channel', { postId, channel });
 }
 
 /** Follow-up DM for a link that arrives after the main "ist online" DM. */

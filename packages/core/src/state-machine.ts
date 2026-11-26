@@ -44,3 +44,15 @@ export function nextVersion(
     ? version + 1
     : version;
 }
+
+/** Statuses in which texts, facts, banner and photo consent may still change. */
+export const EDITABLE_STATUSES: readonly PostStatus[] = [
+  'sammeln',
+  'zur_freigabe',
+  'aenderung_gewuenscht',
+];
+
+/** True while a post is not approved yet, so its content may still be edited. */
+export function isEditable(status: PostStatus): boolean {
+  return EDITABLE_STATUSES.includes(status);
+}

@@ -16,7 +16,7 @@ import {
 import { THREAD } from '@postomat/templates';
 import type { WorkflowDeps } from './deps.ts';
 import { addHistory, getChannel, getPost, updateChannel } from './repo.ts';
-import { notifyMemberLink, recomputeOverall } from './posts.ts';
+import { notifyMemberLink, recomputeOverall, WorkflowError } from './posts.ts';
 
 export interface MeetupLink {
   meetupId: string;
@@ -24,7 +24,12 @@ export interface MeetupLink {
   via: 'ical' | 'manual' | 'thread';
 }
 
-/** Links a Meetup event: channel erledigt, WordPress + wiki updated, card, member. */
+/**
+ * Links a Meetup event: channel erledigt, WordPress + wiki updated, card, member.
+ * Returns false when exactly this event is already linked (nothing to do).
+ * Throws a WorkflowError with a German message when linking is not possible.
+ * An already linked Meetup channel can be re-linked (fixing a wrong match).
+ */
 export async function linkMeetup(
   deps: WorkflowDeps,
   postId: number,
@@ -34,9 +39,30 @@ export async function linkMeetup(
   const done = await deps.db.transaction(async (tx) => {
     const post = await getPost(tx, postId, true);
     const c = await getChannel(tx, postId, 'meetup');
-    if (!c || c.mode === 'off') return false;
+    if (!c || c.mode === 'off')
+      throw new WorkflowError('Meetup ist für diesen Beitrag aus');
     if (c.status === 'erledigt' && c.remoteId === link.meetupId) return false;
-    if (post.status !== 'geplant' && post.status !== 'online') return false;
+    if (post.status !== 'geplant' && post.status !== 'online')
+      throw new WorkflowError(
+        'Den Meetup-Link kannst du erst nach der Freigabe eintragen',
+      );
+    const [other] = await tx
+      .select({ postId: channelPosts.postId, title: posts.facts })
+      .from(channelPosts)
+      .innerJoin(posts, eq(posts.id, channelPosts.postId))
+      .where(
+        and(
+          eq(channelPosts.channel, 'meetup'),
+          eq(channelPosts.status, 'erledigt'),
+          eq(channelPosts.remoteId, link.meetupId),
+        ),
+      )
+      .limit(1);
+    if (other && other.postId !== postId)
+      throw new WorkflowError(
+        `Dieses Meetup-Event ist schon mit „${other.title.title ?? `Beitrag ${other.postId}`}“ verlinkt`,
+      );
+    const relinked = c.status === 'erledigt';
     await updateChannel(tx, postId, 'meetup', {
       status: 'erledigt',
       url: link.url,
@@ -58,9 +84,14 @@ export async function linkMeetup(
         : link.via === 'thread'
           ? 'im Thread bestätigt'
           : 'von Hand eingetragen';
-    await addHistory(tx, postId, actor, 'linked', `Meetup verlinkt (${how})`, {
-      url: link.url,
-    });
+    await addHistory(
+      tx,
+      postId,
+      actor,
+      'linked',
+      `Meetup ${relinked ? 'neu ' : ''}verlinkt (${how})`,
+      { url: link.url },
+    );
     return true;
   });
   if (!done) return false;
@@ -120,6 +151,7 @@ export async function pollMeetup(
   const candidates = await meetupCandidates(deps);
   if (!candidates.length) return { checked: 0, linked: 0, asked: 0 };
   const events = await fetchFeed(deps.env.MEETUP_ICAL_URL, deps.fetch);
+  const taken = await linkedMeetupIds(deps);
   let linked = 0;
   let asked = 0;
   for (const { post } of candidates) {
@@ -132,22 +164,32 @@ export async function pollMeetup(
         startTime: post.facts.startTime,
       },
       events,
-      await linkedMeetupIds(deps),
+      taken,
     );
     if (result.kind === 'strong') {
-      if (
-        await linkMeetup(
-          deps,
-          post.id,
-          {
-            meetupId: result.event.meetupId,
-            url: result.event.url,
-            via: 'ical',
-          },
-          'postomat',
-        )
-      )
-        linked++;
+      try {
+        if (
+          await linkMeetup(
+            deps,
+            post.id,
+            {
+              meetupId: result.event.meetupId,
+              url: result.event.url,
+              via: 'ical',
+            },
+            'postomat',
+          )
+        ) {
+          linked++;
+          taken.add(result.event.meetupId);
+        }
+      } catch (e) {
+        if (!(e instanceof WorkflowError)) throw e;
+        deps.log.warn('meetup auto-link refused', {
+          postId: post.id,
+          error: e.message,
+        });
+      }
     } else if (result.kind === 'ambiguous') {
       const [open] = await deps.db
         .select()
@@ -197,7 +239,7 @@ export async function answerMeetupQuestion(
     .limit(1);
   if (!q) return false;
   const t = text.trim().toLowerCase();
-  if (/^(nein|nö|keins?|keines)\b/.test(t)) {
+  if (/^(nein|nö|nee|ne|keins?|keines)(?!\p{L})/u.test(t)) {
     await deps.db
       .update(meetupQuestions)
       .set({ resolved: true })
@@ -211,12 +253,22 @@ export async function answerMeetupQuestion(
   const m = /^\s*([1-9])(?:\uFE0F?\u20E3)?\s*[.!)]?\s*$/u.exec(t);
   const pick = m ? q.candidates[Number(m[1]) - 1] : undefined;
   if (!pick) return false;
-  await linkMeetup(
-    deps,
-    postId,
-    { meetupId: pick.uid, url: pick.url, via: 'thread' },
-    actor,
-  );
+  try {
+    // linkMeetup re-checks that the event isn't linked to another post meanwhile.
+    await linkMeetup(
+      deps,
+      postId,
+      { meetupId: pick.uid, url: pick.url, via: 'thread' },
+      actor,
+    );
+  } catch (e) {
+    if (!(e instanceof WorkflowError)) throw e;
+    await deps.queue.send('bot.thread', {
+      postId,
+      text: `Das hat nicht geklappt: ${e.message}.`,
+    });
+    return true;
+  }
   await deps.queue.send('bot.thread', {
     postId,
     text: THREAD.meetupLinked(pick.url),
