@@ -639,9 +639,18 @@ importers:
 
   packages/testing:
     dependencies:
+      '@postomat/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@postomat/core':
         specifier: workspace:*
         version: link:../core
+      '@postomat/templates':
+        specifier: workspace:*
+        version: link:../templates
+      ai:
+        specifier: ^7.0.179
+        version: 7.0.179(zod@4.6.7)
       tslib:
         specifier: ^2.3.0
         version: 2.9.1

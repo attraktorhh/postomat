@@ -31,9 +31,11 @@ import {
 import {
   buildDrafts,
   CHANNEL_NAMES,
+  DM,
   dmFollowUp,
   dmRueckfrage,
 } from '@postomat/templates';
+import { isAiError } from '@postomat/ai';
 import type { WorkflowDeps } from './deps.ts';
 import {
   addHistory,
@@ -85,41 +87,40 @@ export async function createDraft(
 }
 
 /**
- * (Re)creates the channel posts for a draft: modes from config, texts from
- * templates, optionally AI-written bodies. Only used while collecting
- * (`sammeln`) or on an explicit AI rewrite; Redaktion edits are never overwritten
- * after submission.
+ * (Re)creates the channel posts: modes from config, AI-written bodies inside
+ * the template frame. Throws `AiError` when the AI fails – there are no
+ * template-only bodies. `keepEdited` keeps channels the Redaktion edited
+ * after the last generation.
  */
 export async function generateTexts(
   deps: WorkflowDeps,
   postId: number,
-  instruction?: string,
-): Promise<{ aiUsed: boolean }> {
+  opts: { instruction?: string; keepEdited?: boolean } = {},
+): Promise<void> {
   const post = await getPost(deps.db, postId);
   const modes = resolveChannelModes(
     deps.config,
     post.type,
     credentialsFromEnv(deps.env),
   );
-  const ctx = templateContext(deps, post);
-  let aiUsed = false;
-  if (deps.ai) {
-    const ai = await deps.ai.writeTexts({
-      type: post.type,
-      facts: post.facts,
-      instruction,
-    });
-    if (ai) {
-      ctx.ai = ai;
-      aiUsed = true;
-    }
-  }
+  const existing = await getChannels(deps.db, postId);
+  const ai = await deps.ai.writeTexts({
+    type: post.type,
+    facts: post.facts,
+    instruction: opts.instruction,
+  });
   const drafts = buildDrafts(
-    ctx,
+    { ...templateContext(deps, post), ai },
     modes.filter((m) => m.mode !== 'off').map((m) => m.channel),
   );
+  const editedByHand = (channel: ChannelId) => {
+    if (!opts.keepEdited || !post.textsGeneratedAt) return false;
+    const c = existing.find((x) => x.channel === channel);
+    return !!c && c.updatedAt > post.textsGeneratedAt;
+  };
   await deps.db.transaction(async (tx) => {
     for (const { channel, mode } of modes) {
+      if (editedByHand(channel)) continue;
       const d = drafts[channel] ?? { textDe: '', textEn: '', fields: {} };
       await tx
         .insert(channelPosts)
@@ -144,10 +145,80 @@ export async function generateTexts(
     }
     await tx
       .update(posts)
-      .set({ aiUsed: aiUsed || post.aiUsed, updatedAt: new Date() })
+      .set({
+        aiUsed: true,
+        textsError: null,
+        textsErrorAt: null,
+        textsFacts: post.facts,
+        // A tick after the channel rows, so they don't count as edited later.
+        textsGeneratedAt: new Date(Date.now() + 1),
+        updatedAt: new Date(),
+      })
       .where(eq(posts.id, postId));
   });
-  return { aiUsed };
+}
+
+const sortKeys = (o: object) =>
+  JSON.stringify(
+    Object.fromEntries(
+      Object.entries(o)
+        .filter(([, v]) => v !== undefined)
+        .sort(([x], [y]) => x.localeCompare(y)),
+    ),
+  );
+
+/** True when the facts changed since the AI last wrote the texts. */
+export const textsOutdated = (post: Post): boolean =>
+  sortKeys(post.textsFacts ?? {}) !== sortKeys(post.facts);
+
+/**
+ * Worker job `texts.generate`: writes the texts again. pg-boss retries with
+ * backoff; after the last attempt the Redaktion shows the error and the
+ * author is told in the DM.
+ */
+export async function regenerateTextsJob(
+  deps: WorkflowDeps,
+  postId: number,
+  actor: string,
+  meta: { isLastAttempt: boolean },
+): Promise<void> {
+  try {
+    await generateTexts(deps, postId, { keepEdited: true });
+  } catch (e) {
+    if (!isAiError(e) || !meta.isLastAttempt) throw e;
+    const post = await getPost(deps.db, postId);
+    await updatePost(deps.db, postId, {
+      textsError: e.kind,
+      textsErrorAt: deps.now(),
+    });
+    await addHistory(
+      deps.db,
+      postId,
+      'postomat',
+      'texts_failed',
+      'Texte konnten nicht erstellt werden (KI nicht erreichbar)',
+    );
+    await deps.queue.send('bot.dm', {
+      matrixUserId: post.authorMatrixId,
+      text: DM.textsFailed(post.facts.title ?? 'deinen Beitrag'),
+    });
+    return;
+  }
+  await addHistory(deps.db, postId, actor, 'edited', 'Texte neu erstellt');
+  await deps.queue.send('bot.card', { postId });
+}
+
+/** Redaktion: "Texte konnten nicht erstellt werden · Erneut versuchen". */
+export async function retryTexts(
+  deps: WorkflowDeps,
+  postId: number,
+  actor: string,
+): Promise<void> {
+  const post = await getPost(deps.db, postId);
+  if (!isEditable(post.status))
+    throw new WorkflowError('Beitrag kann nicht mehr bearbeitet werden');
+  await updatePost(deps.db, postId, { textsError: null, textsErrorAt: null });
+  await deps.queue.send('texts.generate', { postId, actor });
 }
 
 /** Updates facts while collecting. */
@@ -331,6 +402,8 @@ export async function resubmit(
     return getPost(tx, postId);
   });
   await deps.queue.send('banner.render', { postId });
+  if (textsOutdated(post))
+    await deps.queue.send('texts.generate', { postId, actor });
   await deps.queue.send('bot.card', { postId });
   return post;
 }
@@ -730,23 +803,69 @@ export async function askMember(
   });
 }
 
-/** Stores the member's answer to a Rückfrage. */
+/**
+ * Stores the member's answer to a Rückfrage verbatim. Facts the AI read from
+ * it are offered to the Redaktion as suggestions, never applied directly.
+ */
 export async function answerQuestion(
   deps: WorkflowDeps,
   postId: number,
   answer: string,
   actor: string,
+  suggested: PostFacts = {},
 ): Promise<void> {
-  await updatePost(deps.db, postId, { pendingQuestion: null });
+  const post = await getPost(deps.db, postId);
+  const changes = Object.fromEntries(
+    Object.entries(suggested).filter(
+      ([k, v]) => v !== undefined && post.facts[k as keyof PostFacts] !== v,
+    ),
+  ) as PostFacts;
+  const hasSuggestions =
+    isEditable(post.status) && Object.keys(changes).length > 0;
+  await updatePost(deps.db, postId, {
+    pendingQuestion: null,
+    ...(hasSuggestions
+      ? { suggestedFacts: { ...(post.suggestedFacts ?? {}), ...changes } }
+      : {}),
+  });
   await deps.db
     .update(conversations)
     .set({ questionPostId: null })
     .where(eq(conversations.questionPostId, postId));
-  await addHistory(deps.db, postId, actor, 'answer', `Antwort: „${answer}“`);
+  await addHistory(
+    deps.db,
+    postId,
+    actor,
+    'answer',
+    `Antwort: „${answer}“`,
+    hasSuggestions ? { suggestedFacts: changes } : {},
+  );
   await deps.queue.send('bot.thread', {
     postId,
     text: `Antwort von @${actor}: „${answer}“`,
   });
+}
+
+/** Redaktion: applies or dismisses the facts suggested by a Rückfrage answer. */
+export async function resolveSuggestedFacts(
+  deps: WorkflowDeps,
+  postId: number,
+  apply: boolean,
+  actor: string,
+): Promise<void> {
+  const post = await getPost(deps.db, postId);
+  const suggested = post.suggestedFacts;
+  if (!suggested) return;
+  await updatePost(deps.db, postId, { suggestedFacts: null });
+  if (apply) await editFacts(deps, postId, suggested, actor);
+  else
+    await addHistory(
+      deps.db,
+      postId,
+      actor,
+      'edited',
+      'Vorgeschlagene Änderungen verworfen',
+    );
 }
 
 export { draftOf };

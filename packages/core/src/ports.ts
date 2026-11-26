@@ -53,6 +53,8 @@ export interface MatrixPort {
   joinRoom(idOrAlias: string): Promise<string>;
   /** Returns an existing DM room with the user or creates an encrypted one. */
   ensureDm(userId: string): Promise<string>;
+  /** Typing notification (shown while the AI works). Best effort. */
+  setTyping(roomId: string, typing: boolean, timeoutMs?: number): Promise<void>;
 }
 
 /** Normalised incoming Matrix events. */

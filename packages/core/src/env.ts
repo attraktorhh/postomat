@@ -47,11 +47,14 @@ export const envSchema = z.object({
   /** Dev default only; the web refuses to start with it in production. */
   SESSION_SECRET: z.string().default('dev-only-session-secret-change-me'),
 
-  AI_PROVIDER: z.enum(['none', 'openai-compatible']).default('none'),
+  /** Only OpenAI-compatible endpoints; AI is required for bot and worker. */
+  AI_PROVIDER: z.enum(['openai-compatible']).default('openai-compatible'),
   AI_BASE_URL: optional,
   AI_API_KEY: optional,
   AI_MODEL: optional,
   AI_TIMEOUT_MS: int(20000),
+  /** How long bot and worker wait for the AI endpoint at startup. */
+  AI_STARTUP_TIMEOUT_MS: int(120000),
 
   WORDPRESS_URL: z.string().default('http://localhost:8081'),
   WORDPRESS_USERNAME: optional,

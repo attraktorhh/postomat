@@ -50,6 +50,14 @@ export const posts = pgTable(
     cardBannerVersion: integer('card_banner_version'),
     /** Open "Rückfrage ans Mitglied": the next DM reply is attached to history. */
     pendingQuestion: text('pending_question'),
+    /** Facts the AI read from the member's Rückfrage answer (suggestions, not applied). */
+    suggestedFacts: jsonb('suggested_facts').$type<PostFacts>(),
+    /** Last failed text generation (AI); cleared on success. */
+    textsError: text('texts_error'),
+    textsErrorAt: ts('texts_error_at'),
+    /** When the AI texts were last written, and from which facts. */
+    textsGeneratedAt: ts('texts_generated_at'),
+    textsFacts: jsonb('texts_facts').$type<PostFacts>(),
     approvedBy: text('approved_by'),
     approvedAt: ts('approved_at'),
     submittedAt: ts('submitted_at'),

@@ -8,9 +8,10 @@ import {
 import { cleanupOldRows } from './maintenance.ts';
 import { pollMeetup } from './meetup.ts';
 import { renderBanners } from './photos.ts';
+import { regenerateTextsJob } from './posts.ts';
 import { getPost, latestBanner } from './repo.ts';
 
-/** Registers the worker's job handlers (banner, publish, Meetup poll). */
+/** Registers the worker's job handlers (banner, texts, publish, Meetup poll). */
 export async function registerWorkerJobs(
   deps: WorkflowDeps,
   queue: JobQueue,
@@ -30,6 +31,9 @@ export async function registerWorkerJobs(
       return;
     await renderBanners(deps, post);
   });
+  await queue.work('texts.generate', async ({ postId, actor }, meta) =>
+    regenerateTextsJob(deps, postId, actor, meta),
+  );
   await queue.work('publish.channel', async ({ postId, channel }, meta) =>
     publishChannel(deps, postId, channel, meta),
   );

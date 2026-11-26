@@ -1,11 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MockLanguageModelV4 } from 'ai/test';
-import { createAiService } from '@postomat/ai';
-import { channelPosts, eq, history, photos, posts } from '@postomat/db';
+import {
+  channelPosts,
+  conversations,
+  eq,
+  history,
+  photos,
+  posts,
+} from '@postomat/db';
 import {
   askMember,
+  editChannelText,
   editFacts,
+  resolveSuggestedFacts,
   resubmit,
+  retryTexts,
   setBannerColor,
   setChannelLink,
   setPhotoConsent,
@@ -77,6 +85,9 @@ describe('scenarios', () => {
       'Mir fehlt noch etwas, bevor ich es abschicken kann.\nWas möchtest du einreichen?\n1️⃣ Event (ein Termin im Attraktor)\n2️⃣ Projekt (etwas, das du gebaut hast)',
     ]);
     expect(await h.dm(LENA, 'abbrechen')).toEqual([
+      'Deinen Entwurf „Lötkurs“ verwerfen? (ja/nein)',
+    ]);
+    expect(await h.dm(LENA, 'ja')).toEqual([
       'Okay, den Entwurf habe ich verworfen. Schreib einfach, wenn du etwas Neues hast.',
     ]);
     const [p] = await h.db.db.select().from(posts);
@@ -87,8 +98,9 @@ describe('scenarios', () => {
   });
 
   it('runs the Projekt flow, requires a photo and rejects unsupported images', async () => {
-    await h.dm(LENA, 'Ich habe eine Nixie-Uhr gebaut');
-    await h.dm(LENA, '2');
+    expect((await h.dm(LENA, 'Ich habe eine Nixie-Uhr gebaut'))[0]).toBe(
+      'Cool, ein Projekt! Ich habe verstanden:\n• Nixie-Uhr\n\nWas hast du gebaut? Ein, zwei Sätze reichen.',
+    );
     await h.dm(LENA, 'Eine Uhr mit alten Röhren.');
     expect(await h.dm(LENA, 'Die Hochspannung.')).toEqual([
       'Schick mir bitte ein Foto davon. Für Projekte brauche ich mindestens eins.',
@@ -119,7 +131,8 @@ describe('scenarios', () => {
     ]);
     await h.photo(LENA, await testPhoto());
     const summary = await h.dm(LENA, '2');
-    expect(summary[0]).toContain('Instagram · Facebook · DE + EN');
+    expect(summary[0]).toContain('aber nicht gefragt');
+    expect(summary[1]).toContain('Instagram · Facebook · DE + EN');
     const [photo] = await h.db.db
       .select()
       .from(photos)
@@ -348,6 +361,14 @@ describe('scenarios', () => {
     expect(h.matrix.messages(ROOMS.medienteam, card).at(-1)?.body).toBe(
       'Antwort von @lena: „Ab 12 Jahren“',
     );
+    // the AI read a fact from the answer: offered, not applied
+    const [p] = await h.db.db.select().from(posts);
+    expect(p.suggestedFacts).toEqual({ audience: 'ab 12 Jahren' });
+    expect(p.facts.audience).toBeUndefined();
+    await resolveSuggestedFacts(h.deps, 1, true, 'mira');
+    const [applied] = await h.db.db.select().from(posts);
+    expect(applied.facts.audience).toBe('ab 12 Jahren');
+    expect(applied.suggestedFacts).toBeNull();
   });
 
   it('✏️ requests a change and resubmit posts the v2 banner in the thread', async () => {
@@ -365,52 +386,255 @@ describe('scenarios', () => {
     );
   });
 
-  it('uses the AI (mocked) for extraction and texts', async () => {
-    const reply = (obj: unknown) => ({
-      content: [{ type: 'text' as const, text: JSON.stringify(obj) }],
-      finishReason: { unified: 'stop' as const, raw: 'stop' },
-      usage: {
-        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-        outputTokens: { total: 1, text: 1, reasoning: 0 },
-      },
-      warnings: [],
+  it.each([
+    ['http', 1],
+    ['timeout', 1],
+    ['schema', 2], // the AiService retries a schema mismatch once
+  ] as const)(
+    'AI %s failure in the DM: retry message, nothing changes, resending continues',
+    async (mode, times) => {
+      await h.dm(
+        LENA,
+        'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
+      );
+      const [convBefore] = await h.db.db.select().from(conversations);
+      const [postBefore] = await h.db.db.select().from(posts);
+      const historyBefore = await h.db.db.select().from(history);
+      const msg =
+        'Nee, den Freitag danach, also 11.12.! 18 Uhr, max. 8 Leute, 5 € fürs Material';
+      h.ai.failNext(mode, times);
+      expect(await h.dm(LENA, msg)).toEqual([
+        'Ich kann deine Nachricht gerade nicht verarbeiten. Bitte versuch es in ein paar Minuten noch mal.',
+      ]);
+      const [convAfter] = await h.db.db.select().from(conversations);
+      const [postAfter] = await h.db.db.select().from(posts);
+      expect(convAfter.state).toEqual(convBefore.state);
+      expect(postAfter.facts).toEqual(postBefore.facts);
+      expect(await h.db.db.select().from(history)).toHaveLength(
+        historyBefore.length,
+      );
+      expect(h.ai.status().lastError).toBe(`interpret: ${mode}`);
+      // typing was shown while the AI worked, and switched off again
+      expect(h.matrix.typing.at(-1)).toEqual({
+        roomId: ROOMS.dmLena,
+        typing: false,
+      });
+      expect(await h.dm(LENA, msg)).toEqual([
+        'Alles klar, Freitag 11.12. · 18:00 · 8 Plätze · 5 € Material.\nHast du ein Foto dazu? Schick es einfach hier rein.',
+      ]);
+    },
+  );
+
+  it('drops AI values that fail validation and asks for the field again', async () => {
+    h.ai.addRules({
+      match: 'am 30. Februar',
+      result: { facts: { date: '2026-02-30' } },
     });
-    const model = new MockLanguageModelV4({
-      doGenerate: async (opts) => {
-        const prompt = JSON.stringify(opts.prompt);
-        if (prompt.includes('Extrahiere')) {
-          return reply({
-            type: 'event',
-            title: 'Lötkurs für Anfänger',
-            description: 'An einem Abend lernst du löten.',
-            date: '2026-11-27',
-            startTime: null,
-            endTime: null,
-            places: null,
-            costs: null,
-            audience: null,
-            trickiest: null,
-            isWorkshop: true,
-          }) as never;
-        }
-        return reply({
-          hookDe: 'Du wolltest schon immer mal löten? 🔥',
-          bodyDe: 'KI-Text.',
-          titleEn: 'Soldering for beginners',
-          bodyEn: 'AI text.',
-          shortEn: 'Learn to solder.',
-        }) as never;
-      },
+    await h.dm(LENA, 'Ich will am 11.12. einen Lötkurs machen');
+    await h.dm(LENA, '1');
+    await h.dm(LENA, 'Wir löten Abzeichen.');
+    expect(await h.dm(LENA, 'am 30. Februar')).toEqual([
+      'Das Datum konnte ich nicht zuordnen.\nUm wie viel Uhr geht’s los?',
+    ]);
+    h.ai.addRules({
+      match: 'um 25 Uhr',
+      result: { facts: { startTime: '25:00' } },
     });
-    h.deps.ai = createAiService(model, { timeoutMs: 2000 });
-    const replies = await h.dm(
-      LENA,
-      'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
+    expect(await h.dm(LENA, 'um 25 Uhr')).toEqual([
+      'Die Uhrzeit konnte ich nicht zuordnen.\nUm wie viel Uhr geht’s los?',
+    ]);
+    const [p] = await h.db.db.select().from(posts);
+    expect(p.facts.date).toBe('2026-12-11');
+    expect(p.facts.startTime).toBeUndefined();
+  });
+
+  it('a failed text generation keeps the draft; "nochmal" builds the summary', async () => {
+    await h.dm(LENA, 'Ich will am 11.12. einen Lötkurs machen');
+    await h.dm(LENA, '1');
+    await h.dm(LENA, 'Wir löten Abzeichen.');
+    await h.dm(LENA, '18 Uhr, 8 Plätze, kostenlos');
+    h.ai.failNext('http', 1, 'texts');
+    expect(await h.dm(LENA, 'nein')).toEqual([
+      'Kein Problem, dann ohne Foto.',
+      'Ich kann deine Nachricht gerade nicht verarbeiten. Bitte versuch es in ein paar Minuten noch mal.',
+    ]);
+    // no template-only texts were stored
+    expect(await h.db.db.select().from(channelPosts)).toHaveLength(0);
+    const summary = await h.dm(LENA, 'nochmal');
+    expect(summary[0]).toContain('Super, so schicke ich es ans Medienteam:');
+    expect(await h.dm(LENA, 'passt, schick’s ab')).toEqual([
+      'Ist beim Medienteam 🙌 Ich melde mich, sobald es online ist.',
+    ]);
+  });
+
+  it('understands commands in free wording and confirms destructive ones', async () => {
+    expect((await h.dm(LENA, 'Was kannst du eigentlich?'))[0]).toContain(
+      'So funktioniert’s',
     );
-    expect(replies[0]).toBe(
-      'Cool, ein Workshop! Ich habe verstanden:\n• Lötkurs für Anfänger\n• Freitag, 27.11.\n\nUm wie viel Uhr geht’s los?',
+    await h.dm(LENA, 'Ich will am 11.12. einen Lötkurs machen');
+    expect(await h.dm(LENA, 'Lass das, ich will das doch nicht mehr')).toEqual([
+      'Deinen Entwurf „Lötkurs“ verwerfen? (ja/nein)',
+    ]);
+    expect(await h.dm(LENA, 'nein')).toEqual([
+      'Okay, dann machen wir weiter.\nWas möchtest du einreichen?\n1️⃣ Event (ein Termin im Attraktor)\n2️⃣ Projekt (etwas, das du gebaut hast)',
+    ]);
+    const [p] = await h.db.db.select().from(posts);
+    expect(p.status).toBe('sammeln');
+    expect((await h.dm(LENA, 'neu'))[0]).toBe(
+      'Du hast schon einen Entwurf „Lötkurs“. Verwerfen und neu anfangen? (ja/nein)',
     );
-    const sent = JSON.stringify(model.doGenerateCalls.map((c) => c.prompt));
-    expect(sent).not.toContain('@lena');
+    expect(await h.dm(LENA, 'ja')).toEqual([
+      'Hi Lena! Erzähl einfach, was du vorhast oder gemacht hast. Ein Satz reicht.',
+    ]);
+    const [after] = await h.db.db.select().from(posts);
+    expect(after.status).toBe('verworfen');
+  });
+
+  it('turns a text change wish and a note in review into the right actions', async () => {
+    await collectEvent(h);
+    const before = h.ai.calls.filter((c) => c.kind === 'texts').length;
+    const r = await h.dm(LENA, 'Mach den Text bitte etwas lustiger');
+    expect(r.at(-1)).toBe(
+      'Ich habe die Texte angepasst. Antworte „abschicken“ oder ergänze im Browser eine Notiz.',
+    );
+    const texts = h.ai.calls.filter((c) => c.kind === 'texts');
+    expect(texts).toHaveLength(before + 1);
+    expect(texts.at(-1)!.input['aenderungswunsch']).toBe('etwas lustiger');
+    await h.dm(LENA, 'Bitte nicht vor Montag posten');
+    const [p] = await h.db.db.select().from(posts);
+    // stored verbatim, not the AI's paraphrase
+    expect(p.note).toBe('Bitte nicht vor Montag posten');
+  });
+
+  describe('Meetup candidate question (AI reads the reply)', () => {
+    async function ask(): Promise<string> {
+      await collectEvent(h);
+      await h.dm(LENA, 'abschicken');
+      const card = await cardOf(h);
+      await h.react(KAI, card, '👍');
+      h.meetup.events.push(
+        { id: '1001', title: 'Lötkurs', start: '2026-12-11T18:00' },
+        { id: '1002', title: 'Löten für Kids', start: '2026-12-11T18:30' },
+      );
+      await h.runMeetupPoll();
+      return card;
+    }
+    const meetupRow = async () =>
+      (
+        await h.db.db
+          .select()
+          .from(channelPosts)
+          .where(eq(channelPosts.channel, 'meetup'))
+      )[0];
+
+    it('"das zweite" links the second candidate', async () => {
+      const card = await ask();
+      await h.threadReply(MIRA, card, 'das zweite');
+      expect((await meetupRow()).url).toBe(
+        'https://www.meetup.com/attraktor/events/1002/',
+      );
+      const reply = h.ai.calls.filter((c) => c.kind === 'candidate').at(-1)!;
+      expect(reply.input['antwort']).toBe('das zweite');
+      expect(JSON.stringify(reply.input['kandidaten'])).toContain(
+        'Löten für Kids',
+      );
+      expect(reply.prompt).not.toMatch(/@\w+:localhost|uid|1002/);
+    });
+
+    it('"keins" closes the question; an unrelated reply is a normal thread reply', async () => {
+      const card = await ask();
+      await h.threadReply(MIRA, card, 'Ist der Raum schon gebucht?');
+      expect((await meetupRow()).status).toBe('kopieren');
+      const log = await h.db.db.select().from(history);
+      expect(log.map((e) => e.message)).toContain(
+        'Kommentar: „Ist der Raum schon gebucht?“',
+      );
+      await h.threadReply(MIRA, card, 'keins');
+      expect(h.matrix.messages(ROOMS.medienteam, card).at(-1)?.body).toBe(
+        'Okay, ich suche weiter im Feed. Den Link kannst du auch im Browser eintragen.',
+      );
+      // the question is closed: the next reply is not sent to the AI
+      const calls = h.ai.calls.length;
+      await h.threadReply(MIRA, card, '1');
+      expect(h.ai.calls.length).toBe(calls);
+      expect((await meetupRow()).status).toBe('kopieren');
+    });
+
+    it('an AI failure answers in the thread and changes nothing', async () => {
+      const card = await ask();
+      h.ai.failNext('http', 1, 'candidate');
+      await h.threadReply(MIRA, card, '1');
+      expect(h.matrix.messages(ROOMS.medienteam, card).at(-1)?.body).toBe(
+        'Ich kann deine Nachricht gerade nicht verarbeiten. Bitte versuch es in ein paar Minuten noch mal.',
+      );
+      expect((await meetupRow()).status).toBe('kopieren');
+      await h.threadReply(MIRA, card, '1');
+      expect((await meetupRow()).url).toBe(
+        'https://www.meetup.com/attraktor/events/1001/',
+      );
+      // every Medienteam reply to the open question went through the AI
+      const replies = h.sentTexts.filter((m) => m.thread).map((m) => m.text);
+      expect(
+        h.ai.calls
+          .filter((c) => c.kind === 'candidate')
+          .map((c) => c.input['antwort']),
+      ).toEqual(replies);
+    });
+  });
+
+  it('"Erneut zur Freigabe" with changed facts rewrites the texts in the worker, keeping hand edits', async () => {
+    await collectEvent(h);
+    await h.dm(LENA, 'abschicken');
+    const card = await cardOf(h);
+    await h.react(KAI, card, '✏️');
+    await editChannelText(
+      h.deps,
+      1,
+      'instagram',
+      { textDe: 'Von Hand geschrieben' },
+      'kai',
+    );
+    await editFacts(h.deps, 1, { startTime: '19:00' }, 'kai');
+    const before = h.ai.calls.filter((c) => c.kind === 'texts').length;
+    await resubmit(h.deps, 1, 'kai');
+    await h.queue.drain();
+    expect(h.ai.calls.filter((c) => c.kind === 'texts')).toHaveLength(
+      before + 1,
+    );
+    const rows = await h.db.db.select().from(channelPosts);
+    expect(rows.find((c) => c.channel === 'instagram')!.textDe).toBe(
+      'Von Hand geschrieben',
+    );
+    expect(rows.find((c) => c.channel === 'meetup')!.textDe).toContain(
+      'Wir löten Abzeichen.',
+    );
+    // unchanged facts: no new texts
+    await h.react(KAI, card, '✏️');
+    await resubmit(h.deps, 1, 'kai');
+    await h.queue.drain();
+    expect(h.ai.calls.filter((c) => c.kind === 'texts')).toHaveLength(
+      before + 1,
+    );
+  });
+
+  it('shows "Texte konnten nicht erstellt werden" after the last retry and tells the author', async () => {
+    await collectEvent(h);
+    await h.dm(LENA, 'abschicken');
+    const card = await cardOf(h);
+    await h.react(KAI, card, '✏️');
+    await editFacts(h.deps, 1, { startTime: '19:00' }, 'kai');
+    h.ai.failNext('http', 3, 'texts'); // in-memory queue: 1 + 2 retries
+    await resubmit(h.deps, 1, 'kai');
+    await h.queue.drain();
+    const [p] = await h.db.db.select().from(posts);
+    expect(p.textsError).toBe('http');
+    expect(h.matrix.messages(ROOMS.dmLena).at(-1)?.body).toBe(
+      'Die Texte für „Lötkurs für Anfänger“ konnten gerade nicht neu erstellt werden. Das Medienteam versucht es später noch einmal.',
+    );
+    await retryTexts(h.deps, 1, 'mira');
+    await h.queue.drain();
+    const [fixed] = await h.db.db.select().from(posts);
+    expect(fixed.textsError).toBeNull();
+    expect(fixed.textsFacts?.startTime).toBe('19:00');
   });
 });

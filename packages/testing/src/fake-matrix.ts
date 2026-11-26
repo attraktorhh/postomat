@@ -149,6 +149,12 @@ export class FakeMatrix implements MatrixPort {
     return id;
   }
 
+  /** Typing notifications, in order. */
+  readonly typing: Array<{ roomId: string; typing: boolean }> = [];
+  async setTyping(roomId: string, typing: boolean): Promise<void> {
+    this.typing.push({ roomId, typing });
+  }
+
   async ensureDm(userId: string): Promise<string> {
     const existing = [...this.rooms.values()].find(
       (r) =>

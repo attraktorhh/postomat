@@ -1,14 +1,33 @@
-import type { FactKey, PostFacts, PostType } from '../types.ts';
-import { extractFacts, guessTitle, guessType } from '../extract.ts';
+import type { Consent, FactKey, PostFacts, PostType } from '../types.ts';
 import { factsLineDm } from '../format.ts';
-import { weekdayDe, dayMonthDe, isValidDate } from '../time.ts';
-import { CONSENT_QUESTION, parseConsentAnswer } from '../consent.ts';
-import type { Consent } from '../types.ts';
+import { weekdayDe, dayMonthDe } from '../time.ts';
+import {
+  CONSENT_ECHO,
+  CONSENT_FROM_ANSWER,
+  CONSENT_QUESTION,
+} from '../consent.ts';
+import {
+  validateAiFacts,
+  type ExpectedAnswer,
+  type Interpretation,
+  type InterpretContext,
+  type RejectReason,
+} from '../interpretation.ts';
+
+/**
+ * The Matrix DM dialog as a state machine. It never looks at message text:
+ * every member message arrives as an `Interpretation` from the AI
+ * (`packages/ai`). Core decides deterministically what to ask next and
+ * validates the AI's values.
+ */
 
 /** Where the conversation currently is. */
 export type DialogStep = 'idle' | 'type' | 'collect' | 'review';
 
 export type Expecting = FactKey | 'type' | 'photo' | 'consent' | null;
+
+/** A destructive command waiting for "ja"/"nein". */
+export type PendingConfirmation = 'cancel' | 'new';
 
 export interface DialogState {
   step: DialogStep;
@@ -21,8 +40,9 @@ export interface DialogState {
   /** Photos waiting for the consent answer. */
   pendingConsentPhotoIds: number[];
   photoDeclined: boolean;
-  /** Raw member texts, used for AI generation and as context. */
-  transcript: string[];
+  /** The summary could not be built (AI failure); "nochmal" retries it. */
+  summaryPending?: boolean;
+  pendingConfirmation?: PendingConfirmation | null;
 }
 
 export const initialDialogState = (): DialogState => ({
@@ -33,36 +53,27 @@ export const initialDialogState = (): DialogState => ({
   photoCount: 0,
   pendingConsentPhotoIds: [],
   photoDeclined: false,
-  transcript: [],
+  summaryPending: false,
+  pendingConfirmation: null,
 });
-
-/** Result of an AI extraction (optional dependency). */
-export interface AiExtraction {
-  type?: PostType;
-  facts: PostFacts;
-}
 
 export interface DialogDeps {
   now: Date;
   displayName: string;
-  /** Optional AI extractor. Returns null on error/timeout → fallback parser. */
-  aiExtract?: (input: {
-    text: string;
-    state: DialogState;
-  }) => Promise<AiExtraction | null>;
 }
 
 export type DialogInput =
-  { kind: 'text'; text: string } | { kind: 'photo'; photoId: number };
+  | { kind: 'message'; interpretation: Interpretation }
+  | { kind: 'photo'; photoId: number };
 
 export type DialogEffect =
   | { kind: 'set_consent'; photoIds: number[]; consent: Consent }
   /** All facts are collected: generate texts + banner and send the summary. */
   | { kind: 'summary' }
-  /** Member explicitly asked for a text change in review ("Text ändern: …"). */
+  /** Member asked for a text change in review. */
   | { kind: 'change_request'; instruction: string }
-  /** Other free text in review: a note for the Medienteam. */
-  | { kind: 'note'; text: string };
+  /** The message is a note for the Medienteam; the caller stores it verbatim. */
+  | { kind: 'note' };
 
 export interface DialogResult {
   state: DialogState;
@@ -76,10 +87,15 @@ export const GREETING = (name: string) =>
 export const TYPE_QUESTION =
   'Was möchtest du einreichen?\n1️⃣ Event (ein Termin im Attraktor)\n2️⃣ Projekt (etwas, das du gebaut hast)';
 
+export const NOT_UNDERSTOOD = 'Das hab ich nicht ganz verstanden.';
 export const CONFIRM_SUBMIT =
   'Soll ich es so ans Medienteam schicken? Antworte „abschicken“.';
 export const THANKS_REPLY =
   'Gern! Antworte „abschicken“, wenn es so ans Medienteam soll.';
+export const NOTE_STORED =
+  'Ich habe das als Notiz fürs Medienteam gespeichert.';
+export const NOTE_STORED_REVIEW = `${NOTE_STORED} Texte ändern kannst du mit „Text ändern: …“. Antworte „abschicken“, wenn alles passt.`;
+const GREETING_HINT = 'Erzähl mir erst in einem Satz, was du vorhast.';
 
 const QUESTIONS: Partial<Record<FactKey, string>> = {
   title: 'Wie soll der Titel lauten?',
@@ -90,13 +106,35 @@ const QUESTIONS: Partial<Record<FactKey, string>> = {
   costs: 'Kostet es etwas? Zum Beispiel „5 € Material“ oder „kostenlos“.',
   trickiest: 'Was war das Kniffligste?',
 };
+const PROJEKT_DESCRIPTION_QUESTION =
+  'Was hast du gebaut? Ein, zwei Sätze reichen.';
 
+/** Said when the answer to the asked question contained nothing usable. */
 const RETRY_HINTS: Partial<Record<FactKey, string>> = {
   date: 'Ich habe kein Datum erkannt. Schreib es zum Beispiel so: „11.12.“ oder „nächsten Freitag“.',
   startTime:
     'Ich habe keine Uhrzeit erkannt. Schreib sie zum Beispiel so: „18 Uhr“ oder „18–21 Uhr“.',
   places: 'Wie viele Plätze? Eine Zahl reicht, oder „weiter“.',
   costs: 'Kostet es etwas? Zum Beispiel „5 €“, „kostenlos“ oder „weiter“.',
+};
+
+const FIELD_LABELS: Partial<Record<FactKey, string>> = {
+  title: 'Titel',
+  description: 'Beschreibung',
+  costs: 'Kostenhinweis',
+  audience: 'Zielgruppe',
+  trickiest: 'Kniffligste',
+};
+
+const REJECT_HINTS: Record<RejectReason, (key: FactKey) => string> = {
+  invalid_date: () => 'Das Datum konnte ich nicht zuordnen.',
+  past_date: () => 'Das Datum liegt in der Vergangenheit.',
+  invalid_time: () => 'Die Uhrzeit konnte ich nicht zuordnen.',
+  end_before_start: () =>
+    'Das Ende liegt vor dem Beginn, deshalb habe ich nur die Startzeit übernommen.',
+  invalid_places: () => 'Die Anzahl der Plätze konnte ich nicht übernehmen.',
+  too_long: (key) =>
+    `Das ist mir für ${FIELD_LABELS[key] ? `„${FIELD_LABELS[key]}“` : 'diese Angabe'} zu lang, bitte kürzer.`,
 };
 
 export const PHOTO_QUESTION_EVENT =
@@ -121,47 +159,27 @@ const REQUIRED: Record<PostType, Array<FactKey | 'photo'>> = {
   projekt: ['title', 'description', 'trickiest', 'photo'],
 };
 
-const SKIP_RE =
-  /^\s*(weiter|-|–|skip|überspringen|egal|weiß nicht|keine ahnung)\s*[.!]?\s*$/i;
-const NO_RE =
-  /^\s*(nein|nö|noe|ne|nee|kein foto|keins|hab keins|habe keins|weiter|-|–)\s*[.!]?\s*$/i;
-const GREETING_RE =
-  /^\s*(hi|hallo|hey|moin|servus|huhu|guten (morgen|tag|abend)|na|neu|start)\s*[!.]?\s*$/i;
-
-const BARE_TYPE_RE = /^\s*(1|2|1️⃣|2️⃣|event|projekt)\s*[.!]?\s*$/iu;
-/** A correction of earlier facts, not an answer to a free-text question. */
-const CORRECTION_RE =
-  /^\s*(nee|nein|ne|doch|korrektur|sorry|ach|äh|oh|moment)\b/i;
-const STRUCTURED: FactKey[] = ['date', 'startTime', 'places', 'costs'];
-
 function hasFact(state: DialogState, key: FactKey | 'photo'): boolean {
   if (key === 'photo') return state.photoCount > 0;
   const v = state.facts[key];
   return v !== undefined && v !== '';
 }
 
+const isRequired = (state: DialogState, key: FactKey | 'photo') =>
+  !!state.type && REQUIRED[state.type].includes(key);
+
 /** The next thing to ask, or null when everything is collected. */
 export function nextQuestion(state: DialogState): FactKey | 'photo' | null {
   if (!state.type) return null;
   for (const key of ORDER[state.type]) {
     if (hasFact(state, key)) continue;
-    const required = REQUIRED[state.type].includes(key);
+    const required = isRequired(state, key);
     if (key === 'photo' && state.photoDeclined && !required) continue;
     if (!required && state.asked.includes(key)) continue;
     return key;
   }
   return null;
 }
-
-const PROJEKT_DESCRIPTION_QUESTION =
-  'Was hast du gebaut? Ein, zwei Sätze reichen.';
-
-/** Review step: an explicit change wish ("Text ändern: …", "ändere …"). */
-const CHANGE_RE = /^\s*(bitte\s+)?(texte?\s+)?änder/i;
-const AFFIRM_RE =
-  /^\s*(ok(ay)?|passt( so)?|ja( bitte)?|jo|jap|yes|gut so|perfekt|klingt gut|👍\S*)\s*[.!]*\s*$/iu;
-const THANKS_RE =
-  /^\s*(danke( dir| schön| sehr)?|super|cool|toll|merci|thx|top)\s*[.!🙏😊🙂]*\s*$/iu;
 
 function questionText(state: DialogState, key: FactKey | 'photo'): string {
   if (key === 'photo')
@@ -171,6 +189,44 @@ function questionText(state: DialogState, key: FactKey | 'photo'): string {
   if (key === 'description' && state.type === 'projekt')
     return PROJEKT_DESCRIPTION_QUESTION;
   return QUESTIONS[key] ?? `${key}?`;
+}
+
+/** The question the member still has to answer, if any. */
+export function openQuestion(state: DialogState): string | undefined {
+  if (state.expecting === 'consent') return CONSENT_QUESTION;
+  if (state.expecting === 'type') return TYPE_QUESTION;
+  if (state.expecting) return questionText(state, state.expecting);
+  if (state.step === 'idle') return GREETING_HINT;
+  if (state.step === 'review') return CONFIRM_SUBMIT;
+  return undefined;
+}
+
+/** What the bot waits for, as context for the AI. */
+export function expectedAnswer(state: DialogState): ExpectedAnswer {
+  if (state.pendingConfirmation) return 'confirmation';
+  if (state.summaryPending) return 'retry';
+  if (state.expecting) return state.expecting;
+  if (state.step === 'review') return 'submit';
+  return null;
+}
+
+/** Builds the AI context for the next message (no IDs, no names). */
+export function interpretContext(
+  state: DialogState,
+  extra: {
+    openRueckfrage?: string | null;
+    pendingConfirmation?: string | null;
+  },
+): InterpretContext {
+  return {
+    expecting: expectedAnswer(state),
+    question: openQuestion(state),
+    type: state.type ?? null,
+    facts: state.facts,
+    hasPhoto: state.photoCount > 0,
+    openRueckfrage: extra.openRueckfrage ?? null,
+    pendingConfirmation: extra.pendingConfirmation ?? null,
+  };
 }
 
 /** Merges new facts; later answers override earlier ones. */
@@ -187,9 +243,15 @@ function mergeFacts(
     if (facts[k] !== v) changed.push(k);
     (facts as Record<string, unknown>)[k] = v;
   }
+  // A new start time can invalidate an older end time.
+  if (facts.endTime && facts.startTime && facts.endTime <= facts.startTime) {
+    delete facts.endTime;
+    if (!changed.includes('startTime')) changed.push('startTime');
+  }
   return { facts, changed };
 }
 
+/** "Alles klar, Freitag 11.12. · 18:00 …" – the weekday is computed here, not by the AI. */
 function understood(
   facts: PostFacts,
   changed: FactKey[],
@@ -231,82 +293,7 @@ function understood(
   return line ? end(`Alles klar, ${line}`) : '';
 }
 
-async function absorbText(
-  state: DialogState,
-  text: string,
-  deps: DialogDeps,
-): Promise<{
-  state: DialogState;
-  changed: FactKey[];
-  typeDetected?: PostType;
-}> {
-  const expecting =
-    state.expecting &&
-    state.expecting !== 'type' &&
-    state.expecting !== 'photo' &&
-    state.expecting !== 'consent'
-      ? state.expecting
-      : undefined;
-  let extracted: PostFacts = extractFacts(text, { now: deps.now, expecting });
-  let typeDetected: PostType | undefined;
-  if (deps.aiExtract) {
-    const ai = await deps.aiExtract({ text, state });
-    if (ai) {
-      // Deterministic values win for the field that was explicitly asked.
-      const aiFacts = Object.fromEntries(
-        Object.entries(ai.facts).filter(
-          ([k, v]) =>
-            v !== undefined && v !== null && v !== '' && validAi(k, v),
-        ),
-      ) as PostFacts;
-      extracted = {
-        ...extracted,
-        ...aiFacts,
-        ...(expecting ? pick(extracted, expecting) : {}),
-      };
-      typeDetected = ai.type;
-    }
-  }
-  if (!state.facts.title && !extracted.title && state.step === 'idle') {
-    const t = guessTitle(text);
-    if (t) extracted.title = t;
-  }
-  const { facts, changed } = mergeFacts(state.facts, extracted);
-  return {
-    state: { ...state, facts, transcript: [...state.transcript, text] },
-    changed,
-    typeDetected,
-  };
-}
-
-const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-/**
- * AI output is untrusted: dates and times end up in file paths, wiki
- * templates and calendar matching, so only well-formed values are kept.
- */
-function validAi(key: string, value: unknown): boolean {
-  switch (key) {
-    case 'date':
-      return typeof value === 'string' && isValidDate(value);
-    case 'startTime':
-    case 'endTime':
-      return typeof value === 'string' && HH_MM.test(value);
-    case 'places':
-      return Number.isInteger(value) && (value as number) >= 0;
-    case 'isWorkshop':
-      return typeof value === 'boolean';
-    default:
-      return typeof value === 'string';
-  }
-}
-
-function pick(f: PostFacts, key: FactKey): PostFacts {
-  const out: PostFacts = {};
-  if (f[key] !== undefined) (out as Record<string, unknown>)[key] = f[key];
-  if (key === 'startTime' && f.endTime) out.endTime = f.endTime;
-  return out;
-}
+const join = (...parts: string[]) => parts.filter(Boolean).join('\n');
 
 function askNextOrSummarize(state: DialogState, prefix: string): DialogResult {
   const next = nextQuestion(state);
@@ -317,11 +304,7 @@ function askNextOrSummarize(state: DialogState, prefix: string): DialogResult {
       effects: [{ kind: 'summary' }],
     };
   }
-  const asked =
-    next !== 'photo' && REQUIRED[state.type!].includes(next)
-      ? state.asked
-      : [...state.asked, next];
-  const q = questionText(state, next);
+  const asked = isRequired(state, next) ? state.asked : [...state.asked, next];
   return {
     state: {
       ...state,
@@ -329,234 +312,260 @@ function askNextOrSummarize(state: DialogState, prefix: string): DialogResult {
       expecting: next,
       asked: Array.from(new Set(asked)),
     },
-    replies: [prefix ? `${prefix}\n${q}` : q],
+    replies: [join(prefix, questionText(state, next))],
     effects: [],
   };
 }
 
-/** The question the member still has to answer (for "abschicken" too early). */
-export function openQuestion(state: DialogState): string | undefined {
-  if (state.expecting === 'consent') return CONSENT_QUESTION;
-  if (state.expecting === 'type') return TYPE_QUESTION;
-  if (state.expecting) return questionText(state, state.expecting);
-  if (state.step === 'idle') return GREETING_HINT;
-  return undefined;
+/** Repeats the open question, optionally with a prefix. */
+function reask(state: DialogState, prefix = ''): DialogResult {
+  return {
+    state,
+    replies: [join(prefix, openQuestion(state) ?? '')],
+    effects: [],
+  };
 }
 
-const GREETING_HINT = 'Erzähl mir erst in einem Satz, was du vorhast.';
-
-function parseTypeAnswer(text: string): PostType | undefined {
-  const t = text.trim().toLowerCase();
-  if (
-    /^(1|1️⃣|eins|event|termin|veranstaltung)\b/u.test(t) ||
-    t.startsWith('1️⃣')
-  )
-    return 'event';
-  if (/^(2|2️⃣|zwei|projekt)\b/u.test(t) || t.startsWith('2️⃣')) return 'projekt';
-  return undefined;
+interface Absorbed {
+  state: DialogState;
+  changed: FactKey[];
+  hints: string[];
+  rejected: FactKey[];
 }
+
+/** Applies the AI's (validated) facts to the state. */
+function absorb(
+  state: DialogState,
+  interp: Interpretation,
+  deps: DialogDeps,
+): Absorbed {
+  const type = state.type ?? interp.type ?? undefined;
+  const v = validateAiFacts(interp.facts, {
+    now: deps.now,
+    type,
+    known: state.facts,
+  });
+  const { facts, changed } = mergeFacts(state.facts, v.facts);
+  const rejected = v.rejected.map((r) => r.key);
+  // A rejected optional answer is asked again.
+  const asked = state.asked.filter((k) => !rejected.includes(k as FactKey));
+  return {
+    state: { ...state, facts, asked },
+    changed,
+    hints: v.rejected.map((r) => REJECT_HINTS[r.reason](r.key)),
+    rejected,
+  };
+}
+
+const typeIntro = (type: PostType, facts: PostFacts) =>
+  type === 'projekt'
+    ? 'Cool, ein Projekt!'
+    : facts.isWorkshop
+      ? 'Cool, ein Workshop!'
+      : 'Cool, ein Event!';
 
 /**
- * Advances the DM dialog by one member message. Pure apart from the optional
- * AI call: storage, Matrix and text generation are done by the caller.
+ * Advances the DM dialog by one interpreted member message or one photo.
+ * Pure: storage, Matrix, AI calls and text generation are done by the caller.
+ * Commands, submit, Rückfrage answers and confirmations are routed by the
+ * caller before this is called.
  */
-export async function advanceDialog(
+export function advanceDialog(
   state: DialogState,
   input: DialogInput,
   deps: DialogDeps,
-): Promise<DialogResult> {
+): DialogResult {
   if (input.kind === 'photo') return handlePhoto(state, input.photoId);
-  const text = input.text.trim();
+  const interp = input.interpretation;
+  const intent = interp.intent;
 
   if (state.expecting === 'consent') {
-    const consent = parseConsentAnswer(text);
-    if (!consent)
+    if (intent === 'answer_consent' && interp.consent) {
+      const effects: DialogEffect[] = [
+        {
+          kind: 'set_consent',
+          photoIds: state.pendingConsentPhotoIds,
+          consent: CONSENT_FROM_ANSWER[interp.consent],
+        },
+      ];
+      const next = askNextOrSummarize(
+        { ...state, pendingConsentPhotoIds: [], expecting: null },
+        CONSENT_ECHO[interp.consent],
+      );
+      return { ...next, effects: [...effects, ...next.effects] };
+    }
+    if (intent === 'provide_info') {
+      const a = absorb(state, interp, deps);
+      return reask(
+        a.state,
+        join(understood(a.state.facts, a.changed, false), ...a.hints),
+      );
+    }
+    return reask(state, NOT_UNDERSTOOD);
+  }
+
+  switch (intent) {
+    case 'smalltalk_or_thanks':
+      if (state.step === 'idle')
+        return {
+          state: { ...state, expecting: null },
+          replies: [GREETING(deps.displayName)],
+          effects: [],
+        };
+      if (state.step === 'review')
+        return { state, replies: [THANKS_REPLY], effects: [] };
+      return reask(state);
+    case 'retry':
+      if (state.summaryPending)
+        return { state, replies: [], effects: [{ kind: 'summary' }] };
+      return reask(state);
+    case 'note_for_team':
+      if (state.step === 'idle') break;
       return {
         state,
         replies: [
-          'Antworte bitte mit 1, 2 oder 3.\n' +
-            CONSENT_QUESTION.split('\n').slice(1).join('\n'),
+          state.step === 'review'
+            ? NOTE_STORED_REVIEW
+            : join(NOTE_STORED, openQuestion(state) ?? ''),
         ],
-        effects: [],
+        effects: [{ kind: 'note' }],
       };
-    const effects: DialogEffect[] = [
-      { kind: 'set_consent', photoIds: state.pendingConsentPhotoIds, consent },
-    ];
-    const next = askNextOrSummarize(
-      { ...state, pendingConsentPhotoIds: [], expecting: null },
-      '',
-    );
-    return { ...next, effects: [...effects, ...next.effects] };
-  }
-
-  if (state.step === 'idle') {
-    if (BARE_TYPE_RE.test(text)) {
-      // "1"/"2" straight away (e.g. the member knows the menu already).
-      return askNextOrSummarize(
-        { ...state, type: parseTypeAnswer(text), expecting: null },
-        '',
-      );
-    }
-    if (GREETING_RE.test(text)) {
+    case 'request_text_change':
+      if (state.step !== 'review') return reask(state, NOT_UNDERSTOOD);
       return {
-        state: { ...state, expecting: null },
-        replies: [GREETING(deps.displayName)],
-        effects: [],
+        state,
+        replies: [],
+        effects: [
+          {
+            kind: 'change_request',
+            instruction: interp.instruction?.trim() || '',
+          },
+        ],
       };
-    }
-    const absorbed = await absorbText(state, text, deps);
-    let s = absorbed.state;
-    const type =
-      absorbed.typeDetected ??
-      (deps.aiExtract ? guessType(text, deps.now) : undefined);
-    const got = understood(s.facts, absorbed.changed, true);
+    case 'decline_photo':
+    case 'skip_optional':
+    case 'confirm_no':
+      return skipOrDecline(state, intent);
+    case 'confirm_yes':
+      if (state.expecting === 'photo') return reask(state, 'Super!');
+      if (state.step === 'review')
+        return { state, replies: [CONFIRM_SUBMIT], effects: [] };
+      return reask(state, NOT_UNDERSTOOD);
+    case 'provide_info':
+    case 'choose_type':
+    case 'answer_rueckfrage':
+      return absorbAndContinue(state, interp, deps);
+    default:
+      break;
+  }
+  if (state.step === 'idle')
+    return reask(state, `${NOT_UNDERSTOOD} ${GREETING_HINT}`);
+  return reask(state, NOT_UNDERSTOOD);
+}
+
+function skipOrDecline(
+  state: DialogState,
+  intent: 'decline_photo' | 'skip_optional' | 'confirm_no',
+): DialogResult {
+  const expecting = state.expecting;
+  if (expecting === 'photo' || intent === 'decline_photo') {
+    if (state.step === 'idle') return reask(state, NOT_UNDERSTOOD);
+    if (state.type === 'projekt' && state.photoCount === 0)
+      return { state, replies: [PHOTO_QUESTION_PROJEKT], effects: [] };
+    if (expecting !== 'photo')
+      // Declined early: don't ask for a photo later, keep the open question.
+      return reask({ ...state, photoDeclined: true }, 'Okay, dann ohne Foto.');
+    return askNextOrSummarize(
+      { ...state, photoDeclined: true, expecting: null },
+      'Kein Problem, dann ohne Foto.',
+    );
+  }
+  if (expecting && expecting !== 'type' && expecting !== 'consent') {
+    if (isRequired(state, expecting))
+      return reask(state, 'Das brauche ich leider noch.');
+    return askNextOrSummarize({ ...state, expecting: null }, '');
+  }
+  return reask(state, NOT_UNDERSTOOD);
+}
+
+function absorbAndContinue(
+  state: DialogState,
+  interp: Interpretation,
+  deps: DialogDeps,
+): DialogResult {
+  const canChooseType =
+    state.step === 'idle' ||
+    state.step === 'type' ||
+    interp.intent === 'choose_type';
+  const type =
+    canChooseType && interp.type ? interp.type : (state.type ?? undefined);
+  const a = absorb({ ...state, type }, interp, deps);
+  let s = a.state;
+  const hints = a.hints;
+
+  if (state.step === 'idle' || state.step === 'type') {
+    const got = understood(s.facts, a.changed, true);
     if (!type) {
       s = { ...s, step: 'type', expecting: 'type' };
+      const prefix = join(got, ...hints);
       return {
         state: s,
-        replies: [got ? `${got}\n\n${TYPE_QUESTION}` : TYPE_QUESTION],
+        replies: [prefix ? `${prefix}\n\n${TYPE_QUESTION}` : TYPE_QUESTION],
         effects: [],
       };
     }
-    s = { ...s, type };
     const intro =
-      type === 'event'
-        ? s.facts.isWorkshop
-          ? 'Cool, ein Workshop!'
-          : 'Cool, ein Event!'
-        : 'Cool, ein Projekt!';
-    return askNextOrSummarize(s, got ? `${intro} ${got}\n` : `${intro}`);
-  }
-
-  if (state.step === 'type') {
-    const type = parseTypeAnswer(text);
-    if (!type) {
-      // Keep facts the member added instead of choosing (e.g. a corrected date).
-      const absorbed = await absorbText(state, text, deps);
-      const got = understood(absorbed.state.facts, absorbed.changed, false);
-      return {
-        state: absorbed.state,
-        replies: [
-          `${got ? `${got}\n` : ''}Antworte bitte mit 1 oder 2.\n${TYPE_QUESTION}`,
-        ],
-        effects: [],
-      };
-    }
-    return askNextOrSummarize({ ...state, type, expecting: null }, '');
+      state.step === 'idle' && interp.type ? typeIntro(type, s.facts) : '';
+    const head = [intro, got].filter(Boolean).join(' ');
+    return askNextOrSummarize(
+      { ...s, expecting: null },
+      join(head ? (got ? `${head}\n` : head) : '', ...hints),
+    );
   }
 
   if (state.step === 'review') {
-    // Short confirmations never change texts or notes.
-    if (AFFIRM_RE.test(text))
-      return { state, replies: [CONFIRM_SUBMIT], effects: [] };
-    if (THANKS_RE.test(text))
-      return { state, replies: [THANKS_REPLY], effects: [] };
-    const absorbed = await absorbText(
-      { ...state, expecting: null },
-      text,
-      deps,
-    );
-    const factChanges = absorbed.changed.filter((k) => k !== 'isWorkshop');
-    if (factChanges.length) {
-      const got = understood(absorbed.state.facts, factChanges, false);
+    const factChanges = a.changed.filter((k) => k !== 'isWorkshop');
+    const typeChanged = type !== state.type;
+    if (factChanges.length || typeChanged) {
+      const got = understood(s.facts, factChanges, false);
+      // A changed type may need more answers (e.g. a Projekt needs a photo).
+      const next = nextQuestion({ ...s, expecting: null });
+      if (next !== null)
+        return askNextOrSummarize(
+          { ...s, expecting: null },
+          join(got, ...hints),
+        );
       return {
-        state: { ...absorbed.state, step: 'review' },
-        replies: got ? [got] : [],
+        state: { ...s, step: 'review', expecting: null },
+        replies: got || hints.length ? [join(got, ...hints)] : [],
         effects: [{ kind: 'summary' }],
       };
     }
-    if (!CHANGE_RE.test(text))
-      return {
-        state: absorbed.state,
-        replies: [],
-        effects: [{ kind: 'note', text }],
-      };
-    const instruction =
-      text
-        .replace(
-          /^\s*(bitte\s+)?(texte?\s+)?änder\p{L}*\s*(bitte\s+)?:?\s*/iu,
-          '',
-        )
-        .trim() || text;
-    return {
-      state: absorbed.state,
-      replies: [],
-      effects: [{ kind: 'change_request', instruction }],
-    };
+    return reask(s, hints.length ? join(...hints) : NOT_UNDERSTOOD);
   }
 
-  // step === 'collect'
-  const expecting = state.expecting;
-  if (expecting === 'photo') {
-    if (NO_RE.test(text)) {
-      if (state.type === 'projekt')
-        return { state, replies: [PHOTO_QUESTION_PROJEKT], effects: [] };
-      return askNextOrSummarize(
-        { ...state, photoDeclined: true, expecting: null },
-        'Kein Problem, dann ohne Foto.',
-      );
-    }
-  } else if (expecting && expecting !== 'type' && SKIP_RE.test(text)) {
-    if (REQUIRED[state.type!].includes(expecting)) {
-      return {
-        state,
-        replies: [
-          `Das brauche ich leider noch. ${questionText(state, expecting)}`,
-        ],
-        effects: [],
-      };
-    }
-    return askNextOrSummarize({ ...state, expecting: null }, '');
-  }
-
-  const freeText =
-    expecting === 'description' ||
-    expecting === 'trickiest' ||
-    expecting === 'audience';
-  const absorbed = await absorbText(state, text, deps);
-  let s = absorbed.state;
-  if (freeText && expecting && state.facts[expecting] === undefined) {
-    const structured = absorbed.changed.filter((k) => STRUCTURED.includes(k));
-    if (
-      structured.length > 0 &&
-      (CORRECTION_RE.test(text) || structured.length >= 3)
-    ) {
-      // Facts only ("Nee, den 11.12.! 18 Uhr, 8 Leute") – not the description.
-      const facts = { ...s.facts };
-      delete facts[expecting];
-      s = { ...s, facts };
-      absorbed.changed = absorbed.changed.filter((k) => k !== expecting);
-    }
-  }
+  // step === 'collect' (consent was handled before)
+  const expecting = state.expecting === 'consent' ? null : state.expecting;
   if (
     expecting &&
     expecting !== 'photo' &&
     expecting !== 'type' &&
     !hasFact(s, expecting) &&
-    absorbed.changed.length === 0
+    a.changed.length === 0
   ) {
-    return {
-      state: s,
-      replies: [RETRY_HINTS[expecting] ?? questionText(s, expecting)],
-      effects: [],
-    };
+    const hint = hints.length
+      ? join(...hints, questionText(s, expecting))
+      : (RETRY_HINTS[expecting] ?? questionText(s, expecting));
+    return { state: s, replies: [hint], effects: [] };
   }
-  // Don't echo a free-text answer back; repeat only the parsed facts.
-  // A title taken from a longer sentence is repeated, a plain answer is not.
-  const changed = absorbed.changed.filter(
-    (k) =>
-      !(
-        k === 'title' &&
-        expecting === 'title' &&
-        s.facts.title === text.replace(/[.!]+$/, '')
-      ),
-  );
-  const got = understood(s.facts, changed, false);
+  const got = understood(s.facts, a.changed, false);
   // An optional question that was interrupted by other facts is asked again.
-  // (consent was handled above; type is not a collect step)
   const stillOpen = expecting && expecting !== 'type' && !hasFact(s, expecting);
   const asked = stillOpen ? s.asked.filter((k) => k !== expecting) : s.asked;
-  return askNextOrSummarize({ ...s, asked, expecting: null }, got);
+  return askNextOrSummarize(
+    { ...s, asked, expecting: null },
+    join(got, ...hints),
+  );
 }
 
 function handlePhoto(state: DialogState, photoId: number): DialogResult {

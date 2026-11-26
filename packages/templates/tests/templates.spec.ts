@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { build } from './fixtures.ts';
 import { DEFAULT_CONFIG, runChecks } from '@postomat/core';
 import {
   buildDrafts,
@@ -47,9 +48,9 @@ const links = {
   meetupId: '312070001',
 };
 
-describe('channel texts without AI', () => {
+describe('channel texts: AI body in the template frame', () => {
   it('event drafts (DE + EN) per channel', () => {
-    const drafts = buildDrafts(event, [
+    const drafts = build(event, [
       'wordpress',
       'wiki',
       'meetup',
@@ -69,7 +70,7 @@ describe('channel texts without AI', () => {
   });
 
   it('event outputs', () => {
-    const d = buildDrafts(event, [
+    const d = build(event, [
       'wordpress',
       'wiki',
       'meetup',
@@ -93,7 +94,7 @@ describe('channel texts without AI', () => {
   });
 
   it('projekt drafts and outputs', () => {
-    const d = buildDrafts(projekt, ['instagram', 'facebook']);
+    const d = build(projekt, ['instagram', 'facebook']);
     expect(Object.keys(d)).toEqual(['instagram', 'facebook']);
     expect(instagramCaption(d.instagram!)).toMatchSnapshot('instagram');
     expect(facebookText(d.facebook!, {})).toMatchSnapshot('facebook');
@@ -103,7 +104,7 @@ describe('channel texts without AI', () => {
   });
 
   it('uses AI bodies when present', () => {
-    const d = buildDrafts(
+    const d = build(
       {
         ...event,
         ai: {
@@ -132,7 +133,7 @@ describe('channel texts without AI', () => {
         base: Array.from({ length: 12 }, (_, i) => `#t${i}`),
       },
     };
-    const d = buildDrafts({ ...event, config: many }, ['instagram']);
+    const d = build({ ...event, config: many }, ['instagram']);
     expect(d.instagram!.fields['hashtags'].split(' ')).toHaveLength(8);
   });
 });

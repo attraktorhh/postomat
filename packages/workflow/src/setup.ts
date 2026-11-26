@@ -9,7 +9,13 @@ import {
   type Logger,
 } from '@postomat/core';
 import { createDb, type DbHandle } from '@postomat/db';
-import { createAiFromEnv } from '@postomat/ai';
+import {
+  AiError,
+  createAiFromEnv,
+  unavailableAi,
+  waitForAi,
+  type AiService,
+} from '@postomat/ai';
 import { LocalFileStore, WebDavClient, type MediaStore } from '@postomat/media';
 import { WordPressClient } from '@postomat/channel-wordpress';
 import { MediaWikiClient } from '@postomat/channel-mediawiki';
@@ -32,15 +38,54 @@ export function mediaStoreFromEnv(env: Env, log: Logger): MediaStore {
 }
 
 /**
+ * The AI service from env. Bot and worker cannot run without it (throws an
+ * `AiError('config')`); the web starts anyway and reports AI errors per call.
+ */
+export function aiFromEnv(env: Env, log: Logger, required: boolean): AiService {
+  try {
+    return createAiFromEnv(env, log.child('ai'));
+  } catch (e) {
+    if (required || !(e instanceof AiError)) throw e;
+    log.warn(e.message);
+    return unavailableAi(e);
+  }
+}
+
+/**
+ * Startup check for bot and worker: AI config present and the endpoint
+ * answers a structured probe within AI_STARTUP_TIMEOUT_MS. Throws otherwise,
+ * so the process exits and Docker/Coolify shows it as failing.
+ */
+export async function startupAi(
+  env: Env,
+  log: Logger,
+  create: (env: Env, log: Logger) => AiService = (e, l) =>
+    createAiFromEnv(e, l.child('ai')),
+): Promise<AiService> {
+  const ai = create(env, log);
+  await waitForAi(ai, { timeoutMs: env.AI_STARTUP_TIMEOUT_MS, logger: log });
+  log.info('AI endpoint ready', { model: env.AI_MODEL });
+  return ai;
+}
+
+/**
  * Builds the production dependencies from environment variables. Only the
  * worker runs pg-boss maintenance and cron; bot and web just send and work jobs.
  */
 export async function createDepsFromEnv(
   name: string,
-  opts: { startQueue?: boolean; queueMaintenance?: boolean } = {},
+  opts: {
+    startQueue?: boolean;
+    queueMaintenance?: boolean;
+    /** Default: required for everything but the web. */
+    requireAi?: boolean;
+  } = {},
 ): Promise<{ deps: WorkflowDeps; db: DbHandle; queue: PgBossQueue }> {
   const env = loadEnv();
   const log = createLogger(name, env.LOG_LEVEL);
+  // Before anything else: bot and worker refuse to start without a working AI.
+  const requireAi = opts.requireAi ?? name !== 'web';
+  const ai = requireAi ? await startupAi(env, log) : aiFromEnv(env, log, false);
   const config = loadConfig(env.POSTOMAT_CONFIG);
   // One source of truth for "has credentials": the same check picks the channel modes.
   const creds = credentialsFromEnv(env);
@@ -60,7 +105,7 @@ export async function createDepsFromEnv(
     queue,
     log,
     now: () => new Date(),
-    ai: createAiFromEnv(env, log.child('ai')),
+    ai,
     media: mediaStoreFromEnv(env, log),
     wordpress: creds.wordpress
       ? new WordPressClient({

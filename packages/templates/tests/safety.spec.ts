@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { build } from './fixtures.ts';
 import { DEFAULT_CONFIG } from '@postomat/core';
 import {
   buildDrafts,
@@ -21,7 +22,7 @@ const ctx = (facts: TemplateContext['facts']): TemplateContext => ({
 describe('member text in public channels', () => {
   it('strips HTML from the WordPress title', () => {
     const c = ctx({ title: 'Lötkurs<img src=x onerror=alert(1)> <b>neu</b>' });
-    const d = buildDrafts(c, ['wordpress']).wordpress!;
+    const d = build(c, ['wordpress']).wordpress!;
     const t = wordpressTitle(c, d);
     expect(t).not.toMatch(/[<>]/);
     expect(t).toBe('Lötkurs neu');
@@ -33,7 +34,7 @@ describe('member text in public channels', () => {
       description:
         "* Liste\n== Titel ==\n'''fett''' __NOTOC__ ~~~~ <script>x</script> [https://spam.example Link]",
     });
-    const d = buildDrafts(c, ['wiki']).wiki!;
+    const d = build(c, ['wiki']).wiki!;
     const out = wikiContent(c, d, { meetupId: '123abc', website: null });
     const body = out.slice(out.indexOf('}}\n') + 3);
     // Exactly one template, closed by us.
@@ -51,7 +52,7 @@ describe('member text in public channels', () => {
 
   it('puts an end after midnight on the next day', () => {
     const c = ctx({ title: 'Nachtlöten', startTime: '22:00' });
-    const d = buildDrafts(c, ['wiki']).wiki!;
+    const d = build(c, ['wiki']).wiki!;
     const out = wikiContent(c, d, { meetupId: '42' });
     expect(out).toContain('|date=2026/12/11 10:00:00 PM');
     expect(out).toContain('|enddate=2026/12/12 01:00:00 AM');
@@ -62,8 +63,8 @@ describe('member text in public channels', () => {
 describe('channel wording', () => {
   it('mentions Meetup sign-up on Instagram only when Meetup is used', () => {
     const c = ctx({ title: 'Lötkurs', places: 8 });
-    const withMeetup = buildDrafts(c, ['instagram', 'meetup']).instagram!;
-    const without = buildDrafts(c, ['instagram']).instagram!;
+    const withMeetup = build(c, ['instagram', 'meetup']).instagram!;
+    const without = build(c, ['instagram']).instagram!;
     expect(withMeetup.textDe).toContain(
       '🎟️ 8 Plätze, Anmeldung über Meetup (Link in Bio)',
     );
@@ -72,20 +73,17 @@ describe('channel wording', () => {
     expect(without.textEn).not.toContain('Meetup');
   });
 
-  it('only claims "Keine Vorkenntnisse" when the member said so', () => {
-    const plain = buildDrafts(ctx({ title: 'Kurs', isWorkshop: true }), [
-      'meetup',
-    ]).meetup!;
-    expect(plain.textDe).not.toContain('Vorkenntnisse');
-    const beginners = buildDrafts(
+  it('adds no claims of its own to the Meetup text', () => {
+    const d = build(
       ctx({ title: 'Kurs', isWorkshop: true, audience: 'Anfänger' }),
       ['meetup'],
     ).meetup!;
-    expect(beginners.textDe).toContain('✅ Keine Vorkenntnisse nötig');
+    expect(d.textDe).not.toContain('Vorkenntnisse');
+    expect(d.textDe).toContain('👥 Für: Anfänger');
   });
 
   it('writes the Facebook date as prose', () => {
-    const d = buildDrafts(ctx({ title: 'Lötkurs', endTime: '21:00' }), [
+    const d = build(ctx({ title: 'Lötkurs', endTime: '21:00' }), [
       'facebook',
     ]).facebook!;
     expect(d.textDe).toMatch(
@@ -94,7 +92,7 @@ describe('channel wording', () => {
   });
 
   it('takes the Instagram excerpt from the body, not the hook', () => {
-    const d = buildDrafts(
+    const d = build(
       ctx({ title: 'Lötkurs', description: 'Du lötest ein Abzeichen.' }),
       ['instagram'],
     ).instagram!;

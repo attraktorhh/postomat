@@ -35,25 +35,18 @@ describe('main flow: DM → approval → publish → Meetup → online', () => {
     expect(await h.db.db.select().from(posts)).toHaveLength(0);
   });
 
-  it('collects the event in the DM without AI', async () => {
+  it('collects the event in the DM, every message interpreted by the AI', async () => {
     expect(await h.dm(LENA, 'Hallo')).toEqual([
       'Hi Lena! Erzähl einfach, was du vorhast oder gemacht hast. Ein Satz reicht.',
-    ]);
-    const r1 = await h.dm(
-      LENA,
-      'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
-    );
-    expect(r1[0]).toContain('• Lötkurs für Anfänger\n• Freitag, 27.11.');
-    expect(r1[0]).toContain('1️⃣ Event');
-    expect(await h.dm(LENA, '1')).toEqual([
-      'Worum geht’s? Ein, zwei Sätze reichen.',
     ]);
     expect(
       await h.dm(
         LENA,
-        'An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig.',
+        'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
       ),
-    ).toEqual(['Um wie viel Uhr geht’s los?']);
+    ).toEqual([
+      'Cool, ein Workshop! Ich habe verstanden:\n• Lötkurs für Anfänger\n• Freitag, 27.11.\n\nUm wie viel Uhr geht’s los?',
+    ]);
     expect(
       await h.dm(
         LENA,
@@ -62,6 +55,17 @@ describe('main flow: DM → approval → publish → Meetup → online', () => {
     ).toEqual([
       'Alles klar, Freitag 11.12. · 18:00 · 8 Plätze · 5 € Material.\nHast du ein Foto dazu? Schick es einfach hier rein.',
     ]);
+    // The AI got "now" and the open question as context, never names or IDs.
+    const last = h.ai.calls.filter((c) => c.kind === 'interpret').at(-1)!;
+    expect(last.prompt).toContain('Montag, 2026-11-23, 14:02 Uhr');
+    expect(last.prompt).toContain('Europe/Berlin');
+    expect(last.input['kontext']).toMatchObject({
+      erwartet: 'startTime',
+      bekannteAngaben: { date: '2026-11-27' },
+    });
+    for (const c of h.ai.calls) {
+      expect(c.prompt).not.toMatch(/@\w+:localhost|Lena|lena/);
+    }
   });
 
   it('stores the photo in Nextcloud and asks for consent', async () => {
@@ -79,13 +83,16 @@ describe('main flow: DM → approval → publish → Meetup → online', () => {
     expect(h.webdav.files.has(photo.path)).toBe(true);
 
     const summary = await h.dm(LENA, '1');
-    expect(summary[0]).toContain('Super, so schicke ich es ans Medienteam:');
-    expect(summary[0]).toContain(
+    expect(summary[0]).toBe(
+      'Alles klar: Personen drauf, alle waren einverstanden.',
+    );
+    expect(summary[1]).toContain('Super, so schicke ich es ans Medienteam:');
+    expect(summary[1]).toContain(
       'Website · Wiki · Meetup · Instagram · Facebook · DE + EN',
     );
-    expect(summary[0]).toContain('http://postomat.test/b/1');
-    expect(summary[1]).toMatch(/banner-1\.png/);
-    expect(summary[2]).toBe(
+    expect(summary[1]).toContain('http://postomat.test/b/1');
+    expect(summary[2]).toMatch(/banner-1\.png/);
+    expect(summary[3]).toBe(
       'Antworte „abschicken“ oder ergänze im Browser eine Notiz.',
     );
     const [updated] = await h.db.db
@@ -245,5 +252,15 @@ describe('main flow: DM → approval → publish → Meetup → online', () => {
     );
     expect(h.wordpress.posts).toHaveLength(1);
     expect(h.queue.failures).toEqual([]);
+  });
+
+  it('sent every member DM text through the AI', () => {
+    const memberTexts = h.sentTexts
+      .filter((m) => !m.thread && m.user === LENA)
+      .map((m) => m.text);
+    expect(memberTexts.length).toBeGreaterThan(4);
+    expect(h.ai.interpretedTexts()).toEqual(memberTexts);
+    // Texts were written by the AI too (summary).
+    expect(h.ai.calls.some((c) => c.kind === 'texts')).toBe(true);
   });
 });

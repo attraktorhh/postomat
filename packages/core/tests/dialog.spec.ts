@@ -1,89 +1,175 @@
 import { describe, expect, it } from 'vitest';
 import {
   advanceDialog,
+  expectedAnswer,
   initialDialogState,
+  interpretContext,
   openQuestion,
+  NOT_UNDERSTOOD,
   type DialogDeps,
   type DialogState,
-  type DialogInput,
 } from '../src/dialog/dialog.ts';
 import { CONSENT_QUESTION } from '../src/consent.ts';
+import {
+  emptyAiFacts,
+  type AiFacts,
+  type Interpretation,
+} from '../src/interpretation.ts';
 
-const NOW = new Date('2026-11-23T13:02:00Z');
-const noAi: DialogDeps = { now: NOW, displayName: 'Lena' };
+const NOW = new Date('2026-11-23T13:02:00Z'); // Monday
+const deps: DialogDeps = { now: NOW, displayName: 'Lena' };
 
-async function run(inputs: Array<string | number>, deps: DialogDeps = noAi) {
-  let state: DialogState = initialDialogState();
-  const transcript: string[] = [];
+type Step =
+  | number
+  | (Partial<Omit<Interpretation, 'facts'>> & { facts?: Partial<AiFacts> });
+
+const interp = (s: Exclude<Step, number>): Interpretation => ({
+  intent: s.intent ?? 'provide_info',
+  type: s.type ?? null,
+  facts: { ...emptyAiFacts(), ...(s.facts ?? {}) },
+  consent: s.consent ?? null,
+  instruction: s.instruction ?? null,
+  text: s.text ?? null,
+});
+
+function run(steps: Step[], start: DialogState = initialDialogState()) {
+  let state = start;
+  const replies: string[][] = [];
   const effects: string[] = [];
-  for (const i of inputs) {
-    const input: DialogInput =
-      typeof i === 'number'
-        ? { kind: 'photo', photoId: i }
-        : { kind: 'text', text: i };
-    const r = await advanceDialog(state, input, deps);
+  for (const s of steps) {
+    const r = advanceDialog(
+      state,
+      typeof s === 'number'
+        ? { kind: 'photo', photoId: s }
+        : { kind: 'message', interpretation: interp(s) },
+      deps,
+    );
     state = r.state;
-    transcript.push(...r.replies);
+    replies.push(r.replies);
     effects.push(...r.effects.map((e) => e.kind));
   }
-  return { state, transcript, effects };
+  return { state, replies, last: replies.at(-1) ?? [], effects };
 }
 
-describe('dialog without AI', () => {
-  it('greets on hello', async () => {
-    const { transcript } = await run(['Hallo']);
-    expect(transcript).toEqual([
+const walkthrough: Step[] = [
+  {
+    type: 'event',
+    facts: {
+      title: 'Lötkurs für Anfänger',
+      description: 'An einem Abend lötest du dein eigenes Abzeichen.',
+      date: '2026-11-27',
+      isWorkshop: true,
+    },
+  },
+  {
+    facts: {
+      date: '2026-12-11',
+      startTime: '18:00',
+      places: 8,
+      costs: '5 € Material',
+    },
+  },
+];
+
+describe('AI-driven dialog', () => {
+  it('greets on smalltalk', () => {
+    const { last, state } = run([{ intent: 'smalltalk_or_thanks' }]);
+    expect(last).toEqual([
       'Hi Lena! Erzähl einfach, was du vorhast oder gemacht hast. Ein Satz reicht.',
     ]);
+    expect(state.step).toBe('idle');
   });
 
-  it('runs the event flow with the type menu and skips answered questions', async () => {
-    const { transcript, state, effects } = await run([
-      'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
-      '1',
-      'An einem Abend lötest du dein eigenes blinkendes Abzeichen.',
-      'Nee, den Freitag danach, also 11.12.! 18 Uhr, max. 8 Leute, 5 € fürs Material',
-      101,
-      '1',
+  it('runs the walkthrough: multi-fact answers skip questions, corrections overwrite', () => {
+    const { replies, state } = run(walkthrough);
+    expect(replies[0]).toEqual([
+      'Cool, ein Workshop! Ich habe verstanden:\n• Lötkurs für Anfänger\n• Freitag, 27.11.\n\nUm wie viel Uhr geht’s los?',
     ]);
-    expect(transcript[0]).toBe(
-      'Ich habe verstanden:\n• Lötkurs für Anfänger\n• Freitag, 27.11.\n\nWas möchtest du einreichen?\n1️⃣ Event (ein Termin im Attraktor)\n2️⃣ Projekt (etwas, das du gebaut hast)',
-    );
-    // title and date are known → next is the description
-    expect(transcript[1]).toBe('Worum geht’s? Ein, zwei Sätze reichen.');
-    expect(transcript[2]).toBe('Um wie viel Uhr geht’s los?');
-    expect(transcript[3]).toBe(
+    expect(replies[1]).toEqual([
       'Alles klar, Freitag 11.12. · 18:00 · 8 Plätze · 5 € Material.\nHast du ein Foto dazu? Schick es einfach hier rein.',
-    );
-    expect(transcript[4]).toBe(CONSENT_QUESTION);
-    expect(effects).toEqual(['set_consent', 'summary']);
-    expect(state.step).toBe('review');
+    ]);
     expect(state.facts).toMatchObject({
-      title: 'Lötkurs für Anfänger',
       date: '2026-12-11',
       startTime: '18:00',
       places: 8,
       costs: '5 € Material',
       isWorkshop: true,
     });
+    expect(state.expecting).toBe('photo');
   });
 
-  it('asks every fixed question when answers are short and allows skipping optional ones', async () => {
-    const { transcript, effects } = await run([
-      'Hallo',
-      'Ich mach was',
-      '1',
-      'Repair Café',
-      'Wir reparieren.',
-      '12.12.',
-      '15',
-      'weiter',
-      '-',
-      'nö',
+  it('asks the consent question for a photo and maps the AI consent answer', () => {
+    const { replies, effects, state } = run([
+      ...walkthrough,
+      101,
+      { intent: 'answer_consent', consent: 'alle_einverstanden' },
     ]);
-    expect(transcript.slice(2)).toEqual([
-      'Wie soll der Titel lauten?',
-      'Worum geht’s? Ein, zwei Sätze reichen.',
+    expect(replies[2]).toEqual([CONSENT_QUESTION]);
+    expect(replies[3]).toEqual([
+      'Alles klar: Personen drauf, alle waren einverstanden.',
+    ]);
+    expect(effects).toEqual(['set_consent', 'summary']);
+    expect(state.step).toBe('review');
+  });
+
+  it.each([
+    ['alle_einverstanden', 'frei'],
+    ['nicht_gefragt', 'einwilligung_fehlt'],
+    ['keine_personen', 'frei'],
+  ] as const)('consent %s → %s', (answer, consent) => {
+    const r = advanceDialog(
+      {
+        ...run(walkthrough).state,
+        expecting: 'consent',
+        pendingConsentPhotoIds: [7],
+        photoCount: 1,
+      },
+      {
+        kind: 'message',
+        interpretation: interp({ intent: 'answer_consent', consent: answer }),
+      },
+      deps,
+    );
+    expect(r.effects[0]).toEqual({
+      kind: 'set_consent',
+      photoIds: [7],
+      consent,
+    });
+  });
+
+  it('re-asks the consent question when the answer is unclear', () => {
+    const { last, effects, state } = run([
+      ...walkthrough,
+      101,
+      { intent: 'unclear' },
+    ]);
+    expect(last).toEqual([`${NOT_UNDERSTOOD}\n${CONSENT_QUESTION}`]);
+    expect(effects).toEqual([]);
+    expect(state.expecting).toBe('consent');
+  });
+
+  it('asks the type when the AI cannot tell, then takes the choice', () => {
+    const r = run([{ facts: {} }]);
+    expect(r.last[0]).toContain('Was möchtest du einreichen?');
+    expect(r.state.expecting).toBe('type');
+    const r2 = run([{ intent: 'choose_type', type: 'event' }], r.state);
+    expect(r2.last).toEqual(['Wie soll der Titel lauten?']);
+  });
+
+  it('asks every question with short answers and skips optional ones in free wording', () => {
+    const { replies, effects } = run([
+      { intent: 'choose_type', type: 'event' },
+      { facts: { title: 'Repair Café' } },
+      { facts: { description: 'Wir reparieren.' } },
+      { facts: { date: '2026-12-12' } },
+      { facts: { startTime: '15:00' } },
+      { intent: 'skip_optional' },
+      { intent: 'skip_optional' },
+      { intent: 'decline_photo' },
+    ]);
+    expect(replies.map((r) => r[0])).toEqual([
+      'Cool, ein Event!\nWie soll der Titel lauten?',
+      'Alles klar: Repair Café.\nWorum geht’s? Ein, zwei Sätze reichen.',
       'An welchem Tag ist es?',
       'Alles klar, Samstag 12.12.\nUm wie viel Uhr geht’s los?',
       'Alles klar, 15:00.\nWie viele Plätze gibt es? (Ist es egal, schreib „weiter“.)',
@@ -94,196 +180,171 @@ describe('dialog without AI', () => {
     expect(effects).toEqual(['summary']);
   });
 
-  it('re-asks when the answer has no usable date', async () => {
-    const { transcript } = await run([
-      'Ich mach was',
-      '1',
-      'Repair Café',
-      'Wir reparieren.',
-      'weiß noch nicht so genau',
+  it('refuses to skip a required question', () => {
+    const { last } = run([
+      { intent: 'choose_type', type: 'event' },
+      { intent: 'skip_optional' },
     ]);
-    expect(transcript.at(-1)).toContain('Ich habe kein Datum erkannt');
+    expect(last).toEqual([
+      'Das brauche ich leider noch.\nWie soll der Titel lauten?',
+    ]);
+    expect(run([{ intent: 'choose_type', type: 'event' }]).last).toEqual([
+      'Cool, ein Event!\nWie soll der Titel lauten?',
+    ]);
   });
 
-  it('runs the Projekt flow and requires a photo', async () => {
-    const { transcript, effects, state } = await run([
-      'Ich habe eine Nixie-Uhr gebaut',
-      '2',
-      'Eine Uhr mit alten Röhren.',
-      'Die Hochspannung.',
-      'nein',
-      7,
-      '2',
+  it('re-asks with a hint when the answer has no usable value', () => {
+    const { last } = run([
+      {
+        type: 'event',
+        facts: { title: 'Repair Café', description: 'Wir reparieren.' },
+      },
+      { facts: {} },
     ]);
-    expect(transcript).toContain('Was war das Kniffligste?');
-    expect(
-      transcript.filter((t) =>
-        t.includes('Für Projekte brauche ich mindestens eins'),
-      ).length,
-    ).toBe(2);
+    expect(last[0]).toContain('Ich habe kein Datum erkannt');
+  });
+
+  it.each([
+    [{ date: '2026-02-30' }, 'Das Datum konnte ich nicht zuordnen.'],
+    [{ date: '2026-11-20' }, 'Das Datum liegt in der Vergangenheit.'],
+    [
+      { date: '2026-12-11', startTime: '25:00' },
+      'Die Uhrzeit konnte ich nicht zuordnen.',
+    ],
+  ] as const)('drops invalid AI values %j and asks again', (facts, hint) => {
+    const { last, state } = run([
+      {
+        type: 'event',
+        facts: { title: 'Repair Café', description: 'Wir reparieren.' },
+      },
+      { facts },
+    ]);
+    expect(last[0]).toContain(hint);
+    expect(state.facts.startTime).toBeUndefined();
+    if (facts.date !== '2026-12-11') expect(state.facts.date).toBeUndefined();
+    expect(last[0]).toMatch(
+      /An welchem Tag ist es\?|Um wie viel Uhr geht’s los\?/,
+    );
+  });
+
+  it('drops an end time before the start time', () => {
+    const { state, last } = run([
+      {
+        type: 'event',
+        facts: { title: 'X', description: 'Y.', date: '2026-12-11' },
+      },
+      { facts: { startTime: '18:00', endTime: '17:00' } },
+    ]);
+    expect(state.facts.startTime).toBe('18:00');
+    expect(state.facts.endTime).toBeUndefined();
+    expect(last[0]).toContain('Das Ende liegt vor dem Beginn');
+  });
+
+  it('runs the Projekt flow and requires a photo', () => {
+    const { replies, effects } = run([
+      { type: 'projekt', facts: { title: 'Nixie-Uhr' } },
+      { facts: { description: 'Eine Uhr mit alten Röhren.' } },
+      { facts: { trickiest: 'Die Hochspannung.' } },
+      { intent: 'decline_photo' },
+      7,
+      { intent: 'answer_consent', consent: 'nicht_gefragt' },
+    ]);
+    expect(replies[0][0]).toContain('Cool, ein Projekt!');
+    expect(replies[0][0]).toContain('Was hast du gebaut?');
+    expect(replies[1][0]).toBe('Was war das Kniffligste?');
+    expect(replies[3]).toEqual([
+      'Schick mir bitte ein Foto davon. Für Projekte brauche ich mindestens eins.',
+    ]);
     expect(effects).toEqual(['set_consent', 'summary']);
-    expect(state.type).toBe('projekt');
   });
 
-  it('takes a bare "1" right after the greeting as the type choice', async () => {
-    const { transcript, state } = await run(['hi', '1']);
-    expect(state.type).toBe('event');
-    expect(state.facts.title).toBeUndefined();
-    expect(transcript.at(-1)).toBe('Wie soll der Titel lauten?');
-  });
-
-  it('keeps facts sent instead of a type answer', async () => {
-    const { transcript, state } = await run([
-      'Ich will einen Lötkurs machen',
-      'am 11.12. um 18 Uhr',
-    ]);
-    expect(state.facts).toMatchObject({
-      date: '2026-12-11',
-      startTime: '18:00',
-    });
-    expect(transcript.at(-1)).toContain('Antworte bitte mit 1 oder 2.');
-    expect(transcript.at(-1)).toContain('Freitag 11.12. · 18:00');
-  });
-
-  it('does not take a fact correction as the description', async () => {
-    const { transcript, state } = await run([
-      'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
-      '1',
-      'Nee, den Freitag danach, also 11.12.! 18 Uhr, max. 8 Leute, 5 € fürs Material',
-    ]);
-    expect(state.facts.description).toBeUndefined();
-    expect(state.facts).toMatchObject({ date: '2026-12-11', places: 8 });
-    expect(transcript.at(-1)).toBe(
-      'Alles klar, Freitag 11.12. · 18:00 · 8 Plätze · 5 € Material.\nWorum geht’s? Ein, zwei Sätze reichen.',
+  it('turns change wishes and notes in review into effects', () => {
+    const review = run([...walkthrough, { intent: 'decline_photo' }]).state;
+    expect(review.step).toBe('review');
+    const change = advanceDialog(
+      review,
+      {
+        kind: 'message',
+        interpretation: interp({
+          intent: 'request_text_change',
+          instruction: 'lustiger',
+        }),
+      },
+      deps,
     );
-  });
-
-  it('asks the photo question again after a title correction', async () => {
-    const { transcript, state, effects } = await run([
-      'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
-      '1',
-      'Wir löten Abzeichen.',
-      '11.12. 18 Uhr',
-      'weiter',
-      '-',
-      'Titel: Lötkurs für Einsteiger',
-    ]);
-    expect(state.facts.title).toBe('Lötkurs für Einsteiger');
-    expect(state.expecting).toBe('photo');
-    expect(effects).not.toContain('summary');
-    expect(transcript.at(-1)).toBe(
-      'Alles klar: Lötkurs für Einsteiger.\nHast du ein Foto dazu? Schick es einfach hier rein.',
-    );
-  });
-
-  it('does not store a "Titel:" correction as the description', async () => {
-    const { transcript, state } = await run([
-      'hi',
-      '1',
-      'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
-      'Titel: Lötkurs für Einsteiger',
-      'Wir löten Abzeichen.',
-    ]);
-    expect(state.facts.title).toBe('Lötkurs für Einsteiger');
-    expect(state.facts.description).toBe('Wir löten Abzeichen.');
-    expect(transcript[2]).toBe(
-      'Alles klar, Lötkurs für Anfänger · Freitag 27.11.\nWorum geht’s? Ein, zwei Sätze reichen.',
-    );
-    expect(transcript[3]).toBe(
-      'Alles klar: Lötkurs für Einsteiger.\nWorum geht’s? Ein, zwei Sätze reichen.',
-    );
-  });
-
-  it('names the open question (for "abschicken" too early)', async () => {
-    const { state } = await run(['hi', '1', 'Repair Café', 'Wir reparieren.']);
-    expect(openQuestion(state)).toBe('An welchem Tag ist es?');
-    expect(openQuestion(initialDialogState())).toContain('Erzähl mir erst');
-  });
-
-  it('turns free text in review into a change request without AI', async () => {
-    const { effects } = await run([
-      'Ich habe eine Nixie-Uhr gebaut',
-      '2',
-      'Uhr.',
-      'Röhren.',
-      7,
-      '3',
-      'Text ändern: bitte lustiger',
-    ]);
-    expect(effects).toEqual(['set_consent', 'summary', 'change_request']);
-  });
-
-  it('asks a Projekt what was built', async () => {
-    const { transcript } = await run(['Ich habe eine Nixie-Uhr gebaut', '2']);
-    expect(transcript.at(-1)).toBe(
-      'Was hast du gebaut? Ein, zwei Sätze reichen.',
-    );
-  });
-
-  it('treats only explicit wishes in review as text changes', async () => {
-    const base = [
-      'Ich habe eine Nixie-Uhr gebaut',
-      '2',
-      'Uhr.',
-      'Röhren.',
-      7,
-      '3',
-    ] as const;
-    const ok = await run([...base, 'passt']);
-    expect(ok.effects).toEqual(['set_consent', 'summary']);
-    expect(ok.transcript.at(-1)).toContain('Antworte „abschicken“');
-    const thanks = await run([...base, 'Danke!']);
-    expect(thanks.effects).toEqual(['set_consent', 'summary']);
-    const note = await run([...base, 'Bitte erwähnt den Lötclub']);
-    expect(note.effects).toEqual(['set_consent', 'summary', 'note']);
-    const change = await run([...base, 'Ändere bitte den Text, lustiger']);
     expect(change.effects).toEqual([
-      'set_consent',
-      'summary',
-      'change_request',
+      { kind: 'change_request', instruction: 'lustiger' },
     ]);
+    const note = advanceDialog(
+      review,
+      {
+        kind: 'message',
+        interpretation: interp({
+          intent: 'note_for_team',
+          text: 'bitte erst ab Montag',
+        }),
+      },
+      deps,
+    );
+    expect(note.effects).toEqual([{ kind: 'note' }]);
+    expect(note.replies[0]).toContain('Notiz fürs Medienteam');
+    const thanks = advanceDialog(
+      review,
+      {
+        kind: 'message',
+        interpretation: interp({ intent: 'smalltalk_or_thanks' }),
+      },
+      deps,
+    );
+    expect(thanks.effects).toEqual([]);
   });
-});
 
-describe('dialog with AI', () => {
-  it('uses the AI extraction and skips the type menu (walkthrough)', async () => {
-    const deps: DialogDeps = {
-      ...noAi,
-      aiExtract: async ({ text }) =>
-        text.startsWith('Ich will')
-          ? {
-              type: 'event',
-              facts: {
-                title: 'Lötkurs für Anfänger',
-                date: '2026-11-27',
-                isWorkshop: true,
-                description: 'An einem Abend lernst du löten.',
-              },
-            }
-          : { facts: {} },
+  it('re-sends the summary when facts change in review', () => {
+    const review = run([...walkthrough, { intent: 'decline_photo' }]).state;
+    const r = advanceDialog(
+      review,
+      {
+        kind: 'message',
+        interpretation: interp({ facts: { startTime: '19:00' } }),
+      },
+      deps,
+    );
+    expect(r.replies).toEqual(['Alles klar, 19:00.']);
+    expect(r.effects).toEqual([{ kind: 'summary' }]);
+  });
+
+  it('retries a failed summary on "nochmal"', () => {
+    const review = {
+      ...run([...walkthrough, { intent: 'decline_photo' }]).state,
+      summaryPending: true,
     };
-    const { transcript } = await run(
-      [
-        'Ich will nächsten Freitag einen Lötkurs für Anfänger machen',
-        'Nee, den Freitag danach, also 11.12.! 18 Uhr, max. 8 Leute, 5 € fürs Material',
-      ],
+    expect(expectedAnswer(review)).toBe('retry');
+    const r = advanceDialog(
+      review,
+      { kind: 'message', interpretation: interp({ intent: 'retry' }) },
       deps,
     );
-    expect(transcript[0]).toBe(
-      'Cool, ein Workshop! Ich habe verstanden:\n• Lötkurs für Anfänger\n• Freitag, 27.11.\n\nUm wie viel Uhr geht’s los?',
-    );
-    expect(transcript[1]).toBe(
-      'Alles klar, Freitag 11.12. · 18:00 · 8 Plätze · 5 € Material.\nHast du ein Foto dazu? Schick es einfach hier rein.',
-    );
+    expect(r.effects).toEqual([{ kind: 'summary' }]);
   });
 
-  it('falls back to the parser when the AI returns null', async () => {
-    const deps: DialogDeps = { ...noAi, aiExtract: async () => null };
-    const { transcript } = await run(
-      ['Ich will nächsten Freitag einen Lötkurs für Anfänger machen'],
-      deps,
-    );
-    expect(transcript[0]).toContain('• Lötkurs für Anfänger');
-    expect(transcript[0]).toContain('Worum geht’s?');
+  it('says it did not understand and repeats the open question', () => {
+    const { last } = run([
+      { type: 'event', facts: { title: 'X', description: 'Y.' } },
+      { intent: 'unclear' },
+    ]);
+    expect(last).toEqual([`${NOT_UNDERSTOOD}\nAn welchem Tag ist es?`]);
+  });
+
+  it('builds the AI context without names', () => {
+    const s = run(walkthrough).state;
+    const ctx = interpretContext(s, { openRueckfrage: null });
+    expect(ctx).toMatchObject({
+      expecting: 'photo',
+      question: 'Hast du ein Foto dazu? Schick es einfach hier rein.',
+      type: 'event',
+      hasPhoto: false,
+    });
+    expect(JSON.stringify(ctx)).not.toContain('Lena');
+    expect(openQuestion(initialDialogState())).toContain('Erzähl mir');
   });
 });

@@ -1,4 +1,10 @@
-import { localDateOf, shortWeekdayDateDe, localTimeOf } from '@postomat/core';
+import {
+  localDateOf,
+  shortWeekdayDateDe,
+  localTimeOf,
+  type CandidateChoice,
+} from '@postomat/core';
+import { isAiError } from '@postomat/ai';
 import {
   and,
   channelPosts,
@@ -13,7 +19,7 @@ import {
   matchMeetupEvent,
   type FeedEvent,
 } from '@postomat/channel-meetup';
-import { THREAD } from '@postomat/templates';
+import { DM, THREAD } from '@postomat/templates';
 import type { WorkflowDeps } from './deps.ts';
 import { addHistory, getChannel, getPost, updateChannel } from './repo.ts';
 import { notifyMemberLink, recomputeOverall, WorkflowError } from './posts.ts';
@@ -217,16 +223,25 @@ export async function pollMeetup(
   return { checked: candidates.length, linked, asked };
 }
 
+export type MeetupReplyResult =
+  /** No open question: a normal thread reply. */
+  | 'no_question'
+  /** Linked, declined, or the AI failed (the thread was told): not a change request. */
+  | 'handled'
+  /** The reply is about something else: a normal thread reply (U4). */
+  | 'unrelated';
+
 /**
- * Handles a thread reply to the Meetup question. Returns true when the reply
- * was an answer (number or "nein") – such replies are not change requests.
+ * Handles a Medienteam thread reply while the Meetup candidate question is
+ * open. The AI reads the reply ("2", "das zweite", "keins davon", or something
+ * unrelated); nothing else interprets the text.
  */
 export async function answerMeetupQuestion(
   deps: WorkflowDeps,
   postId: number,
   text: string,
   actor: string,
-): Promise<boolean> {
+): Promise<MeetupReplyResult> {
   const [q] = await deps.db
     .select()
     .from(meetupQuestions)
@@ -237,9 +252,27 @@ export async function answerMeetupQuestion(
       ),
     )
     .limit(1);
-  if (!q) return false;
-  const t = text.trim().toLowerCase();
-  if (/^(nein|nö|nee|ne|keins?|keines)(?!\p{L})/u.test(t)) {
+  if (!q) return 'no_question';
+  let reply: CandidateChoice;
+  try {
+    reply = await deps.ai.interpretCandidateReply({
+      text,
+      candidates: q.candidates.map((c) => {
+        const start = new Date(c.start);
+        return {
+          title: c.title,
+          date: localDateOf(start),
+          time: localTimeOf(start),
+        };
+      }),
+    });
+  } catch (e) {
+    if (!isAiError(e)) throw e;
+    await deps.queue.send('bot.thread', { postId, text: DM.aiUnavailable });
+    return 'handled';
+  }
+  if (reply.choice === 'unrelated') return 'unrelated';
+  if (reply.choice === 'none') {
     await deps.db
       .update(meetupQuestions)
       .set({ resolved: true })
@@ -248,11 +281,10 @@ export async function answerMeetupQuestion(
       postId,
       text: THREAD.meetupDeclined,
     });
-    return true;
+    return 'handled';
   }
-  const m = /^\s*([1-9])(?:\uFE0F?\u20E3)?\s*[.!)]?\s*$/u.exec(t);
-  const pick = m ? q.candidates[Number(m[1]) - 1] : undefined;
-  if (!pick) return false;
+  const pick = q.candidates[reply.choice - 1];
+  if (!pick) return 'unrelated';
   try {
     // linkMeetup re-checks that the event isn't linked to another post meanwhile.
     await linkMeetup(
@@ -267,11 +299,11 @@ export async function answerMeetupQuestion(
       postId,
       text: `Das hat nicht geklappt: ${e.message}.`,
     });
-    return true;
+    return 'handled';
   }
   await deps.queue.send('bot.thread', {
     postId,
     text: THREAD.meetupLinked(pick.url),
   });
-  return true;
+  return 'handled';
 }

@@ -47,7 +47,7 @@ export const DM = {
     'Postomat ist nur für Attraktor-Mitglieder. Frag gern ein Mitglied, ob es deinen Beitrag einreicht.',
   help:
     'So funktioniert’s: Erzähl mir in einem Satz, was du vorhast (Event) oder gebaut hast (Projekt). Ich frage nach, was fehlt, und schicke es ans Medienteam.\n\n' +
-    'Befehle:\n• neu – neuen Beitrag starten\n• status – deine Beiträge\n• abbrechen – aktuellen Entwurf verwerfen\n• abschicken – Entwurf ans Medienteam schicken\n• hilfe – diese Hilfe',
+    'Du kannst mir auch einfach schreiben, was du willst, zum Beispiel:\n• neu – neuen Beitrag starten\n• status – deine Beiträge\n• abbrechen – aktuellen Entwurf verwerfen\n• abschicken – Entwurf ans Medienteam schicken\n• hilfe – diese Hilfe',
   submitted: 'Ist beim Medienteam 🙌 Ich melde mich, sobald es online ist.',
   cancelled:
     'Okay, den Entwurf habe ich verworfen. Schreib einfach, wenn du etwas Neues hast.',
@@ -64,8 +64,18 @@ export const DM = {
   photoTooLarge:
     'Das Foto ist mir zu groß (über 25 MB). Schick es bitte etwas kleiner, zum Beispiel als normales Handyfoto.',
   rueckfrageAck: 'Danke, ich gebe das ans Medienteam weiter.',
-  noteStored:
-    'Ich habe das als Notiz fürs Medienteam gespeichert. Texte ändern kannst du mit „Text ändern: …“. Antworte „abschicken“, wenn alles passt.',
+  /** Any AI failure (timeout, HTTP error, schema mismatch): nothing changed. */
+  aiUnavailable:
+    'Ich kann deine Nachricht gerade nicht verarbeiten. Bitte versuch es in ein paar Minuten noch mal.',
+  textsPending:
+    'Die Texte fehlen noch. Schreib „nochmal“, dann versuche ich es erneut.',
+  textsFailed: (title: string) =>
+    `Die Texte für „${title}“ konnten gerade nicht neu erstellt werden. Das Medienteam versucht es später noch einmal.`,
+  confirmCancel: (title: string) =>
+    `Deinen Entwurf „${title}“ verwerfen? (ja/nein)`,
+  confirmNew: (title: string) =>
+    `Du hast schon einen Entwurf „${title}“. Verwerfen und neu anfangen? (ja/nein)`,
+  keepGoing: 'Okay, dann machen wir weiter.',
   textsUpdated:
     'Ich habe die Texte angepasst. Antworte „abschicken“ oder ergänze im Browser eine Notiz.',
   noPosts: 'Du hast noch keine Beiträge. Erzähl einfach, was du vorhast!',

@@ -4,6 +4,8 @@ import type { Logger } from '@postomat/core';
 /** Job names and payloads. */
 export interface JobPayloads {
   'banner.render': { postId: number };
+  /** AI texts after "Erneut zur Freigabe" with changed facts, or "Erneut versuchen". */
+  'texts.generate': { postId: number; actor: string };
   'publish.channel': { postId: number; channel: 'wordpress' | 'wiki' };
   'publish.update': { postId: number; channel: 'wordpress' | 'wiki' };
   'meetup.poll': Record<string, never>;
@@ -53,6 +55,7 @@ export interface JobQueue {
 /** Every job type; the `satisfies` makes a new job in JobPayloads a compile error here. */
 const QUEUES = {
   'banner.render': true,
+  'texts.generate': true,
   'publish.channel': true,
   'publish.update': true,
   'publish.sweep': true,

@@ -5,18 +5,20 @@ import {
   type PostType,
 } from '@postomat/core';
 
-/** Optional AI-written bodies. Templates use them when present. */
+/** AI-written bodies (`AiService.writeTexts`). Drafts are never built without them. */
 export interface AiTexts {
   /** Instagram hook (question or exclamation), German. */
-  hookDe?: string;
+  hookDe: string;
   /** 2–3 short German sentences. */
-  bodyDe?: string;
+  bodyDe: string;
   /** English title. */
-  titleEn?: string;
+  titleEn: string;
   /** 2–3 short English sentences. */
-  bodyEn?: string;
+  bodyEn: string;
   /** One-sentence English short version for Instagram/Facebook. */
-  shortEn?: string;
+  shortEn: string;
+  /** The cost note in English ("€5 for material", "free"). */
+  costsEn?: string;
 }
 
 export interface TemplateContext {
@@ -25,7 +27,8 @@ export interface TemplateContext {
   config: PostomatConfig;
   /** Used for the time range when no end time is set. */
   defaultDurationMin: number;
-  ai?: AiTexts | null;
+  /** Required for `buildDrafts`; publishing works from the stored drafts. */
+  ai?: AiTexts;
 }
 
 export interface Links {
@@ -45,15 +48,6 @@ export function effectiveEnd(ctx: TemplateContext): string | undefined {
 export const title = (ctx: TemplateContext): string =>
   ctx.facts.title?.trim() || 'Ohne Titel';
 
-/** "5 € Material" → "€5 for material", "kostenlos" → "free". */
-export function costsEn(costs?: string): string | undefined {
-  if (!costs) return undefined;
-  if (/kostenlos|umsonst|gratis/i.test(costs)) return 'free';
-  const amount = /(\d+(?:,\d{1,2})?)/.exec(costs)?.[1]?.replace(',', '.');
-  if (!amount) return costs;
-  return `€${amount}${/material/i.test(costs) ? ' for material' : ''}`;
-}
-
 export function hashtags(ctx: TemplateContext): string {
   const h = ctx.config.hashtags;
   const tags = [
@@ -63,11 +57,3 @@ export function hashtags(ctx: TemplateContext): string {
   ];
   return Array.from(new Set(tags)).slice(0, 8).join(' ');
 }
-
-export const firstSentences = (text: string | undefined, max = 3): string =>
-  (text ?? '')
-    .split(/(?<=[.!?])\s+/)
-    .filter(Boolean)
-    .slice(0, max)
-    .join(' ')
-    .trim();

@@ -21,7 +21,8 @@ export interface WorkflowDeps {
   queue: JobQueue;
   log: Logger;
   now: () => Date;
-  ai: AiService | null;
+  /** Required: the only way Postomat interprets chat text and writes texts. */
+  ai: AiService;
   /** Nextcloud WebDAV, or a local folder fallback. */
   media: MediaStore;
   /** Null when the channel has no credentials (copy mode). */

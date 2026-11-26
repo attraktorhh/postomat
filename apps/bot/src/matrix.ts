@@ -265,4 +265,14 @@ export class SdkMatrix implements MatrixPort {
   async ensureDm(userId: string): Promise<string> {
     return this.client.dms.getOrCreateDm(userId);
   }
+
+  async setTyping(
+    roomId: string,
+    typing: boolean,
+    timeoutMs = 30000,
+  ): Promise<void> {
+    await this.client
+      .setTyping(roomId, typing, timeoutMs)
+      .catch(() => undefined);
+  }
 }

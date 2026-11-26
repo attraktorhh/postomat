@@ -9,11 +9,10 @@ import {
   wikiDateTime,
 } from '@postomat/core';
 import {
-  costsEn,
   effectiveEnd,
-  firstSentences,
   hashtags,
   title,
+  type AiTexts,
   type Links,
   type TemplateContext,
 } from './context.ts';
@@ -25,26 +24,11 @@ export interface ChannelDraft {
   fields: Record<string, string>;
 }
 
-const hookDe = (ctx: TemplateContext): string => {
-  if (ctx.ai?.hookDe) return ctx.ai.hookDe;
-  if (ctx.type === 'projekt')
-    return `Frisch aus der Werkstatt: ${title(ctx)}! 🛠️`;
-  return ctx.facts.isWorkshop
-    ? `Lust auf „${title(ctx)}“? 🔥`
-    : `Kommt vorbei: ${title(ctx)}! 🔥`;
-};
+/** Drafts are only built with AI-written bodies; the templates add the fixed frame. */
+export type DraftContext = TemplateContext & { ai: AiTexts };
 
-const bodyDe = (ctx: TemplateContext): string => {
-  if (ctx.ai?.bodyDe) return ctx.ai.bodyDe;
-  const f = ctx.facts;
-  if (ctx.type === 'projekt') {
-    const tricky = f.trickiest
-      ? ` Das Kniffligste: ${f.trickiest.replace(/[.!]?$/, '.')}`
-      : '';
-    return `${firstSentences(f.description)}${tricky}`.trim();
-  }
-  return firstSentences(f.description) || `${title(ctx)} im Attraktor.`;
-};
+const hookDe = (ctx: DraftContext): string => ctx.ai.hookDe;
+const bodyDe = (ctx: DraftContext): string => ctx.ai.bodyDe;
 
 const placesCostsDe = (ctx: TemplateContext): string | undefined => {
   const f = ctx.facts;
@@ -59,35 +43,9 @@ const whenDe = (ctx: TemplateContext): string | undefined =>
     ? bannerWhenDe(ctx.facts.date, ctx.facts.startTime, effectiveEnd(ctx))
     : undefined;
 
-const whenEn = (ctx: TemplateContext): string | undefined => {
-  const f = ctx.facts;
-  if (!f.date) return undefined;
-  return f.startTime
-    ? `${dateEn(f.date)}, ${timeRangeEn(f.startTime, effectiveEnd(ctx))}`
-    : dateEn(f.date);
-};
-
-const titleEn = (ctx: TemplateContext): string => ctx.ai?.titleEn ?? title(ctx);
-
-function shortEn(ctx: TemplateContext, signup = true): string {
-  if (ctx.ai?.shortEn) return ctx.ai.shortEn;
-  const f = ctx.facts;
-  if (ctx.type === 'projekt')
-    return `Built at Attraktor: ${titleEn(ctx)}. Drop by and have a look!`;
-  const extras = [
-    f.places !== undefined ? `${f.places} spots` : undefined,
-    costsEn(f.costs),
-  ].filter(Boolean);
-  const when = whenEn(ctx);
-  return `Join us${when ? ` on ${when}` : ''} at Attraktor makerspace in Hamburg-Altona: ${titleEn(ctx)}.${
-    extras.length ? ` ${extras.join(', ')}.` : ''
-  }${signup ? ' Sign up via Meetup.' : ''}`;
-}
-
-function bodyEn(ctx: TemplateContext, signup = true): string {
-  if (ctx.ai?.bodyEn) return ctx.ai.bodyEn;
-  return shortEn(ctx, signup);
-}
+const titleEn = (ctx: DraftContext): string => ctx.ai.titleEn;
+const shortEn = (ctx: DraftContext): string => ctx.ai.shortEn;
+const bodyEn = (ctx: DraftContext): string => ctx.ai.bodyEn;
 
 /** "am Fr 11.12. um 18 Uhr" / "am Fr 11.12. von 18 bis 21 Uhr" (Facebook prose). */
 const whenProseDe = (ctx: TemplateContext): string | undefined => {
@@ -105,7 +63,7 @@ const whenProseDe = (ctx: TemplateContext): string | undefined => {
 };
 
 // ---------- Instagram ----------
-function instagramDraft(ctx: TemplateContext, meetupOn: boolean): ChannelDraft {
+function instagramDraft(ctx: DraftContext, meetupOn: boolean): ChannelDraft {
   const lines = [hookDe(ctx), '', `✨ ${bodyDe(ctx)}`];
   if (ctx.type === 'event') {
     const when = whenDe(ctx);
@@ -120,13 +78,13 @@ function instagramDraft(ctx: TemplateContext, meetupOn: boolean): ChannelDraft {
   }
   return {
     textDe: lines.join('\n'),
-    textEn: `🇬🇧 ${shortEn(ctx, meetupOn)}`,
+    textEn: `🇬🇧 ${shortEn(ctx)}`,
     fields: { hashtags: hashtags(ctx) },
   };
 }
 
 // ---------- Facebook ----------
-function facebookDraft(ctx: TemplateContext, meetupOn: boolean): ChannelDraft {
+function facebookDraft(ctx: DraftContext, meetupOn: boolean): ChannelDraft {
   let de: string;
   if (ctx.type === 'event') {
     const when = whenProseDe(ctx);
@@ -137,55 +95,51 @@ function facebookDraft(ctx: TemplateContext, meetupOn: boolean): ChannelDraft {
   }
   return {
     textDe: de.replace(/\s+/g, ' ').trim(),
-    textEn: `🇬🇧 ${shortEn(ctx, meetupOn)}`,
+    textEn: `🇬🇧 ${shortEn(ctx)}`,
     fields: { hashtags: hashtags(ctx) },
   };
 }
 
 // ---------- Meetup ----------
-function meetupDraft(ctx: TemplateContext): ChannelDraft {
+function meetupDraft(ctx: DraftContext): ChannelDraft {
   const f = ctx.facts;
   const de = [`🔧 Was dich erwartet`, bodyDe(ctx), ''];
   const bullets: string[] = [];
-  // Only claim "no experience needed" when the member said so.
-  if (/vorkenntnis|anfänger|einsteiger/i.test(f.audience ?? ''))
-    bullets.push('✅ Keine Vorkenntnisse nötig');
   if (f.audience) bullets.push(`👥 Für: ${f.audience}`);
   if (f.places !== undefined) bullets.push(`🎟️ ${f.places} Plätze`);
   if (f.costs) bullets.push(`💶 ${f.costs}`);
   if (bullets.length) de.push(...bullets);
-  const en = [`🔧 What to expect`, bodyEn(ctx, false)];
+  const en = [`🔧 What to expect`, bodyEn(ctx)];
   const enBullets: string[] = [];
   if (f.places !== undefined) enBullets.push(`🎟️ ${f.places} spots`);
-  const c = costsEn(f.costs);
-  if (c) enBullets.push(`💶 ${c}`);
+  if (f.costs && ctx.ai.costsEn) enBullets.push(`💶 ${ctx.ai.costsEn}`);
   if (enBullets.length) en.push('', ...enBullets);
   return {
     textDe: de.join('\n').trim(),
     textEn: en.join('\n').trim(),
-    // Without AI there is no English title; the Medienteam adds it in the editor.
-    fields: {
-      title: ctx.ai?.titleEn ? `${title(ctx)} / ${ctx.ai.titleEn}` : title(ctx),
-    },
+    fields: { title: `${title(ctx)} / ${titleEn(ctx)}` },
   };
 }
 
 // ---------- WordPress ----------
-function wordpressDraft(ctx: TemplateContext): ChannelDraft {
+function wordpressDraft(ctx: DraftContext): ChannelDraft {
   const intro = hookDe(ctx);
-  const de =
-    `${intro}\n\n${ctx.ai?.bodyDe ?? ctx.facts.description ?? ''}`.trim();
+  const de = `${intro}\n\n${bodyDe(ctx)}`.trim();
   return {
     textDe: de,
     textEn: bodyEn(ctx),
-    fields: { title: title(ctx), titleEn: titleEn(ctx) },
+    fields: {
+      title: title(ctx),
+      titleEn: titleEn(ctx),
+      ...(ctx.facts.costs && ctx.ai.costsEn ? { costsEn: ctx.ai.costsEn } : {}),
+    },
   };
 }
 
 // ---------- Wiki ----------
-function wikiDraft(ctx: TemplateContext): ChannelDraft {
+function wikiDraft(ctx: DraftContext): ChannelDraft {
   return {
-    textDe: ctx.ai?.bodyDe ?? ctx.facts.description ?? '',
+    textDe: bodyDe(ctx),
     textEn: '',
     fields: {},
   };
@@ -193,7 +147,7 @@ function wikiDraft(ctx: TemplateContext): ChannelDraft {
 
 /** Creates the editable drafts for the given channels. */
 export function buildDrafts(
-  ctx: TemplateContext,
+  ctx: DraftContext,
   channels: ChannelId[],
 ): Partial<Record<ChannelId, ChannelDraft>> {
   const out: Partial<Record<ChannelId, ChannelDraft>> = {};
@@ -384,7 +338,7 @@ export function wordpressContent(
   const whatEn = [
     draft.fields['titleEn'] ?? title(ctx),
     f.places !== undefined ? `${f.places} spots` : undefined,
-    costsEn(f.costs),
+    f.costs ? draft.fields['costsEn'] : undefined,
   ].filter(Boolean);
   const blockEn = [
     `<strong>Where:</strong> ${escHtml(ctx.config.location.full)}`,

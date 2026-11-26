@@ -10,12 +10,15 @@ import { WebDavClient } from '@postomat/media';
 import { WordPressClient } from '@postomat/channel-wordpress';
 import { MediaWikiClient } from '@postomat/channel-mediawiki';
 import {
+  createScriptedAi,
   FakeMatrix,
   FakeMediaWiki,
   FakeMeetupFeed,
   FakeWebDav,
   FakeWordPress,
+  type ScriptedAi,
 } from '@postomat/testing';
+import { E2E_RULES, e2eCandidate } from './ai-script.ts';
 import {
   BotService,
   InMemoryQueue,
@@ -103,6 +106,13 @@ export class Harness {
   webdav = new FakeWebDav();
   meetup = new FakeMeetupFeed();
   clock = new Date('2026-11-23T13:02:00Z');
+  /** The scripted stub model behind the real AiService. */
+  ai: ScriptedAi = createScriptedAi({
+    rules: E2E_RULES,
+    candidate: e2eCandidate,
+  });
+  /** Every text message sent to the bot, in order (DM and thread). */
+  sentTexts: Array<{ user: string; text: string; thread: boolean }> = [];
   /** Error-level log entries; see assertNoErrors. */
   errors: LoggedError[] = [];
   /** Error logs a test provokes on purpose (checked in afterEach). */
@@ -159,7 +169,7 @@ export class Harness {
       queue: this.queue,
       log: collectingLogger(this.errors),
       now: () => this.clock,
-      ai: null,
+      ai: this.ai,
       media: new WebDavClient({
         baseUrl: env.NEXTCLOUD_WEBDAV_URL,
         username: env.NEXTCLOUD_USERNAME,
@@ -226,6 +236,7 @@ export class Harness {
     roomId = ROOMS.dmLena,
   ): Promise<string[]> {
     const before = this.matrix.sent.length;
+    this.sentTexts.push({ user, text, thread: false });
     await this.bot.handle({
       kind: 'message',
       roomId,
@@ -279,6 +290,7 @@ export class Harness {
   }
 
   async threadReply(user: string, root: string, text: string): Promise<void> {
+    this.sentTexts.push({ user, text, thread: true });
     await this.bot.handle({
       kind: 'message',
       roomId: ROOMS.medienteam,

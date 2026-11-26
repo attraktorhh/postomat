@@ -9,7 +9,15 @@ import { fromRoot } from '@postomat/core';
 import { obtainSession } from './session.ts';
 import { SdkMatrix } from './matrix.ts';
 
-const { deps, db, queue } = await createDepsFromEnv('bot');
+const { deps, db, queue } = await createDepsFromEnv('bot').catch(
+  (e: unknown) => {
+    // Missing AI config or an AI endpoint that never answered: refuse to start.
+    console.error(
+      `[bot] startup failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    process.exit(1);
+  },
+);
 deps.env.MATRIX_DATA_DIR = fromRoot(deps.env.MATRIX_DATA_DIR);
 const session = await obtainSession(deps.env);
 const matrix = new SdkMatrix(
@@ -23,7 +31,12 @@ const bot = new BotService({ ...deps, matrix });
 let syncing = false;
 const health = startHealthServer(deps.env.BOT_HEALTH_PORT, async () => {
   await db.pool.query('select 1');
-  return { syncing, userId: session.userId, deviceId: session.deviceId };
+  return {
+    syncing,
+    userId: session.userId,
+    deviceId: session.deviceId,
+    ai: deps.ai.status(),
+  };
 });
 
 await bot.registerJobs(queue);

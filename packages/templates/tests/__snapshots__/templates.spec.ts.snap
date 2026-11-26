@@ -10,14 +10,14 @@ Notiz von @lena: „Lötstationen sind da, niemand muss etwas mitbringen.“
 👍 freigeben · im Thread antworten = Änderung · Im Browser bearbeiten ↗ http://localhost:3000/redaktion/1"
 `;
 
-exports[`channel texts without AI > event drafts (DE + EN) per channel 1`] = `
+exports[`channel texts: AI body in the template frame > event drafts (DE + EN) per channel 1`] = `
 {
   "facebook": {
     "fields": {
       "hashtags": "#makerspace #hamburg #altona #attraktor #workshop",
     },
     "textDe": "Lötkurs für Anfänger am Fr 11.12. um 18 Uhr im Attraktor. An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig. 8 Plätze, 5 € Material.",
-    "textEn": "🇬🇧 Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: Lötkurs für Anfänger. 8 spots, €5 for material. Sign up via Meetup.",
+    "textEn": "🇬🇧 Lötkurs für Anfänger at Attraktor makerspace in Hamburg-Altona.",
   },
   "instagram": {
     "fields": {
@@ -30,11 +30,11 @@ exports[`channel texts without AI > event drafts (DE + EN) per channel 1`] = `
 🕓 Freitag, den 11.12.26 | 18 – 21 Uhr
 📍 Attraktor e.V., Eschelsweg 4, 22767 Hamburg
 🎟️ 8 Plätze, 5 € Material, Anmeldung über Meetup (Link in Bio)",
-    "textEn": "🇬🇧 Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: Lötkurs für Anfänger. 8 spots, €5 for material. Sign up via Meetup.",
+    "textEn": "🇬🇧 Lötkurs für Anfänger at Attraktor makerspace in Hamburg-Altona.",
   },
   "meetup": {
     "fields": {
-      "title": "Lötkurs für Anfänger",
+      "title": "Lötkurs für Anfänger / Lötkurs für Anfänger (EN)",
     },
     "textDe": "🔧 Was dich erwartet
 An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig.
@@ -42,7 +42,7 @@ An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse
 🎟️ 8 Plätze
 💶 5 € Material",
     "textEn": "🔧 What to expect
-Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: Lötkurs für Anfänger. 8 spots, €5 for material.
+Join us at Attraktor: Lötkurs für Anfänger.
 
 🎟️ 8 spots
 💶 €5 for material",
@@ -54,26 +54,27 @@ Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: L
   },
   "wordpress": {
     "fields": {
+      "costsEn": "€5 for material",
       "title": "Lötkurs für Anfänger",
-      "titleEn": "Lötkurs für Anfänger",
+      "titleEn": "Lötkurs für Anfänger (EN)",
     },
     "textDe": "Lust auf „Lötkurs für Anfänger“? 🔥
 
 An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig.",
-    "textEn": "Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: Lötkurs für Anfänger. 8 spots, €5 for material. Sign up via Meetup.",
+    "textEn": "Join us at Attraktor: Lötkurs für Anfänger.",
   },
 }
 `;
 
-exports[`channel texts without AI > event outputs > facebook 1`] = `
+exports[`channel texts: AI body in the template frame > event outputs > facebook 1`] = `
 "Lötkurs für Anfänger am Fr 11.12. um 18 Uhr im Attraktor. An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig. 8 Plätze, 5 € Material.
 
 Anmeldung: https://www.meetup.com/attraktor/events/312070001/
 
-🇬🇧 Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: Lötkurs für Anfänger. 8 spots, €5 for material. Sign up via Meetup."
+🇬🇧 Lötkurs für Anfänger at Attraktor makerspace in Hamburg-Altona."
 `;
 
-exports[`channel texts without AI > event outputs > instagram 1`] = `
+exports[`channel texts: AI body in the template frame > event outputs > instagram 1`] = `
 "Lust auf „Lötkurs für Anfänger“? 🔥
 
 ✨ An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse nötig.
@@ -82,17 +83,17 @@ exports[`channel texts without AI > event outputs > instagram 1`] = `
 📍 Attraktor e.V., Eschelsweg 4, 22767 Hamburg
 🎟️ 8 Plätze, 5 € Material, Anmeldung über Meetup (Link in Bio)
 
-🇬🇧 Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: Lötkurs für Anfänger. 8 spots, €5 for material. Sign up via Meetup.
+🇬🇧 Lötkurs für Anfänger at Attraktor makerspace in Hamburg-Altona.
 
 #makerspace #hamburg #altona #attraktor #workshop"
 `;
 
-exports[`channel texts without AI > event outputs > meetup 1`] = `
+exports[`channel texts: AI body in the template frame > event outputs > meetup 1`] = `
 [
   {
     "key": "title",
     "label": "Titel",
-    "value": "Lötkurs für Anfänger",
+    "value": "Lötkurs für Anfänger / Lötkurs für Anfänger (EN)",
   },
   {
     "key": "date",
@@ -125,7 +126,7 @@ An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse
 
 🇬🇧 English
 🔧 What to expect
-Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: Lötkurs für Anfänger. 8 spots, €5 for material.
+Join us at Attraktor: Lötkurs für Anfänger.
 
 🎟️ 8 spots
 💶 €5 for material
@@ -142,7 +143,7 @@ Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: L
 ]
 `;
 
-exports[`channel texts without AI > event outputs > wiki 1`] = `
+exports[`channel texts: AI body in the template frame > event outputs > wiki 1`] = `
 "{{Termin
 |date=2026/12/11 06:00:00 PM
 |enddate=2026/12/11 09:00:00 PM
@@ -156,7 +157,7 @@ An einem Abend lötest du dein eigenes blinkendes Abzeichen. Keine Vorkenntnisse
 "
 `;
 
-exports[`channel texts without AI > event outputs > wordpress 1`] = `
+exports[`channel texts: AI body in the template frame > event outputs > wordpress 1`] = `
 "<p>Lust auf „Lötkurs für Anfänger“? 🔥</p>
 <p><strong>Wo:</strong> Attraktor e.V., Eschelsweg 4, 1. Stock, 22767 Hamburg<br>
 <strong>Wann:</strong> Freitag, den 11.12.26 | 18 – 21 Uhr<br>
@@ -166,23 +167,23 @@ exports[`channel texts without AI > event outputs > wordpress 1`] = `
 <h3>English</h3>
 <p><strong>Where:</strong> Attraktor e.V., Eschelsweg 4, 1. Stock, 22767 Hamburg<br>
 <strong>When:</strong> Friday, 11 Dec, 6–9 pm<br>
-<strong>What:</strong> Lötkurs für Anfänger · 8 spots · €5 for material</p>
-<p>Join us on Friday, 11 Dec, 6–9 pm at Attraktor makerspace in Hamburg-Altona: Lötkurs für Anfänger. 8 spots, €5 for material. Sign up via Meetup.</p>
+<strong>What:</strong> Lötkurs für Anfänger (EN) · 8 spots · €5 for material</p>
+<p>Join us at Attraktor: Lötkurs für Anfänger.</p>
 <p>Sign up on Meetup: <a href="https://www.meetup.com/attraktor/events/312070001/">https://www.meetup.com/attraktor/events/312070001/</a></p>"
 `;
 
-exports[`channel texts without AI > projekt drafts and outputs > facebook 1`] = `
+exports[`channel texts: AI body in the template frame > projekt drafts and outputs > facebook 1`] = `
 "Frisch aus der Werkstatt: Nixie-Uhr! 🛠️ Eine Uhr mit alten Röhren aus der DDR. Das Kniffligste: Die Hochspannung. Kommt vorbei und schaut es euch an!
 
-🇬🇧 Built at Attraktor: Nixie-Uhr. Drop by and have a look!"
+🇬🇧 Nixie-Uhr at Attraktor makerspace in Hamburg-Altona."
 `;
 
-exports[`channel texts without AI > projekt drafts and outputs > instagram 1`] = `
+exports[`channel texts: AI body in the template frame > projekt drafts and outputs > instagram 1`] = `
 "Frisch aus der Werkstatt: Nixie-Uhr! 🛠️
 
 ✨ Eine Uhr mit alten Röhren aus der DDR. Das Kniffligste: Die Hochspannung.
 
-🇬🇧 Built at Attraktor: Nixie-Uhr. Drop by and have a look!
+🇬🇧 Nixie-Uhr at Attraktor makerspace in Hamburg-Altona.
 
 #makerspace #hamburg #altona #attraktor #diy #maker"
 `;

@@ -1,11 +1,18 @@
 import {
   advanceDialog,
   initialDialogState,
+  interpretContext,
   openQuestion,
+  validateAiFacts,
+  type DialogEffect,
+  type DialogInput,
   type DialogState,
+  type Interpretation,
   type MatrixIncoming,
   type MatrixPort,
+  type PendingConfirmation,
 } from '@postomat/core';
+import { isAiError } from '@postomat/ai';
 import {
   and,
   conversations,
@@ -58,30 +65,6 @@ import {
 import { answerMeetupQuestion } from './meetup.ts';
 import { buildCard } from './card.ts';
 import { copyHelperUrl, draftOf, postUrl } from './context.ts';
-
-const COMMANDS = [
-  'hilfe',
-  'help',
-  'status',
-  'neu',
-  'abbrechen',
-  'abschicken',
-] as const;
-type Command = (typeof COMMANDS)[number];
-
-const asCommand = (text: string): Command | undefined => {
-  const t = text
-    .trim()
-    .toLowerCase()
-    .replace(/[!.?„“"]/g, '')
-    // "abschicken bitte", "bitte jetzt abschicken"
-    .replace(/\b(bitte|jetzt|gerne?)\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return (COMMANDS as readonly string[]).includes(t)
-    ? (t as Command)
-    : undefined;
-};
 
 const isThumbsUp = (key: string) => key.startsWith('👍');
 const isPencil = (key: string) => key.startsWith('✏') || key.startsWith('📝');
@@ -263,106 +246,237 @@ export class BotService {
     if (evt.msgtype !== 'm.text' && evt.msgtype !== 'm.notice') return;
 
     const text = evt.body.trim();
-    const cmd = asCommand(text);
-    if (cmd) return this.onCommand(cmd, evt, conv);
-
-    if (conv.questionPostId) {
-      await answerQuestion(
-        this.deps,
-        conv.questionPostId,
-        text,
-        localpart(sender),
-      );
-      await this.say(roomId, DM.rueckfrageAck);
-      return;
-    }
-    await this.runDialog(evt, conv, { kind: 'text', text });
+    if (!text) return;
+    await this.onText(evt, conv, text);
   }
 
-  private async onCommand(
-    cmd: Command,
+  /** Dialog state for the member's current draft (fresh when there is none). */
+  private stateFor(draft: Post | undefined, conv: Conversation): DialogState {
+    if (draft && conv.state && conv.postId === draft.id) return conv.state;
+    if (draft)
+      // Draft without conversation state (e.g. after a restart): continue collecting.
+      return {
+        ...initialDialogState(),
+        step: 'collect',
+        type: draft.type,
+        facts: draft.facts,
+      };
+    return initialDialogState();
+  }
+
+  /** Runs `fn` while showing "Postomat schreibt …". */
+  private async typing<T>(roomId: string, fn: () => Promise<T>): Promise<T> {
+    await this.matrix.setTyping(roomId, true).catch(() => undefined);
+    try {
+      return await fn();
+    } finally {
+      await this.matrix.setTyping(roomId, false).catch(() => undefined);
+    }
+  }
+
+  private confirmationText(pending: PendingConfirmation, draft: Post): string {
+    const title = draft.facts.title ?? 'ohne Titel';
+    return pending === 'cancel'
+      ? DM.confirmCancel(title)
+      : DM.confirmNew(title);
+  }
+
+  /**
+   * Every chat message goes through the AI first; its intent decides what
+   * happens. On an AI failure nothing changes and the member is asked to
+   * send the message again.
+   */
+  private async onText(
     evt: Extract<MatrixIncoming, { kind: 'message' }>,
     conv: Conversation,
+    text: string,
   ): Promise<void> {
     const { sender, roomId } = evt;
+    const deps = this.deps;
     const draft = await this.draftOf(sender);
-    switch (cmd) {
-      case 'hilfe':
-      case 'help':
-        await this.say(roomId, DM.help);
-        return;
-      case 'status': {
-        const rows = await this.deps.db
-          .select()
-          .from(posts)
-          .where(eq(posts.authorMatrixId, sender))
-          .orderBy(desc(posts.createdAt))
-          .limit(10);
-        await this.say(
-          roomId,
-          dmStatus(
-            rows.map((p) => ({
-              id: p.id,
-              title: p.facts.title ?? 'Ohne Titel',
-              status: p.status,
-              url: postUrl(this.deps, p.id),
-            })),
-          ),
-        );
+    let state = this.stateFor(draft, conv);
+    const rueckfrage = conv.questionPostId
+      ? (await getPost(deps.db, conv.questionPostId)).pendingQuestion
+      : null;
+    const pending =
+      draft && state.pendingConfirmation
+        ? this.confirmationText(state.pendingConfirmation, draft)
+        : null;
+
+    let interp: Interpretation;
+    try {
+      interp = await this.typing(roomId, () =>
+        deps.ai.interpret({
+          text,
+          context: interpretContext(state, {
+            openRueckfrage: rueckfrage,
+            pendingConfirmation: pending,
+          }),
+          now: deps.now(),
+        }),
+      );
+    } catch (e) {
+      if (!isAiError(e)) throw e;
+      await this.say(roomId, DM.aiUnavailable);
+      return;
+    }
+
+    if (draft && state.pendingConfirmation) {
+      if (interp.intent === 'confirm_yes')
+        return this.confirmed(evt, draft, state.pendingConfirmation);
+      // Any other answer keeps the draft.
+      state = { ...state, pendingConfirmation: null };
+      await this.saveConversation(sender, { state, postId: draft.id });
+      if (interp.intent === 'confirm_no') {
+        const open = openQuestion(state);
+        await this.say(roomId, [DM.keepGoing, open].filter(Boolean).join('\n'));
         return;
       }
-      case 'abbrechen':
+    }
+
+    switch (interp.intent) {
+      case 'cmd_help':
+        await this.say(roomId, DM.help);
+        return;
+      case 'cmd_status':
+        return this.sendStatus(sender, roomId);
+      case 'cmd_cancel':
         if (!draft) {
           await this.say(roomId, DM.nothingToCancel);
           return;
         }
-        await discardPost(this.deps, draft.id, localpart(sender));
-        await this.saveConversation(sender, { state: null, postId: null });
-        await this.say(roomId, DM.cancelled);
-        return;
-      case 'neu':
-        if (draft) {
-          await this.say(
-            roomId,
-            `Du hast schon einen Entwurf „${draft.facts.title ?? 'ohne Titel'}“. Schreib „abbrechen“, um ihn zu verwerfen, oder erzähl einfach weiter.`,
-          );
-          return;
-        }
+        return this.askConfirmation(sender, roomId, draft, state, 'cancel');
+      case 'cmd_new':
+        if (draft)
+          return this.askConfirmation(sender, roomId, draft, state, 'new');
         await this.saveConversation(sender, {
           state: initialDialogState(),
           postId: null,
         });
-        await this.say(
-          roomId,
-          dmGreeting(
-            (await this.matrix.getDisplayName(sender)) ?? localpart(sender),
-          ),
-        );
+        await this.say(roomId, dmGreeting(await this.nameOf(sender)));
         return;
-      case 'abschicken': {
-        if (!draft) {
-          await this.say(roomId, DM.nothingToSubmit);
-          return;
-        }
-        const state = conv.state ?? initialDialogState();
-        // A photo sent after the summary opens the consent question again;
-        // without the answer the photo would block approval.
-        if (state.step !== 'review' || state.expecting === 'consent') {
-          const open = openQuestion(state);
-          await this.say(
-            roomId,
-            open
-              ? `${DM.notReady}\n${open}`
-              : `${DM.notReady} Antworte bitte noch auf meine letzte Frage.`,
+      case 'confirm_submit':
+        return this.submitFromDm(evt, conv, draft, state);
+      case 'answer_rueckfrage':
+        if (conv.questionPostId) {
+          const question = await getPost(deps.db, conv.questionPostId);
+          const suggested = validateAiFacts(interp.facts, {
+            now: deps.now(),
+            type: question.type,
+            known: question.facts,
+          }).facts;
+          // The answer is stored verbatim; the AI only classified it.
+          await answerQuestion(
+            deps,
+            conv.questionPostId,
+            text,
+            localpart(sender),
+            suggested,
           );
+          await this.say(roomId, DM.rueckfrageAck);
           return;
         }
-        await submitPost(this.deps, draft.id, localpart(sender));
-        await this.saveConversation(sender, { state: null, postId: null });
-        await this.say(roomId, DM.submitted);
-        return;
-      }
+        break;
+      default:
+        break;
     }
+    await this.runDialog(evt, conv, draft, state, {
+      kind: 'message',
+      interpretation: interp,
+    });
+  }
+
+  private async nameOf(userId: string): Promise<string> {
+    return (await this.matrix.getDisplayName(userId)) ?? localpart(userId);
+  }
+
+  private async sendStatus(sender: string, roomId: string): Promise<void> {
+    const rows = await this.deps.db
+      .select()
+      .from(posts)
+      .where(eq(posts.authorMatrixId, sender))
+      .orderBy(desc(posts.createdAt))
+      .limit(10);
+    await this.say(
+      roomId,
+      dmStatus(
+        rows.map((p) => ({
+          id: p.id,
+          title: p.facts.title ?? 'Ohne Titel',
+          status: p.status,
+          url: postUrl(this.deps, p.id),
+        })),
+      ),
+    );
+  }
+
+  private async askConfirmation(
+    sender: string,
+    roomId: string,
+    draft: Post,
+    state: DialogState,
+    pending: PendingConfirmation,
+  ): Promise<void> {
+    await this.saveConversation(sender, {
+      state: { ...state, pendingConfirmation: pending },
+      postId: draft.id,
+    });
+    await this.say(roomId, this.confirmationText(pending, draft));
+  }
+
+  /** "ja" to "Entwurf verwerfen?" (cancel, or new while a draft exists). */
+  private async confirmed(
+    evt: Extract<MatrixIncoming, { kind: 'message' }>,
+    draft: Post,
+    pending: PendingConfirmation,
+  ): Promise<void> {
+    const { sender, roomId } = evt;
+    await discardPost(this.deps, draft.id, localpart(sender));
+    if (pending === 'cancel') {
+      await this.saveConversation(sender, { state: null, postId: null });
+      await this.say(roomId, DM.cancelled);
+      return;
+    }
+    await this.saveConversation(sender, {
+      state: initialDialogState(),
+      postId: null,
+    });
+    await this.say(roomId, dmGreeting(await this.nameOf(sender)));
+  }
+
+  private async submitFromDm(
+    evt: Extract<MatrixIncoming, { kind: 'message' }>,
+    conv: Conversation,
+    draft: Post | undefined,
+    state: DialogState,
+  ): Promise<void> {
+    const { sender, roomId } = evt;
+    if (!draft) {
+      await this.say(roomId, DM.nothingToSubmit);
+      return;
+    }
+    if (state.summaryPending) {
+      // The texts are still missing: try again instead of submitting.
+      return this.runDialog(evt, conv, draft, state, {
+        kind: 'effects',
+        effects: [{ kind: 'summary' }],
+      });
+    }
+    // A photo sent after the summary opens the consent question again;
+    // without the answer the photo would block approval.
+    if (state.step !== 'review' || state.expecting === 'consent') {
+      const open = openQuestion(state);
+      await this.say(
+        roomId,
+        open
+          ? `${DM.notReady}\n${open}`
+          : `${DM.notReady} Antworte bitte noch auf meine letzte Frage.`,
+      );
+      return;
+    }
+    await submitPost(this.deps, draft.id, localpart(sender));
+    await this.saveConversation(sender, { state: null, postId: null });
+    await this.say(roomId, DM.submitted);
   }
 
   private async onPhoto(
@@ -403,51 +517,39 @@ export class BotService {
       'photo',
       'Foto hochgeladen',
     );
-    await this.runDialog(evt, conv, { kind: 'photo', photoId });
+    await this.runDialog(evt, conv, draft, this.stateFor(draft, conv), {
+      kind: 'photo',
+      photoId,
+    });
   }
 
   private async runDialog(
     evt: Extract<MatrixIncoming, { kind: 'message' }>,
-    conv: Conversation,
-    input: { kind: 'text'; text: string } | { kind: 'photo'; photoId: number },
+    _conv: Conversation,
+    existingDraft: Post | undefined,
+    current: DialogState,
+    input: DialogInput | { kind: 'effects'; effects: DialogEffect[] },
   ): Promise<void> {
     const { sender, roomId } = evt;
     const deps = this.deps;
-    let draft = await this.draftOf(sender);
-    let state: DialogState =
-      draft && conv.state && conv.postId === draft.id
-        ? conv.state
-        : initialDialogState();
-    if (draft && state.step === 'idle' && conv.postId !== draft.id) {
-      // Draft without conversation state (e.g. after a restart): continue collecting.
-      state = {
-        ...state,
-        step: 'collect',
-        type: draft.type,
-        facts: draft.facts,
-      };
-    }
-    const displayName =
-      (await this.matrix.getDisplayName(sender)) ?? localpart(sender);
-    const result = await advanceDialog(state, input, {
-      now: deps.now(),
-      displayName,
-      aiExtract: deps.ai
-        ? async ({ text, state: s }) =>
-            deps.ai!.extract({
-              text,
-              type: s.type,
-              facts: s.facts,
-              now: deps.now(),
-            })
-        : undefined,
-    });
-    state = result.state;
+    let draft = existingDraft;
+    const result =
+      input.kind === 'effects'
+        ? { state: current, replies: [], effects: input.effects }
+        : advanceDialog(current, input, {
+            now: deps.now(),
+            displayName: await this.nameOf(sender),
+          });
+    let state = result.state;
 
     if (!draft && state.step !== 'idle') {
       draft = await createDraft(
         deps,
-        { matrixId: sender, username: localpart(sender), displayName },
+        {
+          matrixId: sender,
+          username: localpart(sender),
+          displayName: await this.nameOf(sender),
+        },
         state.type ?? 'event',
       );
     }
@@ -459,28 +561,13 @@ export class BotService {
     }
     await this.saveConversation(sender, { state, postId: draft?.id ?? null });
 
-    for (const r of result.replies) await this.say(roomId, r);
     for (const effect of result.effects) {
       if (!draft) break;
       if (effect.kind === 'set_consent')
         await setConsent(deps, effect.photoIds, effect.consent);
-      if (effect.kind === 'summary') await this.sendSummary(roomId, draft.id);
-      if (effect.kind === 'change_request' && deps.ai) {
-        await generateTexts(deps, draft.id, effect.instruction);
-        await addHistory(
-          deps.db,
-          draft.id,
-          localpart(sender),
-          'edited',
-          `Text ändern: „${effect.instruction}“`,
-        );
-        // The texts were just generated with the instruction: show them as they are.
-        await this.sendSummary(roomId, draft.id, DM.textsUpdated, {
-          regenerate: false,
-        });
-      } else if (effect.kind === 'change_request' || effect.kind === 'note') {
-        // Without AI a change wish, and any other free text, is a note.
-        const text = effect.kind === 'note' ? effect.text : effect.instruction;
+      if (effect.kind === 'note' && evt.body.trim()) {
+        // Stored verbatim: the AI only decided that it is a note.
+        const text = evt.body.trim();
         const post = await getPost(deps.db, draft.id);
         const note = [post.note, text].filter(Boolean).join('\n');
         await updatePost(deps.db, draft.id, { note });
@@ -491,29 +578,60 @@ export class BotService {
           'note',
           `Hinweis: „${text}“`,
         );
-        await this.say(roomId, DM.noteStored);
+      }
+    }
+    for (const r of result.replies) await this.say(roomId, r);
+
+    for (const effect of result.effects) {
+      if (!draft) break;
+      try {
+        if (effect.kind === 'summary') {
+          await this.typing(roomId, () => generateTexts(deps, draft!.id));
+          if (state.summaryPending) {
+            state = { ...state, summaryPending: false };
+            await this.saveConversation(sender, { state });
+          }
+          await this.sendSummary(roomId, draft.id);
+        }
+        if (effect.kind === 'change_request') {
+          const instruction = effect.instruction || evt.body.trim();
+          await this.typing(roomId, () =>
+            generateTexts(deps, draft!.id, { instruction }),
+          );
+          await addHistory(
+            deps.db,
+            draft.id,
+            localpart(sender),
+            'edited',
+            `Text ändern: „${evt.body.trim()}“`,
+          );
+          await this.sendSummary(roomId, draft.id, DM.textsUpdated);
+        }
+      } catch (e) {
+        if (!isAiError(e)) throw e;
+        if (effect.kind === 'summary' && !state.summaryPending) {
+          state = { ...state, summaryPending: true };
+          await this.saveConversation(sender, { state });
+        }
+        await this.say(roomId, DM.aiUnavailable);
+        return;
       }
     }
   }
 
   /**
-   * "Super, so schicke ich es ans Medienteam:" + banner + hint.
-   * `regenerate: false` keeps the stored texts and an up-to-date banner.
+   * "Super, so schicke ich es ans Medienteam:" + banner + hint. The caller
+   * has just written the texts with the AI.
    */
   private async sendSummary(
     roomId: string,
     postId: number,
     hint: string = DM_SUBMIT_HINT,
-    opts: { regenerate?: boolean } = {},
   ): Promise<void> {
-    const regenerate = opts.regenerate ?? true;
-    if (regenerate) await generateTexts(this.deps, postId);
     const post = await getPost(this.deps.db, postId);
     const channels = await getChannels(this.deps.db, postId);
     // Facts (title, date) may have changed while collecting: render afresh.
-    const banner4x5 = regenerate
-      ? (await renderBanners(this.deps, post))['4x5']
-      : (await bannerData(this.deps, post, '4x5')).row;
+    const banner4x5 = (await renderBanners(this.deps, post))['4x5'];
     const ig = channels.find(
       (c) => c.channel === 'instagram' && c.mode !== 'off',
     );
@@ -600,8 +718,15 @@ export class BotService {
     const post = await this.postByCard(evt.threadRoot!);
     if (!post) return;
     const actor = localpart(evt.sender);
-    if (await answerMeetupQuestion(this.deps, post.id, evt.body, actor)) return;
     if (!(await this.membership.isMedienteam(evt.sender))) return;
+    // An open Meetup candidate question: the AI reads the reply first.
+    const meetup = await answerMeetupQuestion(
+      this.deps,
+      post.id,
+      evt.body,
+      actor,
+    );
+    if (meetup === 'handled') return;
     if (
       post.status === 'zur_freigabe' ||
       post.status === 'aenderung_gewuenscht'

@@ -19,7 +19,10 @@
     "name": "testing"
   },
   "dependencies": {
+    "@postomat/ai": "workspace:*",
     "@postomat/core": "workspace:*",
+    "@postomat/templates": "workspace:*",
+    "ai": "^7.0.179",
     "tslib": "^2.3.0"
   }
 }

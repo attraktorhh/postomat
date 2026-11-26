@@ -1,6 +1,6 @@
 export * from './types.ts';
 export * from './time.ts';
-export * from './extract.ts';
+export * from './interpretation.ts';
 export * from './state-machine.ts';
 export * from './consent.ts';
 export * from './status.ts';
