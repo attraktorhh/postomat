@@ -7,6 +7,7 @@ import {
   editFacts,
   resubmit,
   setBannerColor,
+  setChannelLink,
   setPhotoConsent,
   retryChannel,
   saveRoomSettings,
@@ -139,6 +140,27 @@ describe('scenarios', () => {
     );
     const [p] = await h.db.db.select().from(posts);
     expect(p.bannerColor).toBe('mint');
+  });
+
+  it('accepts only Meetup event links for the Meetup channel', async () => {
+    await collectEvent(h);
+    await h.dm(LENA, 'abschicken');
+    await h.react(MIRA, await cardOf(h), '👍');
+    await expect(
+      setChannelLink(h.deps, 1, 'meetup', 'https://example.com/x', 'mira'),
+    ).rejects.toThrow('Link zum Meetup-Event');
+    await setChannelLink(
+      h.deps,
+      1,
+      'meetup',
+      'https://www.meetup.com/attraktor/events/999/',
+      'mira',
+    );
+    const rows = await h.db.db
+      .select()
+      .from(channelPosts)
+      .where(eq(channelPosts.channel, 'meetup'));
+    expect(rows[0]).toMatchObject({ status: 'erledigt', remoteId: '999' });
   });
 
   it('changes membership through the room picker without a restart (≤ 5 min cache)', async () => {

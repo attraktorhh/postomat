@@ -548,7 +548,12 @@ export async function setChannelLink(
       'Bitte einen vollständigen Link (https://…) eintragen',
     );
   if (channel === 'meetup') {
-    const id = /\/events\/([^/?#]+)/.exec(url)?.[1] ?? url;
+    // The id goes into the wiki template (meetupid=…), so it must be numeric.
+    const id = /\/events\/(\d+)(?:[/?#]|$)/.exec(url.trim())?.[1];
+    if (!id)
+      throw new WorkflowError(
+        'Bitte den Link zum Meetup-Event eintragen, z. B. https://www.meetup.com/attraktor/events/123456789/',
+      );
     await linkMeetup(
       deps,
       postId,
