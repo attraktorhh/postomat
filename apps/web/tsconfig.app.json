@@ -53,31 +53,13 @@
   ],
   "references": [
     {
-      "path": "../../packages/render/tsconfig.lib.json"
-    },
-    {
-      "path": "../../packages/media/tsconfig.lib.json"
-    },
-    {
-      "path": "../../packages/channels/wordpress/tsconfig.lib.json"
-    },
-    {
-      "path": "../../packages/channels/meetup/tsconfig.lib.json"
-    },
-    {
-      "path": "../../packages/channels/mediawiki/tsconfig.lib.json"
-    },
-    {
-      "path": "../../packages/ai/tsconfig.lib.json"
-    },
-    {
       "path": "../../packages/channels/copy/tsconfig.lib.json"
     },
     {
-      "path": "../../packages/db/tsconfig.lib.json"
+      "path": "../../packages/templates/tsconfig.lib.json"
     },
     {
-      "path": "../../packages/templates/tsconfig.lib.json"
+      "path": "../../packages/db/tsconfig.lib.json"
     },
     {
       "path": "../../packages/workflow/tsconfig.lib.json"

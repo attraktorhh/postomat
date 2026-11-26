@@ -74,7 +74,6 @@
   },
   "dependencies": {
     "@postomat/core": "workspace:*",
-    "@postomat/db": "workspace:*",
     "@postomat/workflow": "workspace:*",
     "matrix-bot-sdk": "^0.8.0"
   }
