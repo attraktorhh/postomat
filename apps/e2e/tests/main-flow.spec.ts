@@ -15,7 +15,13 @@ describe('main flow: DM → approval → publish → Meetup → online', () => {
   beforeAll(async () => {
     await h.start();
   }, 30000);
-  afterAll(async () => h.stop());
+  afterAll(async () => {
+    try {
+      h.assertNoErrors();
+    } finally {
+      await h.stop();
+    }
+  });
 
   it('refuses non-members', async () => {
     const replies = await h.dm(
