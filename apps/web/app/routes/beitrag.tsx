@@ -17,10 +17,10 @@ import { getDeps } from '../server/deps.server';
 import { loadPostView } from '../server/views.server';
 import { LoginNote, Shell } from '../components/shell';
 import { StageTape, StatusTape, Stepper } from '../components/status';
+import { ChannelPreviews } from '../components/previews';
 
 const SUBMITTED_NOTE =
   'Ist beim Medienteam 🙌 Wir melden uns im Chat, sobald es online ist.';
-import { ChannelPreviews } from '../components/previews';
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const { user, post, isAuthor } = await requirePostAccess(
