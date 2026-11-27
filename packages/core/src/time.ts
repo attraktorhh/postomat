@@ -1,4 +1,4 @@
-import { TZDate } from '@date-fns/tz';
+import { DateTime } from 'luxon';
 
 /**
  * Date and time helpers. All "local" values are Europe/Berlin wall-clock values.
@@ -53,14 +53,14 @@ interface ZonedParts {
 
 /** Berlin wall-clock parts (month 1-12) of an instant. */
 export function zonedParts(instant: Date): ZonedParts {
-  const t = new TZDate(instant.getTime(), TIMEZONE);
+  const t = DateTime.fromJSDate(instant, { zone: TIMEZONE });
   return {
-    year: t.getFullYear(),
-    month: t.getMonth() + 1,
-    day: t.getDate(),
-    hour: t.getHours(),
-    minute: t.getMinutes(),
-    second: t.getSeconds(),
+    year: t.year,
+    month: t.month,
+    day: t.day,
+    hour: t.hour,
+    minute: t.minute,
+    second: t.second,
   };
 }
 
@@ -88,10 +88,9 @@ export function isValidTimeZone(timeZone: string): boolean {
 
 /**
  * Converts a wall-clock date (`YYYY-MM-DD`) + time (`HH:MM` or `HH:MM:SS`) in
- * an IANA time zone to an instant. DST follows RFC 5545 (and `TZDate`): a time
- * in the spring-forward gap is read with the offset before the gap (02:30 →
- * 03:30 summer time), a time in the autumn overlap is the first occurrence
- * (02:30 summer time).
+ * an IANA time zone to an instant (Luxon; independent of the host's TZ). DST:
+ * a time in the spring-forward gap moves forward (02:30 → 03:30 summer time),
+ * a time in the autumn overlap is the second occurrence (02:30 winter time).
  */
 export function zonedToInstant(
   date: string,
@@ -100,7 +99,10 @@ export function zonedToInstant(
 ): Date {
   const [y, m, d] = date.split('-').map(Number);
   const [hh, mm, ss = 0] = time.split(':').map(Number);
-  return new Date(new TZDate(y, m - 1, d, hh, mm, ss, timeZone).getTime());
+  return DateTime.fromObject(
+    { year: y, month: m, day: d, hour: hh, minute: mm, second: ss },
+    { zone: timeZone },
+  ).toJSDate();
 }
 
 /** Converts a Berlin wall-clock date + time to an instant (DST: see `zonedToInstant`). */

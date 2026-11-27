@@ -582,15 +582,19 @@ importers:
 
   packages/core:
     dependencies:
-      '@date-fns/tz':
-        specifier: 1.5.0
-        version: 1.5.0
+      luxon:
+        specifier: 3.7.2
+        version: 3.7.2
       tslib:
         specifier: ^2.3.0
         version: 2.9.1
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+    devDependencies:
+      '@types/luxon':
+        specifier: ^3.7.6
+        version: 3.7.6
 
   packages/db:
     dependencies:
@@ -1914,12 +1918,6 @@ packages:
         integrity: sha512-gdkFe/Z4KU1q8Y5S3GYScXGcOnO56dgWwIs5+97Ij1VIKISItOIUlCXUq4VLbdnRclF+SSQ49sLsn3KeV111AA==,
       }
     engines: { node: '>=20.19.0' }
-
-  '@date-fns/tz@1.5.0':
-    resolution:
-      {
-        integrity: sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg==,
-      }
 
   '@drizzle-team/brocli@0.10.2':
     resolution:
@@ -5331,6 +5329,12 @@ packages:
     resolution:
       {
         integrity: sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==,
+      }
+
+  '@types/luxon@3.7.6':
+    resolution:
+      {
+        integrity: sha512-6KSjliQAXK8ZLgFQO4B7iE4Rpf/B3rItzCFuXezBY/XIAGxOdLd7vRNK9/StRPwiS/yJsVbB7HKpW46B8tcEuQ==,
       }
 
   '@types/mime@1.3.5':
@@ -13103,8 +13107,6 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.3': {}
 
-  '@date-fns/tz@1.5.0': {}
-
   '@drizzle-team/brocli@0.10.2': {}
 
   '@emnapi/core@1.11.2':
@@ -15075,6 +15077,8 @@ snapshots:
   '@types/json-schema@7.0.15': {}
 
   '@types/json5@0.0.29': {}
+
+  '@types/luxon@3.7.6': {}
 
   '@types/mime@1.3.5': {}
 
