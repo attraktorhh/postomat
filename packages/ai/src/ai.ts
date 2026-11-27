@@ -3,6 +3,7 @@ import {
   generateText,
   NoObjectGeneratedError,
   NoOutputGeneratedError,
+  extractJsonMiddleware,
   Output,
   RetryError,
   TypeValidationError,
@@ -23,8 +24,8 @@ import pRetry from 'p-retry';
 import { z } from 'zod';
 import {
   addDays,
-  CONSENT_ANSWERS,
-  INTENTS,
+  candidateSchema,
+  interpretationSchema,
   localDateOf,
   localTimeOf,
   TIMEZONE,
@@ -110,72 +111,30 @@ export interface AiService {
 }
 
 // ---------------------------------------------------------------- schemas
-// Every field is required and nullable: works with strict JSON-schema modes.
-
-const factsSchema = z.object({
-  title: z
-    .string()
-    .nullable()
-    .describe('Kurzer deutscher Titel, z. B. "Lötkurs für Anfänger"'),
-  description: z
-    .string()
-    .nullable()
-    .describe(
-      '1–2 deutsche Sätze mit "du", was passiert bzw. was gebaut wurde',
-    ),
-  date: z
-    .string()
-    .nullable()
-    .describe('Lokales Datum YYYY-MM-DD (Europe/Berlin)'),
-  startTime: z.string().nullable().describe('Beginn HH:MM (24 h)'),
-  endTime: z.string().nullable().describe('Ende HH:MM (24 h)'),
-  places: z.number().int().nullable().describe('Anzahl Plätze'),
-  costs: z
-    .string()
-    .nullable()
-    .describe('z. B. "5 € Material" oder "kostenlos"'),
-  audience: z.string().nullable().describe('Zielgruppe'),
-  trickiest: z
-    .string()
-    .nullable()
-    .describe('Projekt: was war das Kniffligste (1–2 Sätze)'),
-  isWorkshop: z
-    .boolean()
-    .nullable()
-    .describe('true, wenn Teilnehmende etwas lernen oder selbst machen'),
-});
-
-export const interpretationSchema = z.object({
-  intent: z.enum(INTENTS),
-  type: z.enum(['event', 'projekt']).nullable(),
-  facts: factsSchema,
-  consent: z.enum(CONSENT_ANSWERS).nullable(),
-  instruction: z.string().nullable(),
-  text: z.string().nullable(),
-});
-
-export const candidateSchema = z.object({
-  choice: z
-    .union([z.number().int(), z.enum(['none', 'unrelated'])])
-    .describe('1-basierte Nummer, "none" oder "unrelated"'),
-});
+// Interpretation and candidate schemas live in @postomat/core (the contract
+// shared with the dialog). Texts: limits keep a runaway answer out of the
+// drafts.
 
 const textsSchema = z.object({
   hookDe: z
     .string()
+    .max(300)
     .describe(
       'Instagram-Hook auf Deutsch: eine Frage oder ein Ausruf, mit einem Emoji',
     ),
   bodyDe: z
     .string()
+    .max(2000)
     .describe('2–3 kurze deutsche Sätze, Leser mit "du"/"ihr" ansprechen'),
-  titleEn: z.string().describe('English title'),
-  bodyEn: z.string().describe('2–3 short English sentences'),
+  titleEn: z.string().max(200).describe('English title'),
+  bodyEn: z.string().max(2000).describe('2–3 short English sentences'),
   shortEn: z
     .string()
+    .max(500)
     .describe('One English sentence summary incl. date/time if any'),
   costsEn: z
     .string()
+    .max(200)
     .nullable()
     .describe('The cost note in English, e.g. "€5 for material" or "free"'),
 });
@@ -271,6 +230,18 @@ function classify(e: unknown): AiError {
 
 // ---------------------------------------------------------------- service
 
+/** Names of the structured outputs (sent to the provider as schema name). */
+export type OutputName = 'interpretation' | 'candidate' | 'texts';
+
+/**
+ * Upper bound for one answer. The texts are the longest (~5000 chars, ~1500
+ * tokens); the rest is headroom for reasoning tokens, which count too.
+ */
+const MAX_OUTPUT_TOKENS = 8192;
+
+/** A schema re-try needs at least this much of the deadline left (ms). */
+const MIN_RETRY_MS = 1000;
+
 export function createAiService(
   model: LanguageModel,
   opts: {
@@ -289,20 +260,25 @@ export function createAiService(
 
   async function run<T>(
     what: string,
-    schema: z.ZodType<T>,
+    output: { name: OutputName; schema: z.ZodType<T> },
     system: string,
     prompt: string,
+    runOpts: { schemaRetry?: boolean } = {},
   ): Promise<T> {
     // The AI SDK validates the output against the schema (NoObjectGeneratedError
-    // otherwise), retries retryable HTTP errors and enforces the timeout.
+    // otherwise), retries retryable HTTP errors and enforces the timeout. Both
+    // tries share one deadline, so a call never takes much more than timeoutMs.
+    const deadline = Date.now() + opts.timeoutMs;
     const once = async (): Promise<T> => {
       const res = await generateText({
         model,
         system,
         prompt,
-        output: Output.object({ schema }),
-        timeout: opts.timeoutMs,
+        // The name lets providers (and the test doubles) tell the calls apart.
+        output: Output.object(output),
+        timeout: Math.max(deadline - Date.now(), 1),
         maxRetries: 1,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
         ...(opts.reasoning ? { reasoning: opts.reasoning } : {}),
       });
       if (res.finishReason === 'content-filter')
@@ -314,8 +290,14 @@ export function createAiService(
       try {
         result = await once();
       } catch (e) {
-        // The SDK does not retry invalid output: one more try on a schema miss.
-        if (classify(e).kind !== 'schema') throw e;
+        // The SDK does not retry invalid output: one more try on a schema miss,
+        // if there is time left.
+        if (
+          runOpts.schemaRetry === false ||
+          classify(e).kind !== 'schema' ||
+          deadline - Date.now() < Math.min(MIN_RETRY_MS, opts.timeoutMs / 4)
+        )
+          throw e;
         result = await once();
       }
       status.lastOkAt = new Date().toISOString();
@@ -335,7 +317,7 @@ export function createAiService(
       // Only the message, known facts and dialog context – no Matrix IDs, no names.
       return run(
         'interpret',
-        interpretationSchema,
+        { name: 'interpretation', schema: interpretationSchema },
         `${INTERPRET_RULES}\n${nowLine(now)}`,
         JSON.stringify({
           kontext: {
@@ -349,12 +331,12 @@ export function createAiService(
           },
           nachricht: text,
         }),
-      ) as Promise<Interpretation>;
+      );
     },
     async interpretCandidateReply({ text, candidates }) {
       const r = await run(
         'candidate',
-        candidateSchema,
+        { name: 'candidate', schema: candidateSchema },
         CANDIDATE_RULES,
         JSON.stringify({
           kandidaten: candidates.map((c, i) => ({ nummer: i + 1, ...c })),
@@ -372,7 +354,7 @@ export function createAiService(
     async writeTexts({ type, facts, instruction, previous }) {
       const r = await run(
         'texts',
-        textsSchema,
+        { name: 'texts', schema: textsSchema },
         `${STYLE}\nSchreibe Texte für Instagram, Website und Meetup nach dem Attraktor-Stil.`,
         JSON.stringify({
           typ: type,
@@ -398,13 +380,15 @@ export function createAiService(
     async probe() {
       await run(
         'probe',
-        interpretationSchema,
+        { name: 'interpretation', schema: interpretationSchema },
         `${INTERPRET_RULES}\n${nowLine(new Date())}`,
         JSON.stringify({
           probe: true,
           kontext: { erwartet: null, bekannteAngaben: {} },
           nachricht: 'Hallo',
         }),
+        // waitForAi retries the whole probe; no extra request per attempt.
+        { schemaRetry: false },
       );
     },
     status: () => ({ ...status }),
@@ -481,9 +465,13 @@ export function languageModelFromEnv(
         fetch: opts.fetch,
         supportsStructuredOutputs: jsonSchema,
       }).chatModel(model);
-      return jsonSchema
-        ? chat
-        : wrapLanguageModel({ model: chat, middleware: jsonModeMiddleware });
+      // Local models often wrap JSON in a ```json fence: strip it (both modes).
+      return wrapLanguageModel({
+        model: chat,
+        middleware: jsonSchema
+          ? [extractJsonMiddleware()]
+          : [jsonModeMiddleware, extractJsonMiddleware()],
+      });
     }
   }
 }
@@ -545,8 +533,11 @@ export async function waitForAi(
       {
         retries: Number.POSITIVE_INFINITY,
         maxRetryTime: opts.timeoutMs,
+        // Backs off (3 s, 6 s, 12 s … at most 30 s) so a rate-limited or
+        // loading endpoint is not hammered.
         minTimeout: opts.intervalMs ?? 3000,
-        factor: 1,
+        maxTimeout: 30_000,
+        factor: 2,
         shouldRetry: ({ error, attemptNumber }) => {
           const err = classify(error);
           if (permanent(err)) return false;
@@ -563,7 +554,7 @@ export async function waitForAi(
     throw new AiError(
       err.kind,
       `AI startup probe failed after ${attempts} attempt(s): ${err.message}`,
-      { cause: e },
+      { cause: e, status: err.status },
     );
   }
 }

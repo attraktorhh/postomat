@@ -245,8 +245,20 @@ const CANDIDATE_CASES: Array<{
 
 const env = loadEnv();
 const ai = createAiFromEnv(env);
+/** The base URL without credentials (user:password@host never gets printed). */
+function safeUrl(raw: string | undefined): string {
+  if (!raw) return '(default URL)';
+  try {
+    const u = new URL(raw);
+    u.username = '';
+    u.password = '';
+    return u.toString();
+  } catch {
+    return '(invalid URL)';
+  }
+}
 console.log(
-  `AI eval: ${env.AI_PROVIDER} ${env.AI_BASE_URL ?? '(default URL)'} ${env.AI_MODEL} reasoning=${env.AI_REASONING ?? 'provider default'}\n`,
+  `AI eval: ${env.AI_PROVIDER} ${safeUrl(env.AI_BASE_URL)} ${env.AI_MODEL} reasoning=${env.AI_REASONING ?? 'provider default'}\n`,
 );
 
 const fields = new Map<string, { ok: number; total: number }>();

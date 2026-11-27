@@ -34,12 +34,16 @@ describe('postActionSchema', () => {
       ['intent', 'banner_color'],
       ['color', 'lila'],
     ]);
-    expect(r.error).toMatch(/^Ungültige Eingabe \(color\): /);
+    expect(r.error).toBe(
+      'Banner-Farbe: ungültiger Wert. Bitte lade die Seite neu.',
+    );
   });
 
-  it('names an unknown or missing intent', () => {
-    expect(post([['intent', 'hack']]).error).toBe('Unbekannte Aktion hack');
-    expect(post([]).error).toBe('Unbekannte Aktion ');
+  it('asks to reload on an unknown or missing intent', () => {
+    const stale =
+      'Diese Aktion ist nicht (mehr) möglich. Bitte lade die Seite neu.';
+    expect(post([['intent', 'hack']]).error).toBe(stale);
+    expect(post([]).error).toBe(stale);
   });
 
   it('checks consent values and photo ids', () => {
@@ -56,14 +60,14 @@ describe('postActionSchema', () => {
         ['photoId', 'x'],
         ['consent', 'frei'],
       ]).error,
-    ).toMatch(/photoId/);
+    ).toMatch(/^Foto: /);
     expect(
       post([
         ['intent', 'consent'],
         ['photoId', '7'],
         ['consent', 'ja'],
       ]).error,
-    ).toMatch(/consent/);
+    ).toMatch(/^Einwilligung: /);
   });
 
   it('only retries auto channels', () => {
@@ -81,7 +85,7 @@ describe('postActionSchema', () => {
         ['intent', 'retry'],
         ['channel', 'meetup'],
       ]).error,
-    ).toMatch(/channel/);
+    ).toMatch(/^Kanal: /);
   });
 
   it('keeps unsent text fields absent and trims the others', () => {
@@ -168,7 +172,9 @@ describe('copyActionSchema', () => {
       ]).data,
     ).toEqual({ intent: 'link', url: 'https://x.de' });
     expect(parse([['intent', 'skip']]).data).toEqual({ intent: 'skip' });
-    expect(parse([['intent', 'other']]).error).toBe('Unbekannte Aktion other');
+    expect(parse([['intent', 'other']]).error).toBe(
+      'Diese Aktion ist nicht (mehr) möglich. Bitte lade die Seite neu.',
+    );
   });
 });
 

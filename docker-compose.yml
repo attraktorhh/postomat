@@ -145,7 +145,7 @@ services:
     command: ['node', '/app/server.mjs']
     environment:
       PORT: '8085'
-    ports: ['8085:8085']
+    ports: ['127.0.0.1:8085:8085']
     volumes:
       - ./dev/fake-llm:/app:ro
     healthcheck:
@@ -160,7 +160,7 @@ services:
   ollama:
     profiles: [ai]
     image: ollama/ollama:0.40.18
-    ports: ['11434:11434']
+    ports: ['127.0.0.1:11434:11434']
     volumes:
       - ollama-data:/root/.ollama
     healthcheck:

@@ -6,18 +6,36 @@ import { z } from 'zod';
 import { BANNER_COLORS, CHANNELS, CONSENTS } from '@postomat/core';
 import type { AutoChannel } from '@postomat/workflow';
 
-/**
- * German messages for zod's built-in checks, naming the field, scoped to these
- * parses only. Messages set on a schema (e.g. `.min(1, '…')`) win over this.
- */
-const { localeError } = z.locales.de();
-const fieldError: z.core.$ZodErrorMap = (issue) => {
-  const message = localeError(issue);
-  const text = typeof message === 'string' ? message : message?.message;
-  return issue.path?.length
-    ? `Ungültige Eingabe (${issue.path.join('.')}): ${text}`
-    : text;
+/** German names of the form fields, for error messages. */
+const FIELD_LABELS: Record<string, string> = {
+  photoId: 'Foto',
+  color: 'Banner-Farbe',
+  channel: 'Kanal',
+  version: 'Version',
+  consent: 'Einwilligung',
+  category: 'Meetup-Kategorie',
+  endTime: 'Ende',
+  url: 'Link',
+  question: 'Frage',
+  comment: 'Kommentar',
+  note: 'Notiz',
+  member: 'Mitglieder-Räume',
+  medienteam: 'Medienteam-Raum',
 };
+
+/**
+ * German message for zod's built-in checks, naming the field, scoped to these
+ * parses only. These values come from buttons and selects, so an invalid one
+ * means a stale or tampered page. Messages set on a schema (e.g.
+ * `.min(1, '…')`) win over this.
+ */
+const fieldError: z.core.$ZodErrorMap = (issue) => {
+  const label = FIELD_LABELS[String(issue.path?.[0] ?? '')] ?? 'Eingabe';
+  return `${label}: ungültiger Wert. Bitte lade die Seite neu.`;
+};
+
+const STALE_ACTION =
+  'Diese Aktion ist nicht (mehr) möglich. Bitte lade die Seite neu.';
 
 type FormResult<T> =
   { success: true; data: T } | { success: false; error: string };
@@ -34,10 +52,7 @@ export function parseForm<T extends z.ZodType>(
   if (result.success) return { success: true, data: result.data };
   const issue = result.error.issues[0];
   if (issue?.path[0] === 'intent')
-    return {
-      success: false,
-      error: `Unbekannte Aktion ${String(input['intent'] ?? '')}`,
-    };
+    return { success: false, error: STALE_ACTION };
   return { success: false, error: issue?.message ?? 'Ungültige Eingabe.' };
 }
 

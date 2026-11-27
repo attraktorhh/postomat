@@ -155,13 +155,18 @@ export function createScriptedAi(opts: ScriptedAiOptions = {}): ScriptedAi {
     doGenerate: async (options) => {
       const { system, user } = promptText(options.prompt);
       const input = JSON.parse(user) as Record<string, unknown>;
-      const kind: ScriptedCall['kind'] = input['probe']
-        ? 'probe'
-        : system.includes('Meetup-Events')
-          ? 'candidate'
-          : system.includes('Dialog-Assistent')
-            ? 'interpret'
-            : 'texts';
+      // The AiService names each structured output (OutputName).
+      const name =
+        options.responseFormat?.type === 'json'
+          ? options.responseFormat.name
+          : undefined;
+      const kinds: Record<string, ScriptedCall['kind']> = {
+        interpretation: 'interpret',
+        candidate: 'candidate',
+        texts: 'texts',
+      };
+      const kind = input['probe'] ? 'probe' : kinds[name ?? ''];
+      if (!kind) throw new Error(`unnamed structured output: ${name}`);
       calls.push({ kind, prompt: `${system}\n${user}`, input });
 
       const i = failures.findIndex((f) => !f.kind || f.kind === kind);

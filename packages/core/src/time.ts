@@ -1,4 +1,4 @@
-import { DateTime } from 'luxon';
+import { DateTime, IANAZone } from 'luxon';
 
 /**
  * Date and time helpers. All "local" values are Europe/Berlin wall-clock values.
@@ -78,19 +78,15 @@ export function localTimeOf(instant: Date): string {
 
 /** True if `timeZone` is an IANA zone name this runtime knows (e.g. `Europe/Berlin`). */
 export function isValidTimeZone(timeZone: string): boolean {
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone });
-    return true;
-  } catch {
-    return false;
-  }
+  return IANAZone.isValidZone(timeZone);
 }
 
 /**
  * Converts a wall-clock date (`YYYY-MM-DD`) + time (`HH:MM` or `HH:MM:SS`) in
  * an IANA time zone to an instant (Luxon; independent of the host's TZ). DST:
  * a time in the spring-forward gap moves forward (02:30 → 03:30 summer time),
- * a time in the autumn overlap is the second occurrence (02:30 winter time).
+ * a time in the autumn overlap is the first occurrence (02:30 summer time),
+ * as RFC 5545 prescribes for iCal.
  */
 export function zonedToInstant(
   date: string,
@@ -99,10 +95,13 @@ export function zonedToInstant(
 ): Date {
   const [y, m, d] = date.split('-').map(Number);
   const [hh, mm, ss = 0] = time.split(':').map(Number);
-  return DateTime.fromObject(
+  const dt = DateTime.fromObject(
     { year: y, month: m, day: d, hour: hh, minute: mm, second: ss },
     { zone: timeZone },
-  ).toJSDate();
+  );
+  // Luxon resolves an ambiguous time to the later instant; take the earliest.
+  const first = Math.min(...dt.getPossibleOffsets().map((o) => o.toMillis()));
+  return new Date(Number.isFinite(first) ? first : dt.toMillis());
 }
 
 /** Converts a Berlin wall-clock date + time to an instant (DST: see `zonedToInstant`). */

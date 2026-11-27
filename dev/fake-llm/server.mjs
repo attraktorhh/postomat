@@ -17,6 +17,7 @@ const PORT = Number(process.env.PORT ?? 8085);
 const MODEL = process.env.FAKE_LLM_MODEL ?? 'fake-llm';
 const TZ = 'Europe/Berlin';
 
+// Same keys as aiFactsSchema in packages/core/src/interpretation.ts.
 const FACT_KEYS = [
   'title',
   'description',
@@ -174,7 +175,7 @@ function texts({ typ, angaben: f = {} }) {
   };
 }
 
-function answer(messages) {
+function answer(messages, responseFormat) {
   const text = (role) =>
     messages
       .filter((m) => m.role === role)
@@ -192,6 +193,12 @@ function answer(messages) {
     // not one of Postomat's prompts
   }
   if (input.probe) return interpretation({ intent: 'smalltalk_or_thanks' });
+  // json_schema mode names the output; json_object mode (AI_STRUCTURED_OUTPUT
+  // =json) sends no name, so fall back to the system prompt.
+  const name = responseFormat?.json_schema?.name;
+  if (name === 'candidate') return candidate(input);
+  if (name === 'interpretation') return interpret(input);
+  if (name === 'texts') return texts(input);
   if (system.includes('Meetup-Events')) return candidate(input);
   if (system.includes('Dialog-Assistent')) return interpret(input);
   return texts(input);
@@ -221,7 +228,9 @@ createServer(async (req, res) => {
       send(res, 400, { error: { message: 'invalid JSON' } });
       return;
     }
-    const content = JSON.stringify(answer(body.messages ?? []));
+    const content = JSON.stringify(
+      answer(body.messages ?? [], body.response_format),
+    );
     send(res, 200, {
       id: `chatcmpl-${Date.now()}`,
       object: 'chat.completion',
