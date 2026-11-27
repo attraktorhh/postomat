@@ -45,6 +45,7 @@ import {
   getPhotos,
   getPost,
   photoSnapshot,
+  textsOutdated,
   toSnapshot,
   updateChannel,
   updatePost,
@@ -158,18 +159,7 @@ export async function generateTexts(
   });
 }
 
-const sortKeys = (o: object) =>
-  JSON.stringify(
-    Object.fromEntries(
-      Object.entries(o)
-        .filter(([, v]) => v !== undefined)
-        .sort(([x], [y]) => x.localeCompare(y)),
-    ),
-  );
-
-/** True when the facts changed since the AI last wrote the texts. */
-export const textsOutdated = (post: Post): boolean =>
-  sortKeys(post.textsFacts ?? {}) !== sortKeys(post.facts);
+export { textsOutdated };
 
 /**
  * Worker job `texts.generate`: writes the texts again. pg-boss retries with
@@ -476,11 +466,16 @@ export async function editFacts(
     !/^([01]\d|2[0-3]):[0-5]\d$/.test(patch.endTime)
   )
     throw new WorkflowError('Endzeit bitte als HH:MM angeben, z. B. 21:00');
-  await updatePost(deps.db, postId, { facts: { ...post.facts, ...patch } });
+  const updated = { ...post, facts: { ...post.facts, ...patch } };
+  await updatePost(deps.db, postId, { facts: updated.facts });
   await addHistory(deps.db, postId, actor, 'edited', 'Angaben bearbeitet', {
     patch,
   });
   await deps.queue.send('banner.render', { postId });
+  // Under review the texts must match the facts before anyone can approve
+  // (blocking check "texts_current"); otherwise resubmit rewrites them.
+  if (post.status === 'zur_freigabe' && textsOutdated(updated))
+    await deps.queue.send('texts.generate', { postId, actor });
   if (post.cardEventId) await deps.queue.send('bot.card', { postId });
 }
 

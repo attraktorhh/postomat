@@ -8,6 +8,7 @@ import {
   posts,
 } from '@postomat/db';
 import {
+  approvePost,
   askMember,
   editChannelText,
   editFacts,
@@ -640,6 +641,21 @@ describe('scenarios', () => {
     );
   });
 
+  it('rewrites the texts when the Redaktion changes facts under review', async () => {
+    await collectEvent(h);
+    await h.dm(LENA, 'abschicken');
+    const before = h.ai.calls.filter((c) => c.kind === 'texts').length;
+    await editFacts(h.deps, 1, { endTime: '20:30' }, 'kai');
+    const [p] = await h.db.db.select().from(posts);
+    expect(p.textsFacts?.endTime).toBeUndefined();
+    await h.queue.drain();
+    expect(h.ai.calls.filter((c) => c.kind === 'texts')).toHaveLength(
+      before + 1,
+    );
+    const [after] = await h.db.db.select().from(posts);
+    expect(after.textsFacts?.endTime).toBe('20:30');
+  });
+
   it('shows "Texte konnten nicht erstellt werden" after the last retry and tells the author', async () => {
     await collectEvent(h);
     await h.dm(LENA, 'abschicken');
@@ -654,6 +670,15 @@ describe('scenarios', () => {
     expect(h.matrix.messages(ROOMS.dmLena).at(-1)?.body).toBe(
       'Die Texte für „Lötkurs für Anfänger“ konnten gerade nicht neu erstellt werden. Das Medienteam versucht es später noch einmal.',
     );
+    // Old texts (still 18:00) must not be approved for the 19:00 facts.
+    const blocked = await approvePost(h.deps, {
+      postId: 1,
+      approverUsername: 'mira',
+      approverIsMedienteam: true,
+      version: 2,
+      via: 'web',
+    });
+    expect(blocked.kind).toBe('blocked');
     await retryTexts(h.deps, 1, 'mira');
     await h.queue.drain();
     const [fixed] = await h.db.db.select().from(posts);

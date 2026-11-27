@@ -75,6 +75,11 @@ export interface PostSnapshot {
   facts: PostFacts;
   authorMatrixId: string;
   authorUsername: string;
+  /**
+   * False while the AI texts don't match the facts (being rewritten, or the
+   * rewrite failed). Undefined when unknown; then no check is shown.
+   */
+  textsCurrent?: boolean;
 }
 
 export interface PhotoSnapshot {

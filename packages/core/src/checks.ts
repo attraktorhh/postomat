@@ -101,6 +101,16 @@ export function runChecks(input: CheckInput): CheckResult[] {
     });
   }
 
+  if (post.textsCurrent !== undefined)
+    results.push({
+      id: 'texts_current',
+      level: 'block',
+      ok: post.textsCurrent,
+      label: post.textsCurrent
+        ? 'Texte passen zu den Angaben'
+        : 'Texte passen noch nicht zu den Angaben (werden neu erstellt)',
+    });
+
   const missingEn = active.filter(
     (c) => c.channel !== 'wiki' && !c.textEn.trim(),
   );

@@ -132,6 +132,19 @@ export async function updatePost(
     .where(eq(posts.id, id));
 }
 
+const sortKeys = (o: object) =>
+  JSON.stringify(
+    Object.fromEntries(
+      Object.entries(o)
+        .filter(([, v]) => v !== undefined)
+        .sort(([x], [y]) => x.localeCompare(y)),
+    ),
+  );
+
+/** True when the facts changed since the AI last wrote the texts. */
+export const textsOutdated = (post: Post): boolean =>
+  sortKeys(post.textsFacts ?? {}) !== sortKeys(post.facts);
+
 export const toSnapshot = (p: Post): PostSnapshot => ({
   id: p.id,
   type: p.type,
@@ -140,6 +153,8 @@ export const toSnapshot = (p: Post): PostSnapshot => ({
   facts: p.facts,
   authorMatrixId: p.authorMatrixId,
   authorUsername: p.authorUsername,
+  // Posts from before texts_facts existed (null) count as current.
+  textsCurrent: !p.textsError && (p.textsFacts == null || !textsOutdated(p)),
 });
 
 export const channelSnapshot = (c: ChannelPost): ChannelPostSnapshot => ({

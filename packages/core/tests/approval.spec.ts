@@ -94,6 +94,16 @@ describe('decideApproval', () => {
       expect(d.failures.map((f) => f.id)).toContain('date_future');
   });
 
+  it('blocks while the texts do not match the facts', () => {
+    const d = decideApproval(input({ post: post({ textsCurrent: false }) }));
+    expect(d.kind).toBe('blocked');
+    if (d.kind === 'blocked')
+      expect(d.failures.map((f) => f.id)).toEqual(['texts_current']);
+    expect(
+      decideApproval(input({ post: post({ textsCurrent: true }) })).kind,
+    ).toBe('approve');
+  });
+
   it('blocks photos without consent or internal only', () => {
     for (const consent of ['einwilligung_fehlt', 'nur_intern'] as const) {
       const d = decideApproval(
