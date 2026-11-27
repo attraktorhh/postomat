@@ -60,7 +60,7 @@ export interface PostFacts {
   location?: string;
   /** Projekt only: "Was war das Kniffligste?" */
   trickiest?: string;
-  /** True when the event is a workshop (AI flag or keyword). */
+  /** True when the event is a workshop (AI flag, editable in the Redaktion). */
   isWorkshop?: boolean;
 }
 

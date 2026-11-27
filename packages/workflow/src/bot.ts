@@ -2,12 +2,14 @@ import {
   advanceDialog,
   initialDialogState,
   interpretContext,
+  isComplete,
   openQuestion,
   validateAiFacts,
   type DialogEffect,
   type DialogInput,
   type DialogState,
   type Interpretation,
+  NOT_UNDERSTOOD,
   type MatrixIncoming,
   type MatrixPort,
   type PendingConfirmation,
@@ -73,6 +75,29 @@ export type BotDeps = WorkflowDeps & { matrix: MatrixPort };
 
 /** Photos larger than this are refused before downloading. */
 export const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
+
+/** Longer chat messages are not sent to the AI (cost, context window). */
+export const MAX_MESSAGE_CHARS = 4000;
+
+/**
+ * An error for the log without member content: database errors carry the
+ * query parameters (notes, answers) in their message, so only the driver
+ * cause and the stack frames are kept.
+ */
+export function loggableError(e: unknown): string {
+  if (!(e instanceof Error)) return 'non-error thrown';
+  const frames = (e.stack ?? '')
+    .split('\n')
+    .filter((l) => /^\s+at /.test(l))
+    .join('\n');
+  const cause = e.cause as { code?: unknown; message?: unknown } | undefined;
+  const head = e.message.startsWith('Failed query:')
+    ? `${e.name}: query failed${cause?.code ? ` (${String(cause.code)})` : ''}${
+        typeof cause?.message === 'string' ? `: ${cause.message}` : ''
+      }`
+    : `${e.name}: ${e.message}`;
+  return frames ? `${head}\n${frames}` : head;
+}
 
 const sameJson = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
@@ -155,7 +180,7 @@ export class BotService {
       await this.onDm(evt);
     } catch (e) {
       this.deps.log.error('event handling failed', {
-        error: e instanceof Error ? e.stack : String(e),
+        error: loggableError(e),
         event: evt.kind,
       });
     }
@@ -247,7 +272,12 @@ export class BotService {
 
     const text = evt.body.trim();
     if (!text) return;
-    await this.onText(evt, conv, text);
+    if (text.length > MAX_MESSAGE_CHARS) {
+      await this.say(roomId, DM.messageTooLong);
+      return;
+    }
+    // "Postomat schreibt …" while the AI reads the message and writes texts.
+    await this.typing(roomId, () => this.onText(evt, conv, text));
   }
 
   /** Dialog state for the member's current draft (fresh when there is none). */
@@ -264,13 +294,22 @@ export class BotService {
     return initialDialogState();
   }
 
-  /** Runs `fn` while showing "Postomat schreibt …". */
+  /**
+   * Runs `fn` while showing "Postomat schreibt …". The notice is not awaited
+   * (it must not delay the AI call) and is refreshed while `fn` runs, which
+   * can take several AI calls.
+   */
   private async typing<T>(roomId: string, fn: () => Promise<T>): Promise<T> {
-    await this.matrix.setTyping(roomId, true).catch(() => undefined);
+    const timeout = 2 * this.deps.env.AI_TIMEOUT_MS + 5000;
+    const show = () =>
+      void this.matrix.setTyping(roomId, true, timeout).catch(() => undefined);
+    show();
+    const timer = setInterval(show, 20_000);
     try {
       return await fn();
     } finally {
-      await this.matrix.setTyping(roomId, false).catch(() => undefined);
+      clearInterval(timer);
+      void this.matrix.setTyping(roomId, false).catch(() => undefined);
     }
   }
 
@@ -305,16 +344,14 @@ export class BotService {
 
     let interp: Interpretation;
     try {
-      interp = await this.typing(roomId, () =>
-        deps.ai.interpret({
-          text,
-          context: interpretContext(state, {
-            openRueckfrage: rueckfrage,
-            pendingConfirmation: pending,
-          }),
-          now: deps.now(),
+      interp = await deps.ai.interpret({
+        text,
+        context: interpretContext(state, {
+          openRueckfrage: rueckfrage,
+          pendingConfirmation: pending,
         }),
-      );
+        now: deps.now(),
+      });
     } catch (e) {
       if (!isAiError(e)) throw e;
       await this.say(roomId, DM.aiUnavailable);
@@ -329,6 +366,11 @@ export class BotService {
         (state.pendingConfirmation === 'new' && interp.intent === 'cmd_new');
       if (interp.intent === 'confirm_yes' || repeated)
         return this.confirmed(evt, draft, state.pendingConfirmation);
+      if (interp.intent === 'unclear') {
+        // Neither yes nor no: ask again, the draft stays as it is.
+        await this.say(roomId, `${NOT_UNDERSTOOD} ${pending}`);
+        return;
+      }
       // Any other answer keeps the draft.
       state = { ...state, pendingConfirmation: null };
       await this.saveConversation(sender, { state, postId: draft.id });
@@ -337,7 +379,19 @@ export class BotService {
         await this.say(roomId, [DM.keepGoing, open].filter(Boolean).join('\n'));
         return;
       }
+      await this.say(roomId, DM.keepGoing);
     }
+
+    // "ja" to the summary means "abschicken".
+    if (
+      draft &&
+      interp.intent === 'confirm_yes' &&
+      state.step === 'review' &&
+      !state.expecting &&
+      !state.summaryPending &&
+      !state.awaitingTextChange
+    )
+      interp = { ...interp, intent: 'confirm_submit' };
 
     switch (interp.intent) {
       case 'cmd_help':
@@ -469,7 +523,11 @@ export class BotService {
     }
     // A photo sent after the summary opens the consent question again;
     // without the answer the photo would block approval.
-    if (state.step !== 'review' || state.expecting === 'consent') {
+    if (
+      state.step !== 'review' ||
+      state.expecting === 'consent' ||
+      !isComplete(state)
+    ) {
       const open = openQuestion(state);
       await this.say(
         roomId,
@@ -544,6 +602,7 @@ export class BotService {
         : advanceDialog(current, input, {
             now: deps.now(),
             displayName: await this.nameOf(sender),
+            postUrl: draft ? postUrl(deps, draft.id) : undefined,
           });
     let state = result.state;
 
@@ -591,7 +650,7 @@ export class BotService {
       if (!draft) break;
       try {
         if (effect.kind === 'summary') {
-          await this.typing(roomId, () => generateTexts(deps, draft!.id));
+          await generateTexts(deps, draft.id);
           if (state.summaryPending) {
             state = { ...state, summaryPending: false };
             await this.saveConversation(sender, { state });
@@ -599,10 +658,9 @@ export class BotService {
           await this.sendSummary(roomId, draft.id);
         }
         if (effect.kind === 'change_request') {
+          // Empty: the member's message itself is the wish ("Was soll anders sein?").
           const instruction = effect.instruction || evt.body.trim();
-          await this.typing(roomId, () =>
-            generateTexts(deps, draft!.id, { instruction }),
-          );
+          await generateTexts(deps, draft.id, { instruction });
           await addHistory(
             deps.db,
             draft.id,
@@ -614,9 +672,14 @@ export class BotService {
         }
       } catch (e) {
         if (!isAiError(e)) throw e;
-        if (effect.kind === 'summary' && !state.summaryPending) {
-          state = { ...state, summaryPending: true };
-          await this.saveConversation(sender, { state });
+        if (effect.kind === 'summary') {
+          if (!state.summaryPending) {
+            state = { ...state, summaryPending: true };
+            await this.saveConversation(sender, { state });
+          }
+          // Not "try again later": the member's message was understood.
+          await this.say(roomId, DM.textsPending);
+          return;
         }
         await this.say(roomId, DM.aiUnavailable);
         return;
@@ -730,6 +793,7 @@ export class BotService {
       post.id,
       evt.body,
       actor,
+      { during: (fn) => this.typing(evt.roomId, fn) },
     );
     if (meetup === 'handled') return;
     if (

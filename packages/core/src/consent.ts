@@ -2,7 +2,7 @@ import type { ConsentAnswer } from './interpretation.ts';
 import type { Consent } from './types.ts';
 
 export const CONSENT_QUESTION =
-  'Danke! Sind auf dem Foto Personen erkennbar?\n1️⃣ Ja, alle waren einverstanden\n2️⃣ Ja, aber nicht gefragt\n3️⃣ Nein';
+  'Sind auf dem Foto Personen erkennbar?\n1️⃣ Ja, alle waren einverstanden\n2️⃣ Ja, aber nicht gefragt\n3️⃣ Nein';
 
 export const CONSENT_LABELS: Record<Consent, string> = {
   frei: 'frei verwendbar',

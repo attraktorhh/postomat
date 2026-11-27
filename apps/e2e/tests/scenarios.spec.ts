@@ -70,7 +70,7 @@ describe('scenarios', () => {
 
   it('supports hilfe, status, neu and abbrechen', async () => {
     expect((await h.dm(LENA, 'hilfe'))[0]).toContain(
-      '• neu – neuen Beitrag starten',
+      '• „neu“ – neuen Beitrag starten',
     );
     expect(await h.dm(LENA, 'status')).toEqual([
       'Du hast noch keine Beiträge. Erzähl einfach, was du vorhast!',
@@ -79,7 +79,10 @@ describe('scenarios', () => {
     expect((await h.dm(LENA, 'neu'))[0]).toContain(
       'Du hast schon einen Entwurf „Lötkurs“',
     );
-    expect((await h.dm(LENA, 'status'))[0]).toBe(
+    // another command answers "Verwerfen?" with no: the draft is kept
+    const status = await h.dm(LENA, 'status');
+    expect(status[0]).toBe('Okay, dann machen wir weiter.');
+    expect(status[1]).toBe(
       'Deine Beiträge:\n• Lötkurs: Entwurf – http://postomat.test/b/1',
     );
     expect(await h.dm(LENA, 'abschicken')).toEqual([
@@ -457,7 +460,7 @@ describe('scenarios', () => {
     h.ai.failNext('http', 1, 'texts');
     expect(await h.dm(LENA, 'nein')).toEqual([
       'Kein Problem, dann ohne Foto.',
-      'Ich kann deine Nachricht gerade nicht verarbeiten. Bitte versuch es in ein paar Minuten noch mal.',
+      'Die Texte fehlen noch. Schreib „nochmal“, dann versuche ich es erneut.',
     ]);
     // no template-only texts were stored
     expect(await h.db.db.select().from(channelPosts)).toHaveLength(0);

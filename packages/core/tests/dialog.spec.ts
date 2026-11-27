@@ -4,8 +4,12 @@ import {
   expectedAnswer,
   initialDialogState,
   interpretContext,
+  isComplete,
   openQuestion,
   NOT_UNDERSTOOD,
+  REVIEW_NOT_YET,
+  TEXTS_PENDING,
+  TEXT_CHANGE_QUESTION,
   type DialogDeps,
   type DialogState,
 } from '../src/dialog/dialog.ts';
@@ -104,7 +108,7 @@ describe('AI-driven dialog', () => {
       101,
       { intent: 'answer_consent', consent: 'alle_einverstanden' },
     ]);
-    expect(replies[2]).toEqual([CONSENT_QUESTION]);
+    expect(replies[2]).toEqual([`Danke! ${CONSENT_QUESTION}`]);
     expect(replies[3]).toEqual([
       'Alles klar: Personen drauf, alle waren einverstanden.',
     ]);
@@ -290,7 +294,10 @@ describe('AI-driven dialog', () => {
       deps,
     );
     expect(r.state.facts.title).toBe('Lötabend');
-    expect(r.effects).toEqual([{ kind: 'summary' }]);
+    // the wish travels with the new facts into the text rewrite
+    expect(r.effects).toEqual([
+      { kind: 'change_request', instruction: 'Titel ändern' },
+    ]);
 
     // isWorkshop alone stays a text change wish
     const w = advanceDialog(
@@ -406,5 +413,139 @@ describe('AI-driven dialog', () => {
     });
     expect(JSON.stringify(ctx)).not.toContain('Lena');
     expect(openQuestion(initialDialogState())).toContain('Erzähl mir');
+  });
+});
+
+describe('dialog edge cases (review findings)', () => {
+  const review = () => run([...walkthrough, { intent: 'decline_photo' }]).state;
+  const msg = (s: Exclude<Step, number>) => ({
+    kind: 'message' as const,
+    interpretation: interp(s),
+  });
+
+  it('a photo while the type question is open leads back to the type, never to a summary', () => {
+    const r = run([
+      { facts: { title: 'Irgendwas' } },
+      101,
+      { intent: 'answer_consent', consent: 'keine_personen' },
+    ]);
+    expect(r.effects).toEqual(['set_consent']);
+    expect(r.state.step).toBe('type');
+    expect(r.state.expecting).toBe('type');
+    expect(r.last[0]).toContain('Was möchtest du einreichen?');
+    expect(isComplete(r.state)).toBe(false);
+    expect(isComplete(review())).toBe(true);
+  });
+
+  it('a photo closes an open "verwerfen?" so the consent answer cannot discard the draft', () => {
+    const s = { ...review(), pendingConfirmation: 'cancel' as const };
+    const r = advanceDialog(s, { kind: 'photo', photoId: 5 }, deps);
+    expect(r.state.pendingConfirmation).toBeNull();
+    expect(expectedAnswer(r.state)).toBe('consent');
+    expect(r.replies).toEqual([`Danke! ${CONSENT_QUESTION}`]);
+  });
+
+  it('keeps the wish when a text change also changes a fact', () => {
+    const r = advanceDialog(
+      review(),
+      msg({
+        intent: 'request_text_change',
+        instruction: 'lockerer schreiben',
+        facts: { date: '2026-12-12' },
+      }),
+      deps,
+    );
+    expect(r.state.facts.date).toBe('2026-12-12');
+    expect(r.replies.join('\n')).toContain('Samstag 12.12.');
+    expect(r.effects).toEqual([
+      { kind: 'change_request', instruction: 'lockerer schreiben' },
+    ]);
+  });
+
+  it('a text wish that repeats a known fact is a plain text wish, not "nicht verstanden"', () => {
+    const r = advanceDialog(
+      review(),
+      msg({
+        intent: 'request_text_change',
+        instruction: 'erwähn, dass es 5 € kostet',
+        facts: { costs: '5 € Material' },
+      }),
+      deps,
+    );
+    expect(r.replies.join('\n')).not.toContain(NOT_UNDERSTOOD);
+    expect(r.effects).toEqual([
+      { kind: 'change_request', instruction: 'erwähn, dass es 5 € kostet' },
+    ]);
+  });
+
+  it('"Text ändern" without a wish asks what should change; the next message is the wish', () => {
+    const url = 'http://localhost:3000/b/7';
+    const r = advanceDialog(review(), msg({ intent: 'request_text_change' }), {
+      ...deps,
+      postUrl: url,
+    });
+    expect(r.effects).toEqual([]);
+    expect(r.replies).toEqual([TEXT_CHANGE_QUESTION(url)]);
+    expect(r.replies[0]).toContain('Was soll anders sein?');
+    expect(r.state.awaitingTextChange).toBe(true);
+    expect(interpretContext(r.state, {}).question).toContain(
+      'Was soll anders sein?',
+    );
+    // however the AI files the answer, it is the wish (the caller uses the message text)
+    const r2 = advanceDialog(r.state, msg({ intent: 'unclear' }), deps);
+    expect(r2.effects).toEqual([{ kind: 'change_request', instruction: '' }]);
+    expect(r2.state.awaitingTextChange).toBe(false);
+    const r3 = advanceDialog(
+      r.state,
+      msg({ intent: 'request_text_change', instruction: 'Lötkolben erwähnen' }),
+      deps,
+    );
+    expect(r3.effects).toEqual([
+      { kind: 'change_request', instruction: 'Lötkolben erwähnen' },
+    ]);
+  });
+
+  it('a workshop change in review is a fact change (echo + new summary)', () => {
+    const s = { ...review(), facts: { ...review().facts, isWorkshop: false } };
+    const r = advanceDialog(s, msg({ facts: { isWorkshop: true } }), deps);
+    expect(r.replies).toEqual(['Alles klar, ich schreibe es als Workshop.']);
+    expect(r.effects).toEqual([{ kind: 'summary' }]);
+  });
+
+  it('says the greeting hint only once when the first message is unclear or a note', () => {
+    for (const intent of ['unclear', 'note_for_team'] as const) {
+      const { last } = run([{ intent }]);
+      expect(last).toEqual([
+        `${NOT_UNDERSTOOD}\nErzähl mir erst in einem Satz, was du vorhast.`,
+      ]);
+    }
+  });
+
+  it('"nein" to the summary is understood', () => {
+    const r = advanceDialog(review(), msg({ intent: 'confirm_no' }), deps);
+    expect(r.replies).toEqual([REVIEW_NOT_YET]);
+    expect(r.effects).toEqual([]);
+  });
+
+  it('while the summary is missing the open question asks for "nochmal"', () => {
+    const s = { ...review(), summaryPending: true };
+    expect(openQuestion(s)).toBe(TEXTS_PENDING);
+    const r = advanceDialog(s, msg({ intent: 'unclear' }), deps);
+    expect(r.replies).toEqual([`${NOT_UNDERSTOOD}\n${TEXTS_PENDING}`]);
+  });
+
+  it('a rejected value in review says the old one was kept', () => {
+    const s = review();
+    const r = advanceDialog(s, msg({ facts: { date: '2026-11-01' } }), deps);
+    expect(r.state.facts.date).toBe(s.facts.date);
+    expect(r.effects).toEqual([]);
+    expect(r.replies).toEqual([
+      'Das Datum liegt in der Vergangenheit.\nIch habe die bisherige Angabe behalten. Schreib mir einen neuen Wert oder antworte „abschicken“.',
+    ]);
+  });
+
+  it('re-asks the consent question without "Danke!"', () => {
+    const { last } = run([...walkthrough, 101, { intent: 'unclear' }]);
+    expect(last[0]).not.toContain('Danke');
   });
 });
