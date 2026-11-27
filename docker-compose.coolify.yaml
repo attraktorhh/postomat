@@ -1,0 +1,121 @@
+# Postomat on Coolify (build pack "Docker Compose", this file as compose location).
+#
+# Runs Postgres, worker, bot and web. Everything else (Matrix homeserver, OIDC,
+# WordPress, MediaWiki, Nextcloud, Meetup feed, LLM) is external and configured
+# through Coolify environment variables – see .env.example and the README
+# section "Echte Dienste". Without WordPress/MediaWiki credentials those
+# channels run as copy helpers; without Nextcloud credentials photos and
+# banners go to the shared `media` volume.
+#
+# Volumes:
+#   bot-data  – Matrix E2EE crypto store + sync token. NEVER delete it: the bot
+#               device's keys live only here.
+#   media     – photo/banner fallback store, shared by bot, worker and web.
+#   pgdata    – Postgres.
+#
+# Migrations run in the worker on every start; bot and web wait for it.
+services:
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: postomat
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
+      POSTGRES_DB: postomat
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postomat -d postomat']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Named volumes start root-owned; the apps run as `node` (uid 1000).
+  volume-init:
+    image: busybox:1.37
+    command: ['sh', '-c', 'chown -R 1000:1000 /data/media']
+    volumes:
+      - media:/data/media
+    restart: 'no'
+    exclude_from_hc: true
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    environment: &app-env
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://postomat:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/postomat
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL}
+      MEDIA_LOCAL_DIR: /data/media
+      # Matrix
+      MATRIX_HOMESERVER_URL: ${MATRIX_HOMESERVER_URL}
+      MATRIX_ACCESS_TOKEN: ${MATRIX_ACCESS_TOKEN}
+      MATRIX_DEVICE_ID: ${MATRIX_DEVICE_ID:-POSTOMAT}
+      MATRIX_MEMBER_ROOMS: ${MATRIX_MEMBER_ROOMS:-}
+      MATRIX_MEDIENTEAM_ROOM: ${MATRIX_MEDIENTEAM_ROOM:-}
+      # OIDC (web)
+      OIDC_ISSUER: ${OIDC_ISSUER}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-postomat}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_USERNAME_CLAIM: ${OIDC_USERNAME_CLAIM:-preferred_username}
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-groups}
+      SESSION_SECRET: ${SERVICE_PASSWORD_64_SESSION}
+      # AI (required for bot and worker)
+      AI_PROVIDER: ${AI_PROVIDER:-openai-compatible}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_STRUCTURED_OUTPUT: ${AI_STRUCTURED_OUTPUT:-json_schema}
+      AI_REASONING: ${AI_REASONING:-}
+      # Channels (empty credentials = copy helper)
+      WORDPRESS_URL: ${WORDPRESS_URL:-http://localhost:8081}
+      WORDPRESS_USERNAME: ${WORDPRESS_USERNAME:-}
+      WORDPRESS_APP_PASSWORD: ${WORDPRESS_APP_PASSWORD:-}
+      WORDPRESS_POST_STATUS: ${WORDPRESS_POST_STATUS:-publish}
+      MEDIAWIKI_API_URL: ${MEDIAWIKI_API_URL:-http://localhost:8082/api.php}
+      MEDIAWIKI_PAGE_BASE_URL: ${MEDIAWIKI_PAGE_BASE_URL:-http://localhost:8082/index.php/}
+      MEDIAWIKI_BOT_USERNAME: ${MEDIAWIKI_BOT_USERNAME:-}
+      MEDIAWIKI_BOT_PASSWORD: ${MEDIAWIKI_BOT_PASSWORD:-}
+      NEXTCLOUD_WEBDAV_URL: ${NEXTCLOUD_WEBDAV_URL:-http://localhost:8083/remote.php/dav/files/postomat}
+      NEXTCLOUD_USERNAME: ${NEXTCLOUD_USERNAME:-}
+      NEXTCLOUD_PASSWORD: ${NEXTCLOUD_PASSWORD:-}
+      MEETUP_ICAL_URL: ${MEETUP_ICAL_URL}
+      MEETUP_GROUP_URL: ${MEETUP_GROUP_URL}
+    volumes:
+      - media:/data/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      volume-init:
+        condition: service_completed_successfully
+
+  bot:
+    build:
+      context: .
+      dockerfile: apps/bot/Dockerfile
+    environment: *app-env
+    volumes:
+      - bot-data:/data
+      - media:/data/media
+    depends_on:
+      worker:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      <<: *app-env
+      SERVICE_FQDN_WEB_3000: ${SERVICE_FQDN_WEB_3000}
+    volumes:
+      - media:/data/media
+    depends_on:
+      worker:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  media:
+  bot-data:
