@@ -490,6 +490,29 @@ describe('scenarios', () => {
     expect(after.status).toBe('verworfen');
   });
 
+  it('takes a repeated cancel command as the yes to "verwerfen?"', async () => {
+    await h.dm(LENA, 'Ich will am 11.12. einen Lötkurs machen');
+    expect(await h.dm(LENA, 'abbrechen')).toEqual([
+      'Deinen Entwurf „Lötkurs“ verwerfen? (ja/nein)',
+    ]);
+    expect(await h.dm(LENA, 'weg damit')).toEqual([
+      'Okay, den Entwurf habe ich verworfen. Schreib einfach, wenn du etwas Neues hast.',
+    ]);
+    const [p] = await h.db.db.select().from(posts);
+    expect(p.status).toBe('verworfen');
+  });
+
+  it('applies a title change even when the AI files it as a text change', async () => {
+    await collectEvent(h);
+    const r = await h.dm(LENA, 'Der Titel soll lieber „Lötabend“ heißen');
+    expect(r[0]).toBe('Alles klar: Lötabend.');
+    expect(r[1]).toContain(
+      'Super, so schicke ich es ans Medienteam:\n\nLötabend',
+    );
+    const [p] = await h.db.db.select().from(posts);
+    expect(p.facts.title).toBe('Lötabend');
+  });
+
   it('turns a text change wish and a note in review into the right actions', async () => {
     await collectEvent(h);
     const before = h.ai.calls.filter((c) => c.kind === 'texts').length;

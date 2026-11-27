@@ -200,8 +200,8 @@ Intents:
 - decline_photo: Hat kein Foto oder will keins schicken ("nö", "hab keins", "ohne Foto").
 - skip_optional: Will die gestellte (optionale) Frage überspringen ("weiter", "-", "egal", "weiß ich noch nicht").
 - confirm_submit: Will die gezeigte Zusammenfassung ans Medienteam schicken ("abschicken", "passt, schick's ab"; "ja" nur, wenn erwartet = submit).
-- confirm_yes / confirm_no: Ja/Nein auf eine offene Bestätigungsfrage (pendingConfirmation) oder eine Ja/Nein-Frage.
-- request_text_change: Will die Texte geändert haben; instruction = was geändert werden soll.
+- confirm_yes / confirm_no: Ja/Nein auf eine offene Bestätigungsfrage (pendingConfirmation) oder eine Ja/Nein-Frage. Ist eine Bestätigungsfrage offen, ist jede Zustimmung confirm_yes ("jo", "weg damit", "klar, lösch es").
+- request_text_change: Will nur die Formulierung der Texte geändert haben (Ton, Länge, etwas erwähnen); instruction = was geändert werden soll. Ändert die Nachricht eine Angabe (Titel, Datum, Uhrzeit, Plätze, Kosten, Zielgruppe, Beschreibung), ist das provide_info mit den neuen facts.
 - note_for_team: Ein Hinweis fürs Medienteam, der keine Angabe ist; text = der Hinweis.
 - answer_rueckfrage: Antwort auf die offene Rückfrage des Medienteams (openRueckfrage). Enthält sie Angaben, trage sie zusätzlich in facts ein.
 - smalltalk_or_thanks: Begrüßung, Dank, Smalltalk.

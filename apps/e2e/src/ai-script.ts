@@ -52,6 +52,16 @@ export const E2E_RULES: InterpretRule[] = [
     match: 'Lass das, ich will das doch nicht mehr',
     result: { intent: 'cmd_cancel' },
   },
+  // A real model sometimes repeats the command instead of saying yes.
+  { match: 'weg damit', result: { intent: 'cmd_cancel' } },
+  {
+    match: 'Der Titel soll lieber „Lötabend“ heißen',
+    result: {
+      intent: 'request_text_change',
+      instruction: 'Titel ändern in „Lötabend“',
+      facts: { title: 'Lötabend' },
+    },
+  },
   { match: 'abschicken', result: { intent: 'confirm_submit' } },
   { match: 'passt, schick’s ab', result: { intent: 'confirm_submit' } },
   { match: 'nochmal', result: { intent: 'retry' } },

@@ -258,6 +258,66 @@ describe('AI-driven dialog', () => {
     expect(effects).toEqual(['set_consent', 'summary']);
   });
 
+  it('applies facts the AI filed as a text change (collect and review)', () => {
+    const collect = run(walkthrough.slice(0, 2));
+    expect(collect.state.step).toBe('collect');
+    const c = advanceDialog(
+      collect.state,
+      {
+        kind: 'message',
+        interpretation: interp({
+          intent: 'request_text_change',
+          instruction: 'Titel ändern',
+          facts: { title: 'Lötabend' },
+        }),
+      },
+      deps,
+    );
+    expect(c.state.facts.title).toBe('Lötabend');
+    expect(c.replies.join('\n')).not.toContain(NOT_UNDERSTOOD);
+
+    const review = run([...walkthrough, { intent: 'decline_photo' }]).state;
+    const r = advanceDialog(
+      review,
+      {
+        kind: 'message',
+        interpretation: interp({
+          intent: 'request_text_change',
+          instruction: 'Titel ändern',
+          facts: { title: 'Lötabend' },
+        }),
+      },
+      deps,
+    );
+    expect(r.state.facts.title).toBe('Lötabend');
+    expect(r.effects).toEqual([{ kind: 'summary' }]);
+
+    // isWorkshop alone stays a text change wish
+    const w = advanceDialog(
+      review,
+      {
+        kind: 'message',
+        interpretation: interp({
+          intent: 'request_text_change',
+          instruction: 'sag, dass es ein Workshop ist',
+          facts: { isWorkshop: true },
+        }),
+      },
+      deps,
+    );
+    expect(w.effects[0]).toMatchObject({ kind: 'change_request' });
+  });
+
+  it('gives the AI the open confirmation as the question', () => {
+    const review = run([...walkthrough, { intent: 'decline_photo' }]).state;
+    const ctx = interpretContext(
+      { ...review, pendingConfirmation: 'cancel' },
+      { pendingConfirmation: 'Deinen Entwurf „X“ verwerfen? (ja/nein)' },
+    );
+    expect(ctx.expecting).toBe('confirmation');
+    expect(ctx.question).toBe('Deinen Entwurf „X“ verwerfen? (ja/nein)');
+  });
+
   it('turns change wishes and notes in review into effects', () => {
     const review = run([...walkthrough, { intent: 'decline_photo' }]).state;
     expect(review.step).toBe('review');

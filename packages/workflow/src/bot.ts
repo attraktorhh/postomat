@@ -322,7 +322,12 @@ export class BotService {
     }
 
     if (draft && state.pendingConfirmation) {
-      if (interp.intent === 'confirm_yes')
+      // Repeating the command ("weg damit" again after "verwerfen?") is a yes.
+      const repeated =
+        (state.pendingConfirmation === 'cancel' &&
+          interp.intent === 'cmd_cancel') ||
+        (state.pendingConfirmation === 'new' && interp.intent === 'cmd_new');
+      if (interp.intent === 'confirm_yes' || repeated)
         return this.confirmed(evt, draft, state.pendingConfirmation);
       // Any other answer keeps the draft.
       state = { ...state, pendingConfirmation: null };

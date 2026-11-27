@@ -220,7 +220,8 @@ export function interpretContext(
 ): InterpretContext {
   return {
     expecting: expectedAnswer(state),
-    question: openQuestion(state),
+    // While a yes/no confirmation is open, that is the question being answered.
+    question: extra.pendingConfirmation ?? openQuestion(state),
     type: state.type ?? null,
     facts: state.facts,
     hasPhoto: state.photoCount > 0,
@@ -404,6 +405,10 @@ export function advanceDialog(
     return reask(state, NOT_UNDERSTOOD);
   }
 
+  // A changed fact is a fact change, even when the AI files it as a text change.
+  if (intent === 'request_text_change' && hasAnyFact(interp))
+    return absorbAndContinue(state, interp, deps);
+
   switch (intent) {
     case 'smalltalk_or_thanks':
       if (state.step === 'idle')
@@ -461,6 +466,13 @@ export function advanceDialog(
   if (state.step === 'idle')
     return reask(state, `${NOT_UNDERSTOOD} ${GREETING_HINT}`);
   return reask(state, NOT_UNDERSTOOD);
+}
+
+function hasAnyFact(interp: Interpretation): boolean {
+  // isWorkshop alone is a tone hint ("sag, dass es ein Workshop ist").
+  return Object.entries(interp.facts ?? {}).some(
+    ([k, v]) => k !== 'isWorkshop' && v !== null && v !== undefined && v !== '',
+  );
 }
 
 function skipOrDecline(
