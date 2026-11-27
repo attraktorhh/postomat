@@ -355,7 +355,9 @@ export function createAiService(
       const r = await run(
         'texts',
         { name: 'texts', schema: textsSchema },
-        `${STYLE}\nSchreibe Texte für Instagram, Website und Meetup nach dem Attraktor-Stil.`,
+        `${STYLE}\nSchreibe Texte für Instagram, Website und Meetup nach dem Attraktor-Stil.
+Gibt es einen aenderungswunsch, setze ihn um; Hinweise, die das Mitglied dort selbst nennt (z. B. „Lötkolben sind da“), darfst du übernehmen.
+Gibt es vorherigeTexte, ändere sie nur so weit, wie der Wunsch es verlangt.`,
         JSON.stringify({
           typ: type,
           angaben: facts,
