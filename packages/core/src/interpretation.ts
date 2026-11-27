@@ -1,4 +1,10 @@
-import type { FactKey, PostFacts, PostType } from './types.ts';
+import { z } from 'zod';
+import {
+  POST_TYPES,
+  type FactKey,
+  type PostFacts,
+  type PostType,
+} from './types.ts';
 import { isValidDate, localDateOf } from './time.ts';
 
 /**
@@ -46,56 +52,71 @@ export const CONSENT_ANSWERS = [
 ] as const;
 export type ConsentAnswer = (typeof CONSENT_ANSWERS)[number];
 
+/** Longest instruction / note the AI may return (characters). */
+export const AI_TEXT_MAX = 2000;
+
+// The AI result contract. `packages/ai` asks the model for exactly these
+// schemas; the TypeScript types below are derived from them. Every field is
+// required and nullable, so strict JSON-schema modes accept it.
+
 /** Facts as the AI returns them: null = not mentioned in this message. */
-export interface AiFacts {
-  title: string | null;
-  description: string | null;
-  date: string | null;
-  startTime: string | null;
-  endTime: string | null;
-  places: number | null;
-  costs: string | null;
-  audience: string | null;
-  trickiest: string | null;
-  isWorkshop: boolean | null;
-}
-
-export const AI_FACT_KEYS = [
-  'title',
-  'description',
-  'date',
-  'startTime',
-  'endTime',
-  'places',
-  'costs',
-  'audience',
-  'trickiest',
-  'isWorkshop',
-] as const satisfies readonly (keyof AiFacts & FactKey)[];
-
-export const emptyAiFacts = (): AiFacts => ({
-  title: null,
-  description: null,
-  date: null,
-  startTime: null,
-  endTime: null,
-  places: null,
-  costs: null,
-  audience: null,
-  trickiest: null,
-  isWorkshop: null,
+export const aiFactsSchema = z.object({
+  title: z
+    .string()
+    .nullable()
+    .describe('Kurzer deutscher Titel, z. B. "Lötkurs für Anfänger"'),
+  description: z
+    .string()
+    .nullable()
+    .describe(
+      '1–2 deutsche Sätze mit "du", was passiert bzw. was gebaut wurde',
+    ),
+  date: z
+    .string()
+    .nullable()
+    .describe('Lokales Datum YYYY-MM-DD (Europe/Berlin)'),
+  startTime: z.string().nullable().describe('Beginn HH:MM (24 h)'),
+  endTime: z.string().nullable().describe('Ende HH:MM (24 h)'),
+  places: z.number().int().nullable().describe('Anzahl Plätze'),
+  costs: z
+    .string()
+    .nullable()
+    .describe('z. B. "5 € Material" oder "kostenlos"'),
+  audience: z.string().nullable().describe('Zielgruppe'),
+  trickiest: z
+    .string()
+    .nullable()
+    .describe('Projekt: was war das Kniffligste (1–2 Sätze)'),
+  isWorkshop: z
+    .boolean()
+    .nullable()
+    .describe('true, wenn Teilnehmende etwas lernen oder selbst machen'),
 });
+export type AiFacts = z.infer<typeof aiFactsSchema>;
 
-export interface Interpretation {
-  intent: Intent;
-  type: PostType | null;
-  facts: AiFacts;
-  consent: ConsentAnswer | null;
+export const interpretationSchema = z.object({
+  intent: z.enum(INTENTS),
+  type: z.enum(POST_TYPES).nullable(),
+  facts: aiFactsSchema,
+  consent: z.enum(CONSENT_ANSWERS).nullable(),
   /** request_text_change: what should change. */
-  instruction: string | null;
+  instruction: z.string().max(AI_TEXT_MAX).nullable(),
   /** note_for_team: the note. */
-  text: string | null;
-}
+  text: z.string().max(AI_TEXT_MAX).nullable(),
+});
+export type Interpretation = z.infer<typeof interpretationSchema>;
+
+export const emptyAiFacts = (): AiFacts =>
+  Object.fromEntries(
+    Object.keys(aiFactsSchema.shape).map((k) => [k, null]),
+  ) as AiFacts;
+
+/** Raw model answer to the Meetup candidate question (1-based number). */
+export const candidateSchema = z.object({
+  choice: z
+    .union([z.number().int(), z.enum(['none', 'unrelated'])])
+    .describe('1-basierte Nummer, "none" oder "unrelated"'),
+});
 
 /** What the bot last asked, so the AI knows what an answer refers to. */
 export type ExpectedAnswer =

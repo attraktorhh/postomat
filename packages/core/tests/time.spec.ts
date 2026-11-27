@@ -48,11 +48,12 @@ describe('Berlin wall clock <-> instant', () => {
     );
   });
 
-  // 2026-10-25 03:00 → 02:00: 02:30 happens twice. The second occurrence
-  // (winter time, +01:00) is used, whatever the host's time zone.
-  it('picks the second occurrence in the autumn overlap', () => {
+  // 2026-10-25 03:00 → 02:00: 02:30 happens twice. The first occurrence
+  // (summer time, +02:00) is used, as RFC 5545 prescribes, whatever the
+  // host's time zone.
+  it('picks the first occurrence in the autumn overlap', () => {
     const t = berlinToInstant('2026-10-25', '02:30');
-    expect(t.toISOString()).toBe('2026-10-25T01:30:00.000Z');
+    expect(t.toISOString()).toBe('2026-10-25T00:30:00.000Z');
     expect(localTimeOf(t)).toBe('02:30');
     expect(localTimeOf(new Date('2026-10-25T01:30:00Z'))).toBe('02:30');
     expect(berlinToInstant('2026-10-25', '03:00').toISOString()).toBe(
