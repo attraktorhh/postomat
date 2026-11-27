@@ -14,6 +14,7 @@ import { submitPost } from '@postomat/workflow';
 import { requirePostAccess } from '../server/access.server';
 import { actionError } from '../server/errors';
 import { getDeps } from '../server/deps.server';
+import { formFields, parseForm, submitSchema } from '../server/forms';
 import { loadPostView } from '../server/views.server';
 import { LoginNote, Shell } from '../components/shell';
 import { StageTape, StatusTape, Stepper } from '../components/status';
@@ -52,10 +53,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       error: 'Nur die Autorin oder der Autor kann den Beitrag abschicken.',
     };
   if (post.status !== 'sammeln') return { error: DM.alreadySubmitted };
-  const form = await request.formData();
-  const note = String(form.get('note') ?? '').slice(0, 2000);
+  const parsed = parseForm(submitSchema, formFields(await request.formData()));
+  if (!parsed.success) return { error: parsed.error };
   try {
-    await submitPost(deps, id, user.username, note);
+    await submitPost(deps, id, user.username, parsed.data.note);
   } catch (e) {
     return { error: actionError(e) };
   }

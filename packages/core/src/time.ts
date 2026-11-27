@@ -1,3 +1,5 @@
+import { TZDate } from '@date-fns/tz';
+
 /**
  * Date and time helpers. All "local" values are Europe/Berlin wall-clock values.
  * Local dates are `YYYY-MM-DD` strings, local times `HH:MM` strings.
@@ -49,28 +51,16 @@ interface ZonedParts {
   second: number;
 }
 
-const partsFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: TIMEZONE,
-  hourCycle: 'h23',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-});
-
+/** Berlin wall-clock parts (month 1-12) of an instant. */
 export function zonedParts(instant: Date): ZonedParts {
-  const parts = Object.fromEntries(
-    partsFormatter.formatToParts(instant).map((p) => [p.type, p.value]),
-  );
+  const t = new TZDate(instant.getTime(), TIMEZONE);
   return {
-    year: Number(parts.year),
-    month: Number(parts.month),
-    day: Number(parts.day),
-    hour: Number(parts.hour),
-    minute: Number(parts.minute),
-    second: Number(parts.second),
+    year: t.getFullYear(),
+    month: t.getMonth() + 1,
+    day: t.getDate(),
+    hour: t.getHours(),
+    minute: t.getMinutes(),
+    second: t.getSeconds(),
   };
 }
 
@@ -86,28 +76,36 @@ export function localTimeOf(instant: Date): string {
   return `${pad2(p.hour)}:${pad2(p.minute)}`;
 }
 
-function offsetMinutes(instant: Date): number {
-  const p = zonedParts(instant);
-  const asUtc = Date.UTC(
-    p.year,
-    p.month - 1,
-    p.day,
-    p.hour,
-    p.minute,
-    p.second,
-  );
-  return Math.round((asUtc - instant.getTime()) / 60000);
+/** True if `timeZone` is an IANA zone name this runtime knows (e.g. `Europe/Berlin`). */
+export function isValidTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-/** Converts a Berlin wall-clock date + time to an instant (handles DST). */
-export function berlinToInstant(date: string, time = '00:00'): Date {
+/**
+ * Converts a wall-clock date (`YYYY-MM-DD`) + time (`HH:MM` or `HH:MM:SS`) in
+ * an IANA time zone to an instant. DST follows RFC 5545 (and `TZDate`): a time
+ * in the spring-forward gap is read with the offset before the gap (02:30 →
+ * 03:30 summer time), a time in the autumn overlap is the first occurrence
+ * (02:30 summer time).
+ */
+export function zonedToInstant(
+  date: string,
+  time: string,
+  timeZone: string,
+): Date {
   const [y, m, d] = date.split('-').map(Number);
-  const [hh, mm] = time.split(':').map(Number);
-  const guess = Date.UTC(y, m - 1, d, hh, mm);
-  let instant = new Date(guess - offsetMinutes(new Date(guess)) * 60000);
-  // Second pass fixes guesses close to a DST switch.
-  instant = new Date(guess - offsetMinutes(instant) * 60000);
-  return instant;
+  const [hh, mm, ss = 0] = time.split(':').map(Number);
+  return new Date(new TZDate(y, m - 1, d, hh, mm, ss, timeZone).getTime());
+}
+
+/** Converts a Berlin wall-clock date + time to an instant (DST: see `zonedToInstant`). */
+export function berlinToInstant(date: string, time = '00:00'): Date {
+  return zonedToInstant(date, time, TIMEZONE);
 }
 
 /** Weekday index 0 (Sunday) – 6 of a local date. */

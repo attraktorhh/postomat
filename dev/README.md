@@ -151,7 +151,9 @@ curl -X DELETE http://localhost:8084/_fake/events
 
 ### AI endpoint: fake LLM and Ollama
 
-Postomat needs an OpenAI-compatible LLM for every chat message (no parser fallback).
+Postomat needs an LLM for every chat message (no parser fallback). Locally both
+options below use `AI_PROVIDER=openai-compatible`; hosted providers (`deepseek`,
+`openai`, `anthropic`) are described in the main README.
 
 - **`fake-llm`** (core, port 8085): deterministic stand-in, no download. Knows the
   walkthrough and the stack smoke test messages plus a few simple patterns; anything

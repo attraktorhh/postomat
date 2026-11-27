@@ -47,11 +47,36 @@ export const envSchema = z.object({
   /** Dev default only; the web refuses to start with it in production. */
   SESSION_SECRET: z.string().default('dev-only-session-secret-change-me'),
 
-  /** Only OpenAI-compatible endpoints; AI is required for bot and worker. */
-  AI_PROVIDER: z.enum(['openai-compatible']).default('openai-compatible'),
+  /** AI SDK provider package; AI is required for bot and worker. */
+  AI_PROVIDER: z
+    .enum(['openai-compatible', 'openai', 'anthropic', 'deepseek'])
+    .default('openai-compatible'),
+  /** Required for openai-compatible; optional override for the others. */
   AI_BASE_URL: optional,
   AI_API_KEY: optional,
   AI_MODEL: optional,
+  /**
+   * openai-compatible only: `json_schema` (strict structured output) or
+   * `json` (JSON mode, the schema goes into the prompt) for endpoints that
+   * only accept `json_object`. The other providers pick their own mode.
+   */
+  AI_STRUCTURED_OUTPUT: z.enum(['json_schema', 'json']).default('json_schema'),
+  /** AI SDK reasoning level (`none` = thinking off); unset = provider default. */
+  AI_REASONING: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z
+      .enum([
+        'provider-default',
+        'none',
+        'minimal',
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max',
+      ])
+      .optional(),
+  ),
   AI_TIMEOUT_MS: int(20000),
   /** How long bot and worker wait for the AI endpoint at startup. */
   AI_STARTUP_TIMEOUT_MS: int(120000),

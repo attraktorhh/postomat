@@ -10,6 +10,7 @@ import { Alert, Button } from '@heroui/react';
 import { getRoomSettings, saveRoomSettings } from '@postomat/workflow';
 import { requireUser } from '../server/auth.server';
 import { getDeps } from '../server/deps.server';
+import { formFields, parseForm, roomSettingsSchema } from '../server/forms';
 import { botMatrixId, loadRoomDirectory } from '../server/views.server';
 import { Shell } from '../components/shell';
 
@@ -38,11 +39,19 @@ export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request, ['admin']);
   const deps = await getDeps();
   const form = await request.formData();
-  const memberRooms = form.getAll('member').map(String);
-  const medienteamRoom = String(form.get('medienteam') ?? '') || null;
-  if (!memberRooms.length)
-    return { error: 'Bitte mindestens einen Mitglieder-Raum wählen.' };
-  await saveRoomSettings(deps, { memberRooms, medienteamRoom }, user.username);
+  const parsed = parseForm(roomSettingsSchema, {
+    ...formFields(form),
+    member: form.getAll('member'),
+  });
+  if (!parsed.success) return { error: parsed.error };
+  await saveRoomSettings(
+    deps,
+    {
+      memberRooms: parsed.data.member,
+      medienteamRoom: parsed.data.medienteam,
+    },
+    user.username,
+  );
   return {
     ok: 'Gespeichert. Der Bot übernimmt die Räume innerhalb von 5 Minuten.',
   };

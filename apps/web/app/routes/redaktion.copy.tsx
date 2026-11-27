@@ -20,6 +20,7 @@ import {
 import { requireUser } from '../server/auth.server';
 import { actionError } from '../server/errors';
 import { getDeps } from '../server/deps.server';
+import { copyActionSchema, formFields, parseForm } from '../server/forms';
 import { loadPostView } from '../server/views.server';
 import { Shell } from '../components/shell';
 import { CopyFields } from '../components/copy-button';
@@ -63,24 +64,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const id = Number(params['id']);
   const channel = channelParam(params['channel']);
   if (!isDbId(id)) throw new Response('Nicht gefunden', { status: 404 });
-  const form = await request.formData();
+  const parsed = parseForm(
+    copyActionSchema,
+    formFields(await request.formData()),
+  );
+  if (!parsed.success) return { error: parsed.error };
   // Only copy channels are handled here; auto channels are published (or
   // retried) on the post page, so a crafted POST cannot skip them.
   const row = await getChannel(deps.db, id, channel);
   if (!row || row.mode !== 'copy')
     return { error: `${CHANNEL_NAMES[channel]} ist kein Kopier-Kanal.` };
   try {
-    if (form.get('intent') === 'skip') {
+    if (parsed.data.intent === 'skip') {
       await skipChannel(deps, id, channel, user.username);
       return { ok: 'Übersprungen.' };
     }
-    await setChannelLink(
-      deps,
-      id,
-      channel,
-      String(form.get('url') ?? ''),
-      user.username,
-    );
+    await setChannelLink(deps, id, channel, parsed.data.url, user.username);
     return { ok: 'Link eingetragen.' };
   } catch (e) {
     return { error: actionError(e) };

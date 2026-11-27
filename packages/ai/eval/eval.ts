@@ -1,6 +1,6 @@
 /**
  * Live evaluation of the configured LLM (not part of CI):
- *   pnpm nx run ai:eval        (uses AI_BASE_URL / AI_MODEL / AI_API_KEY from .env)
+ *   pnpm nx run ai:eval        (uses the AI_* settings from .env)
  *
  * Runs the walkthrough plus tricky German inputs through the real AiService
  * and prints the accuracy per field. Use it to choose a model before the pilot.
@@ -245,7 +245,9 @@ const CANDIDATE_CASES: Array<{
 
 const env = loadEnv();
 const ai = createAiFromEnv(env);
-console.log(`AI eval against ${env.AI_BASE_URL} (${env.AI_MODEL})\n`);
+console.log(
+  `AI eval: ${env.AI_PROVIDER} ${env.AI_BASE_URL ?? '(default URL)'} ${env.AI_MODEL} reasoning=${env.AI_REASONING ?? 'provider default'}\n`,
+);
 
 const fields = new Map<string, { ok: number; total: number }>();
 const count = (field: string, ok: boolean) => {

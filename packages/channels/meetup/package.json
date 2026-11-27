@@ -33,6 +33,7 @@
   "dependencies": {
     "@postomat/core": "workspace:*",
     "@postomat/templates": "workspace:*",
+    "ical.js": "2.2.1",
     "tslib": "^2.3.0"
   },
   "devDependencies": {

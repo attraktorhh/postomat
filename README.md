@@ -88,22 +88,39 @@ laufen ohne Stack gegen In-Process-Fakes; mit `CONTRACT_TARGET=local` dieselbe S
 Die KI ist in allen automatischen Tests ein deterministisches Stub-Modell (`createScriptedAi` aus
 `packages/testing`, das Mock-Modell des AI SDK hinter dem echten `AiService`); CI braucht keinen Schlüssel.
 Der Smoke-Test läuft gegen das Fake-LLM. Wie gut ein echtes Modell die Nachrichten versteht, misst
-`pnpm nx run ai:eval` (nicht in CI; nutzt `AI_BASE_URL`/`AI_MODEL` aus `.env`).
+`pnpm nx run ai:eval` (nicht in CI; nutzt die `AI_*`-Einstellungen aus `.env`).
 
 ### KI
 
-Postomat versteht jede Chat-Nachricht über ein Sprachmodell (`packages/ai`, OpenAI-kompatible API):
+Postomat versteht jede Chat-Nachricht über ein Sprachmodell (`packages/ai`, Vercel AI SDK mit dessen
+Anbieter-Paketen und strukturierter Ausgabe):
 Art des Beitrags, Angaben und Korrekturen, Einwilligung, Bestätigungen, Befehle wie „hilfe“ oder
 „abbrechen“ in beliebiger Formulierung, Antworten auf Rückfragen und die Antwort des Medienteams auf die
 Meetup-Rückfrage. **Es gibt keinen Parser als Ersatz.** Das Modell liefert strukturierte, per Schema
 geprüfte Ergebnisse; Postomat prüft Datum, Uhrzeit und Zahlen danach selbst und wiederholt das Verstandene
 (mit selbst berechnetem Wochentag), damit Fehler sofort auffallen.
 
-- **Pflicht:** Bot und Worker starten nicht ohne `AI_BASE_URL` und `AI_MODEL` und warten beim Start
-  höchstens `AI_STARTUP_TIMEOUT_MS` auf eine gültige Antwort des Modells. Die Web-App startet ohne KI.
+- **Pflicht:** Bot und Worker starten nicht ohne KI-Konfiguration und warten beim Start höchstens
+  `AI_STARTUP_TIMEOUT_MS` auf eine gültige Antwort des Modells. Fehler, die Warten nicht behebt (HTTP 4xx:
+  falscher Schlüssel, unbekanntes Modell, nicht unterstütztes Antwortformat), brechen sofort ab. Die
+  Web-App startet ohne KI.
 - **Lokal:** Fake-LLM (Core-Stack, Port 8085) oder Ollama (`--profile ai`, Port 11434), siehe
   [`dev/README.md`](./dev/README.md#ai-endpoint-fake-llm-and-ollama).
-- **Externer Anbieter:** `AI_BASE_URL` (OpenAI-kompatible Basis-URL), `AI_MODEL`, `AI_API_KEY`.
+- **Anbieter** (`AI_PROVIDER`, jeweils das Paket des AI SDK):
+
+  | `AI_PROVIDER`       | Paket                       | Pflicht                   | Strukturierte Ausgabe                                     |
+  | ------------------- | --------------------------- | ------------------------- | --------------------------------------------------------- |
+  | `openai-compatible` | `@ai-sdk/openai-compatible` | `AI_BASE_URL`, `AI_MODEL` | `AI_STRUCTURED_OUTPUT=json_schema` (Standard) oder `json` |
+  | `deepseek`          | `@ai-sdk/deepseek`          | `AI_MODEL`, `AI_API_KEY`  | JSON-Modus, Schema im Prompt (automatisch)                |
+  | `openai`            | `@ai-sdk/openai`            | `AI_MODEL`, `AI_API_KEY`  | JSON-Schema (automatisch)                                 |
+  | `anthropic`         | `@ai-sdk/anthropic`         | `AI_MODEL`, `AI_API_KEY`  | wie das Paket es vorsieht (automatisch)                   |
+
+  `AI_BASE_URL` überschreibt bei den gehosteten Anbietern die Standard-URL. `AI_STRUCTURED_OUTPUT=json`
+  ist für OpenAI-kompatible Server, die nur `response_format: json_object` kennen (das Schema kommt dann in
+  den Prompt). `AI_REASONING` (`none`, `low`, …, leer = Standard des Anbieters) steuert das „Nachdenken“
+  des Modells; `none` ist für den Chat schneller. Beispiel DeepSeek: `AI_PROVIDER=deepseek`,
+  `AI_MODEL=deepseek-flash`, `AI_API_KEY=…`, `AI_REASONING=none`.
+
 - **Datenschutz:** An das Modell gehen nur der Nachrichtentext, die bisher bekannten Angaben und der
   Gesprächskontext (welche Frage offen ist). Nie Matrix-IDs, Anzeigenamen oder Benutzernamen. Mitglieder-
   Nachrichten landen damit beim konfigurierten Anbieter; das gehört in die Einwilligungstexte.
@@ -117,15 +134,15 @@ geprüfte Ergebnisse; Postomat prüft Datum, Uhrzeit und Zahlen danach selbst un
 
 Umgestellt wird nur über Umgebungsvariablen (siehe `.env.example`):
 
-| Dienst    | Variablen                                                                                                                                          |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Matrix    | `MATRIX_HOMESERVER_URL`, `MATRIX_ACCESS_TOKEN` (Synapse ist SSO-only), `MATRIX_DEVICE_ID`, `MATRIX_DATA_DIR` (Volume!), Räume über `/admin/raeume` |
-| Keycloak  | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `PUBLIC_WEB_URL`, Gruppen `GROUP_*`                                                         |
-| WordPress | `WORDPRESS_URL`, `WORDPRESS_USERNAME`, `WORDPRESS_APP_PASSWORD`, `WORDPRESS_POST_STATUS=draft` für die ersten Tage                                 |
-| Wiki      | `MEDIAWIKI_API_URL`, `MEDIAWIKI_PAGE_BASE_URL`, `MEDIAWIKI_BOT_USERNAME`, `MEDIAWIKI_BOT_PASSWORD`                                                 |
-| Nextcloud | `NEXTCLOUD_WEBDAV_URL`, `NEXTCLOUD_USERNAME`, `NEXTCLOUD_PASSWORD`                                                                                 |
-| Meetup    | `MEETUP_ICAL_URL=https://www.meetup.com/attraktor/events/ical/` (nur lesen), `MEETUP_GROUP_URL`                                                    |
-| KI        | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY` (Pflicht für Bot und Worker, siehe [KI](#ki)). Vorher `pnpm nx run ai:eval` gegen das gewählte Modell.     |
+| Dienst    | Variablen                                                                                                                                            |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Matrix    | `MATRIX_HOMESERVER_URL`, `MATRIX_ACCESS_TOKEN` (Synapse ist SSO-only), `MATRIX_DEVICE_ID`, `MATRIX_DATA_DIR` (Volume!), Räume über `/admin/raeume`   |
+| Keycloak  | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `PUBLIC_WEB_URL`, Gruppen `GROUP_*`                                                           |
+| WordPress | `WORDPRESS_URL`, `WORDPRESS_USERNAME`, `WORDPRESS_APP_PASSWORD`, `WORDPRESS_POST_STATUS=draft` für die ersten Tage                                   |
+| Wiki      | `MEDIAWIKI_API_URL`, `MEDIAWIKI_PAGE_BASE_URL`, `MEDIAWIKI_BOT_USERNAME`, `MEDIAWIKI_BOT_PASSWORD`                                                   |
+| Nextcloud | `NEXTCLOUD_WEBDAV_URL`, `NEXTCLOUD_USERNAME`, `NEXTCLOUD_PASSWORD`                                                                                   |
+| Meetup    | `MEETUP_ICAL_URL=https://www.meetup.com/attraktor/events/ical/` (nur lesen), `MEETUP_GROUP_URL`                                                      |
+| KI        | `AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY`, ggf. `AI_BASE_URL`, `AI_STRUCTURED_OUTPUT`, `AI_REASONING` (siehe [KI](#ki)). Vorher `pnpm nx run ai:eval`. |
 
 Kanal-Modi (`auto` / `copy` / `off`) je Postart stehen in [`postomat.config.json`](./postomat.config.json).
 Fehlen Zugangsdaten für einen `auto`-Kanal, nutzt Postomat Kopierhilfe und warnt beim Start.

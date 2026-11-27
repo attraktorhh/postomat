@@ -7,9 +7,19 @@ import {
   RetryError,
   TypeValidationError,
   JSONParseError,
+  wrapLanguageModel,
   type LanguageModel,
+  type LanguageModelMiddleware,
 } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createDeepSeek } from '@ai-sdk/deepseek';
+import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import {
+  injectJsonInstructionIntoMessages,
+  isAbortError,
+} from '@ai-sdk/provider-utils';
+import pRetry from 'p-retry';
 import { z } from 'zod';
 import {
   addDays,
@@ -40,10 +50,17 @@ export type AiErrorKind = 'config' | 'timeout' | 'http' | 'schema' | 'refusal';
  */
 export class AiError extends Error {
   readonly kind: AiErrorKind;
-  constructor(kind: AiErrorKind, message: string, options?: ErrorOptions) {
+  /** HTTP status of the provider response, if any. */
+  readonly status?: number;
+  constructor(
+    kind: AiErrorKind,
+    message: string,
+    options?: ErrorOptions & { status?: number },
+  ) {
     super(message, options);
     this.name = 'AiError';
     this.kind = kind;
+    this.status = options?.status;
   }
 }
 
@@ -222,14 +239,15 @@ Datumsangaben immer als YYYY-MM-DD, Uhrzeiten immer als HH:MM.`;
 
 // ---------------------------------------------------------------- errors
 
-function classify(e: unknown, timedOut: boolean): AiError {
+/** Maps AI SDK errors to the typed `AiError` kinds. */
+function classify(e: unknown): AiError {
   if (isAiError(e)) return e;
   const err = e instanceof Error ? e : new Error(String(e));
   const inner =
     RetryError.isInstance(e) && e.lastError instanceof Error
       ? e.lastError
       : err;
-  if (timedOut || inner.name === 'AbortError' || inner.name === 'TimeoutError')
+  if (inner.name === 'TimeoutError' || isAbortError(inner as unknown))
     return new AiError('timeout', 'AI request timed out', { cause: e });
   if (
     NoObjectGeneratedError.isInstance(inner) ||
@@ -244,7 +262,7 @@ function classify(e: unknown, timedOut: boolean): AiError {
     return new AiError(
       'http',
       `AI endpoint returned ${inner.statusCode ?? 'an error'}`,
-      { cause: e },
+      { cause: e, status: inner.statusCode },
     );
   return new AiError('http', `AI request failed: ${inner.message}`, {
     cause: e,
@@ -255,7 +273,12 @@ function classify(e: unknown, timedOut: boolean): AiError {
 
 export function createAiService(
   model: LanguageModel,
-  opts: { timeoutMs: number; logger?: AiLogger },
+  opts: {
+    timeoutMs: number;
+    /** AI SDK reasoning level; undefined = provider default. */
+    reasoning?: Env['AI_REASONING'];
+    logger?: AiLogger;
+  },
 ): AiService {
   const log = opts.logger ?? { warn: (m, d) => console.warn(m, d ?? '') };
   const status: AiStatus = {
@@ -270,49 +293,40 @@ export function createAiService(
     system: string,
     prompt: string,
   ): Promise<T> {
-    const controller = new AbortController();
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, opts.timeoutMs);
+    // The AI SDK validates the output against the schema (NoObjectGeneratedError
+    // otherwise), retries retryable HTTP errors and enforces the timeout.
     const once = async (): Promise<T> => {
       const res = await generateText({
         model,
         system,
         prompt,
         output: Output.object({ schema }),
-        abortSignal: controller.signal,
-        // One retry on HTTP errors the provider marks as retryable.
+        timeout: opts.timeoutMs,
         maxRetries: 1,
+        ...(opts.reasoning ? { reasoning: opts.reasoning } : {}),
       });
       if (res.finishReason === 'content-filter')
         throw new AiError('refusal', 'AI provider refused the request');
-      const out = schema.safeParse(res.output);
-      if (!out.success)
-        throw new AiError('schema', 'AI output did not match the schema');
-      return out.data;
+      return res.output as T;
     };
     try {
       let result: T;
       try {
         result = await once();
       } catch (e) {
-        // One more try when the output did not match the schema.
-        if (classify(e, timedOut).kind !== 'schema') throw e;
+        // The SDK does not retry invalid output: one more try on a schema miss.
+        if (classify(e).kind !== 'schema') throw e;
         result = await once();
       }
       status.lastOkAt = new Date().toISOString();
       return result;
     } catch (e) {
-      const err = classify(e, timedOut);
+      const err = classify(e);
       status.lastError = `${what}: ${err.kind}`;
       status.lastErrorAt = new Date().toISOString();
       // Never log the message content.
       log.warn(`AI ${what} failed`, { kind: err.kind, error: err.message });
       throw err;
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -399,39 +413,119 @@ export function createAiService(
 
 /** Throws an `AiError('config')` naming the missing variables. */
 export function requireAiConfig(env: Env): {
-  baseUrl: string;
+  provider: Env['AI_PROVIDER'];
   model: string;
 } {
   const missing = [
-    !env.AI_BASE_URL && 'AI_BASE_URL',
+    env.AI_PROVIDER === 'openai-compatible' &&
+      !env.AI_BASE_URL &&
+      'AI_BASE_URL',
     !env.AI_MODEL && 'AI_MODEL',
+    env.AI_PROVIDER !== 'openai-compatible' && !env.AI_API_KEY && 'AI_API_KEY',
   ].filter(Boolean);
   if (missing.length)
     throw new AiError(
       'config',
-      `AI configuration missing: ${missing.join(', ')}. Postomat needs an OpenAI-compatible endpoint (see .env.example).`,
+      `AI configuration missing: ${missing.join(', ')} (AI_PROVIDER=${env.AI_PROVIDER}, see .env.example).`,
     );
-  return { baseUrl: env.AI_BASE_URL!, model: env.AI_MODEL! };
-}
-
-/** Builds the AI service from env. Never returns null: throws on missing config. */
-export function createAiFromEnv(env: Env, logger?: AiLogger): AiService {
-  const { baseUrl, model } = requireAiConfig(env);
-  const provider = createOpenAICompatible({
-    name: 'postomat-llm',
-    baseURL: baseUrl,
-    apiKey: env.AI_API_KEY,
-    supportsStructuredOutputs: true,
-  });
-  return createAiService(provider.chatModel(model), {
-    timeoutMs: env.AI_TIMEOUT_MS,
-    logger,
-  });
+  return { provider: env.AI_PROVIDER, model: env.AI_MODEL! };
 }
 
 /**
- * Startup probe: retries until the endpoint answers with a valid structured
- * result or `timeoutMs` is over (a local model may still be loading).
+ * JSON mode for OpenAI-compatible endpoints without `json_schema`: the
+ * provider sends `response_format: json_object`, so the schema goes into the
+ * prompt (the AI SDK helper the provider packages use for the same case).
+ */
+const jsonModeMiddleware: LanguageModelMiddleware = {
+  specificationVersion: 'v4',
+  transformParams: async ({ params }) =>
+    params.responseFormat?.type === 'json'
+      ? {
+          ...params,
+          prompt: injectJsonInstructionIntoMessages({
+            messages: params.prompt,
+            schema: params.responseFormat.schema,
+          }),
+        }
+      : params,
+};
+
+/**
+ * The AI SDK language model for `AI_PROVIDER`. `fetch` is for tests (records
+ * the HTTP requests the provider package sends).
+ */
+export function languageModelFromEnv(
+  env: Env,
+  opts: { fetch?: typeof globalThis.fetch } = {},
+): LanguageModel {
+  const { provider, model } = requireAiConfig(env);
+  const common = {
+    apiKey: env.AI_API_KEY,
+    baseURL: env.AI_BASE_URL,
+    fetch: opts.fetch,
+  };
+  switch (provider) {
+    case 'openai':
+      return createOpenAI(common)(model);
+    case 'anthropic':
+      return createAnthropic(common)(model);
+    case 'deepseek':
+      // JSON mode with the schema in the prompt (DeepSeek has no json_schema).
+      return createDeepSeek(common)(model);
+    case 'openai-compatible': {
+      const jsonSchema = env.AI_STRUCTURED_OUTPUT === 'json_schema';
+      const chat = createOpenAICompatible({
+        name: 'postomat-llm',
+        baseURL: env.AI_BASE_URL!,
+        apiKey: env.AI_API_KEY,
+        fetch: opts.fetch,
+        supportsStructuredOutputs: jsonSchema,
+      }).chatModel(model);
+      return jsonSchema
+        ? chat
+        : wrapLanguageModel({ model: chat, middleware: jsonModeMiddleware });
+    }
+  }
+}
+
+/** Builds the AI service from env. Never returns null: throws on missing config. */
+export function createAiFromEnv(
+  env: Env,
+  logger?: AiLogger,
+  opts: { fetch?: typeof globalThis.fetch } = {},
+): AiService {
+  const log = logger ?? { warn: (m, d) => console.warn(m, d ?? '') };
+  // AI SDK warnings go to our logger. The JSON-mode ones are the configured
+  // behaviour (schema in the prompt), not a problem.
+  globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
+    for (const w of warnings) {
+      if ('feature' in w && String(w.feature).startsWith('responseFormat'))
+        continue;
+      log.warn('AI SDK warning', { provider, model, warning: w });
+    }
+  };
+  return createAiService(languageModelFromEnv(env, opts), {
+    timeoutMs: env.AI_TIMEOUT_MS,
+    reasoning: env.AI_REASONING,
+    logger: log,
+  });
+}
+
+/** Errors waiting cannot fix: config, refusal, HTTP 4xx (key, model, request). */
+const permanent = (e: AiError) =>
+  e.kind === 'config' ||
+  e.kind === 'refusal' ||
+  (e.status !== undefined &&
+    e.status >= 400 &&
+    e.status < 500 &&
+    e.status !== 408 &&
+    e.status !== 429);
+
+/**
+ * Startup probe: retries (p-retry) until the endpoint answers with a valid
+ * structured result or `timeoutMs` is over (a local model may still be
+ * loading). Fails at once on errors waiting cannot fix (HTTP 4xx: key, model
+ * or request format).
  */
 export async function waitForAi(
   ai: AiService,
@@ -441,28 +535,36 @@ export async function waitForAi(
     logger?: { info(msg: string, data?: Record<string, unknown>): void };
   },
 ): Promise<void> {
-  const deadline = Date.now() + opts.timeoutMs;
-  const interval = opts.intervalMs ?? 3000;
-  let attempt = 0;
-  for (;;) {
-    attempt++;
-    try {
-      await ai.probe();
-      return;
-    } catch (e) {
-      const err = isAiError(e) ? e : classify(e, false);
-      if (Date.now() + interval >= deadline)
-        throw new AiError(
-          err.kind,
-          `AI startup probe failed after ${attempt} attempt(s): ${err.message}`,
-          { cause: e },
-        );
-      opts.logger?.info('waiting for the AI endpoint', {
-        attempt,
-        kind: err.kind,
-      });
-      await new Promise((r) => setTimeout(r, interval));
-    }
+  let attempts = 0;
+  try {
+    await pRetry(
+      async () => {
+        attempts++;
+        await ai.probe();
+      },
+      {
+        retries: Number.POSITIVE_INFINITY,
+        maxRetryTime: opts.timeoutMs,
+        minTimeout: opts.intervalMs ?? 3000,
+        factor: 1,
+        shouldRetry: ({ error, attemptNumber }) => {
+          const err = classify(error);
+          if (permanent(err)) return false;
+          opts.logger?.info('waiting for the AI endpoint', {
+            attempt: attemptNumber,
+            kind: err.kind,
+          });
+          return true;
+        },
+      },
+    );
+  } catch (e) {
+    const err = classify(e);
+    throw new AiError(
+      err.kind,
+      `AI startup probe failed after ${attempts} attempt(s): ${err.message}`,
+      { cause: e },
+    );
   }
 }
 

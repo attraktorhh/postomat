@@ -1,7 +1,12 @@
+import ICAL from 'ical.js';
 import {
   berlinToInstant,
   HttpError,
+  isValidTimeZone,
+  pad2,
   timeoutSignal,
+  TIMEZONE,
+  zonedToInstant,
   type FetchLike,
 } from '@postomat/core';
 
@@ -17,45 +22,39 @@ export interface FeedEvent {
   end?: Date;
 }
 
-function unfold(text: string): string[] {
-  return text
-    .replace(/\r\n/g, '\n')
-    .replace(/\n[ \t]/g, '')
-    .split('\n');
+/**
+ * Instant of a DTSTART/DTEND property. UTC (`Z`) times are absolute, times
+ * with a known IANA `TZID` are read in that zone, floating times and all-day
+ * dates in Europe/Berlin (the club's zone).
+ */
+function instantOf(prop: ICAL.Property | null): Date | undefined {
+  const value = prop?.getFirstValue();
+  if (!(value instanceof ICAL.Time)) return undefined;
+  const date = `${value.year}-${pad2(value.month)}-${pad2(value.day)}`;
+  if (value.isDate) return berlinToInstant(date, '00:00');
+  if (value.zone === ICAL.Timezone.utcTimezone) return value.toJSDate();
+  const tzid = prop?.getParameter('tzid');
+  const zone =
+    typeof tzid === 'string' && isValidTimeZone(tzid) ? tzid : TIMEZONE;
+  const time = `${pad2(value.hour)}:${pad2(value.minute)}:${pad2(value.second)}`;
+  return zonedToInstant(date, time, zone);
 }
 
-function unescapeText(v: string): string {
-  return v
-    .replace(/\\n/gi, '\n')
-    .replace(/\\,/g, ',')
-    .replace(/\\;/g, ';')
-    .replace(/\\\\/g, '\\');
+function textOf(event: ICAL.Component, name: string): string {
+  const v = event.getFirstPropertyValue(name);
+  return typeof v === 'string' ? v : '';
 }
 
-function parseDate(
-  value: string,
-  params: Record<string, string>,
-): Date | undefined {
-  const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(
-    value.trim(),
-  );
-  if (!m) return undefined;
-  const [, y, mo, d, hh, mm, ss, z] = m;
-  if (!hh) return berlinToInstant(`${y}-${mo}-${d}`, '00:00');
-  if (z)
-    return new Date(
-      Date.UTC(
-        Number(y),
-        Number(mo) - 1,
-        Number(d),
-        Number(hh),
-        Number(mm),
-        Number(ss ?? 0),
-      ),
+/** All VEVENTs, whether wrapped in a VCALENDAR or not. */
+function veventsOf(text: string): ICAL.Component[] {
+  // jCal: one root is `[name, props, comps]`, several roots an array of those.
+  const parsed = ICAL.parse(text) as unknown[];
+  const roots = (Array.isArray(parsed[0]) ? parsed : [parsed]) as unknown[][];
+  return roots
+    .map((jcal) => new ICAL.Component(jcal))
+    .flatMap((c) =>
+      c.name === 'vevent' ? [c] : c.getAllSubcomponents('vevent'),
     );
-  // TZID=Europe/Berlin or floating time → Berlin wall clock (the club's zone).
-  void params;
-  return berlinToInstant(`${y}-${mo}-${d}`, `${hh}:${mm}`);
 }
 
 /** Numeric Meetup event id from `UID:event_<id>@meetup.com` or the URL; null if none. */
@@ -77,52 +76,25 @@ function meetupUrlFrom(url: string, id: string): string {
     : `https://www.meetup.com/events/${id}/`;
 }
 
-/** Parses an iCalendar text into events (only what Postomat needs). */
+/** Parses an iCalendar text into events (only what Postomat needs). Throws on malformed iCal. */
 export function parseIcal(text: string): FeedEvent[] {
   const events: FeedEvent[] = [];
-  let cur: Record<
-    string,
-    { value: string; params: Record<string, string> }
-  > | null = null;
-  for (const line of unfold(text)) {
-    if (line === 'BEGIN:VEVENT') {
-      cur = {};
-      continue;
-    }
-    if (line === 'END:VEVENT') {
-      if (cur) {
-        const uid = cur['UID']?.value ?? '';
-        const url = cur['URL']?.value ?? '';
-        const start = cur['DTSTART']
-          ? parseDate(cur['DTSTART'].value, cur['DTSTART'].params)
-          : undefined;
-        const meetupId = meetupIdFrom(uid, url);
-        // Feed data is untrusted: skip entries without a numeric event id.
-        if (uid && start && meetupId) {
-          events.push({
-            uid,
-            meetupId,
-            summary: unescapeText(cur['SUMMARY']?.value ?? ''),
-            description: unescapeText(cur['DESCRIPTION']?.value ?? ''),
-            url: meetupUrlFrom(url, meetupId),
-            start,
-            end: cur['DTEND']
-              ? parseDate(cur['DTEND'].value, cur['DTEND'].params)
-              : undefined,
-          });
-        }
-      }
-      cur = null;
-      continue;
-    }
-    if (!cur) continue;
-    const idx = line.indexOf(':');
-    if (idx < 0) continue;
-    const [name, ...paramParts] = line.slice(0, idx).split(';');
-    const params = Object.fromEntries(
-      paramParts.map((p) => p.split('=') as [string, string]),
-    );
-    cur[name.toUpperCase()] = { value: line.slice(idx + 1), params };
+  for (const vevent of veventsOf(text)) {
+    const uid = textOf(vevent, 'uid');
+    const url = textOf(vevent, 'url');
+    const start = instantOf(vevent.getFirstProperty('dtstart'));
+    const meetupId = meetupIdFrom(uid, url);
+    // Feed data is untrusted: skip entries without a numeric event id.
+    if (!uid || !start || !meetupId) continue;
+    events.push({
+      uid,
+      meetupId,
+      summary: textOf(vevent, 'summary'),
+      description: textOf(vevent, 'description'),
+      url: meetupUrlFrom(url, meetupId),
+      start,
+      end: instantOf(vevent.getFirstProperty('dtend')),
+    });
   }
   return events;
 }

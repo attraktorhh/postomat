@@ -201,6 +201,15 @@ describe('configuration and startup', () => {
     expect(() => requireAiConfig(loadEnv({}))).toThrow(
       'AI configuration missing: AI_BASE_URL, AI_MODEL',
     );
+    // Hosted providers have a default base URL but need a key.
+    expect(() =>
+      requireAiConfig(loadEnv({ AI_PROVIDER: 'deepseek', AI_MODEL: 'm' })),
+    ).toThrow('AI configuration missing: AI_API_KEY');
+    expect(
+      requireAiConfig(
+        loadEnv({ AI_PROVIDER: 'anthropic', AI_MODEL: 'm', AI_API_KEY: 'k' }),
+      ).provider,
+    ).toBe('anthropic');
     expect(() =>
       createAiFromEnv(loadEnv({ AI_BASE_URL: 'http://localhost:11434/v1' })),
     ).toThrow('AI configuration missing: AI_MODEL');
@@ -225,6 +234,22 @@ describe('configuration and startup', () => {
     expect(n).toBe(3);
   });
 
+  it('fails at once on errors waiting cannot fix (HTTP 4xx)', async () => {
+    let n = 0;
+    const ai: AiService = {
+      ...service(async () => result({}) as never).ai,
+      probe: async () => {
+        n++;
+        throw new AiError('http', 'AI endpoint returned 400', { status: 400 });
+      },
+    };
+    const e = await failure(waitForAi(ai, { timeoutMs: 5000, intervalMs: 10 }));
+    expect(n).toBe(1);
+    expect(e.message).toBe(
+      'AI startup probe failed after 1 attempt(s): AI endpoint returned 400',
+    );
+  });
+
   it('gives up after the startup timeout', async () => {
     const ai: AiService = {
       ...service(async () => result({}) as never).ai,
@@ -234,5 +259,103 @@ describe('configuration and startup', () => {
     };
     const e = await failure(waitForAi(ai, { timeoutMs: 50, intervalMs: 20 }));
     expect(e.message).toContain('AI startup probe failed');
+  });
+});
+
+describe('provider packages and structured-output modes', () => {
+  /** A fake HTTP endpoint that records what the provider package sends. */
+  function endpoint(content: unknown) {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const fetch = (async (url: string | URL, init?: RequestInit) => {
+      requests.push({
+        url: String(url),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      });
+      return new Response(
+        JSON.stringify({
+          id: 'x',
+          object: 'chat.completion',
+          created: 0,
+          model: 'm',
+          choices: [
+            {
+              index: 0,
+              message: { role: 'assistant', content: JSON.stringify(content) },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      );
+    }) as typeof globalThis.fetch;
+    return { fetch, requests };
+  }
+  const ask = (env: Record<string, string>, content: unknown) => {
+    const e = endpoint(content);
+    const ai = createAiFromEnv(loadEnv(env), quiet, { fetch: e.fetch });
+    return { ai, requests: e.requests };
+  };
+  const systemText = (body: Record<string, unknown>) =>
+    (body['messages'] as Array<{ role: string; content: unknown }>)
+      .filter((m) => m.role === 'system')
+      .map((m) => String(m.content))
+      .join('\n');
+
+  it('openai-compatible: strict JSON schema by default', async () => {
+    const { ai, requests } = ask(
+      { AI_BASE_URL: 'http://llm.test/v1', AI_MODEL: 'm' },
+      interpretation(),
+    );
+    const r = await ai.interpret({ text: 'x', context, now: NOW });
+    expect(r.intent).toBe('provide_info');
+    expect(requests[0].url).toBe('http://llm.test/v1/chat/completions');
+    expect((requests[0].body['response_format'] as { type: string }).type).toBe(
+      'json_schema',
+    );
+  });
+
+  it('openai-compatible with AI_STRUCTURED_OUTPUT=json: JSON mode, schema in the prompt', async () => {
+    const { ai, requests } = ask(
+      {
+        AI_BASE_URL: 'http://llm.test/v1',
+        AI_MODEL: 'm',
+        AI_STRUCTURED_OUTPUT: 'json',
+      },
+      interpretation(),
+    );
+    await ai.interpret({ text: 'x', context, now: NOW });
+    const body = requests[0].body;
+    expect(body['response_format']).toEqual({ type: 'json_object' });
+    expect(systemText(body)).toContain('"intent"');
+    expect(systemText(body)).toContain('alle_einverstanden');
+  });
+
+  it('deepseek: the DeepSeek package, JSON mode with the schema in the prompt', async () => {
+    const { ai, requests } = ask(
+      { AI_PROVIDER: 'deepseek', AI_MODEL: 'deepseek-flash', AI_API_KEY: 'k' },
+      interpretation(),
+    );
+    const r = await ai.interpret({ text: 'x', context, now: NOW });
+    expect(r.facts.title).toBe('Lötkurs für Anfänger');
+    expect(requests[0].url).toBe('https://api.deepseek.com/chat/completions');
+    expect(requests[0].body['response_format']).toEqual({
+      type: 'json_object',
+    });
+    expect(systemText(requests[0].body)).toContain('"intent"');
+  });
+
+  it('passes AI_REASONING to the provider', async () => {
+    const { ai, requests } = ask(
+      {
+        AI_PROVIDER: 'deepseek',
+        AI_MODEL: 'deepseek-flash',
+        AI_API_KEY: 'k',
+        AI_REASONING: 'none',
+      },
+      interpretation(),
+    );
+    await ai.interpret({ text: 'x', context, now: NOW });
+    expect(JSON.stringify(requests[0].body)).toContain('disabled');
   });
 });

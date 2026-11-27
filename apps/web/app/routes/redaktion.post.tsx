@@ -15,8 +15,6 @@ import {
   CONSENTS,
   isEditable,
   type BannerColor,
-  type ChannelId,
-  type Consent,
 } from '@postomat/core';
 import { THREAD } from '@postomat/templates';
 import {
@@ -43,6 +41,7 @@ import {
 import { requireUser } from '../server/auth.server';
 import { actionError, approvedText } from '../server/errors';
 import { getDeps } from '../server/deps.server';
+import { formFields, parseForm, postActionSchema } from '../server/forms';
 import { loadPostView, type ChannelView } from '../server/views.server';
 import { Shell } from '../components/shell';
 import { ChannelStatus, ModeTape, StatusTape } from '../components/status';
@@ -71,74 +70,57 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const deps = await getDeps();
   const id = Number(params['id']);
   if (!isDbId(id)) throw new Response('Nicht gefunden', { status: 404 });
-  const form = await request.formData();
-  const intent = String(form.get('intent'));
-  const s = (k: string) => String(form.get(k) ?? '').trim();
-  const channel = s('channel') as ChannelId;
+  const parsed = parseForm(
+    postActionSchema,
+    formFields(await request.formData()),
+  );
+  if (!parsed.success) return { error: parsed.error };
+  const a = parsed.data;
   try {
-    switch (intent) {
+    switch (a.intent) {
       case 'save_text': {
         const fields: Record<string, string> = {};
-        for (const k of ['hashtags', 'title', 'titleEn'])
-          if (form.has(k)) fields[k] = s(k);
+        for (const k of ['hashtags', 'title', 'titleEn'] as const)
+          if (a[k] !== undefined) fields[k] = a[k];
         await editChannelText(
           deps,
           id,
-          channel,
-          {
-            // a field that was not sent stays unchanged
-            textDe: form.has('textDe') ? String(form.get('textDe')) : undefined,
-            textEn: form.has('textEn') ? String(form.get('textEn')) : undefined,
-            fields,
-          },
+          a.channel,
+          // a field that was not sent stays unchanged
+          { textDe: a.textDe, textEn: a.textEn, fields },
           user.username,
         );
         return { ok: 'Gespeichert.' };
       }
       case 'banner_color':
-        await setBannerColor(
-          deps,
-          id,
-          s('color') as BannerColor,
-          user.username,
-        );
+        await setBannerColor(deps, id, a.color, user.username);
         // An explicit editor action: render right away (~0.3 s) so the
         // preview after this request already shows the new colour. The
         // queued worker job then finds the banner current and skips.
         await renderBanners(deps, await getPost(deps.db, id));
         return { ok: 'Banner-Farbe gespeichert.' };
       case 'meetup_category':
-        await setMeetupCategory(deps, id, s('category'), user.username);
+        await setMeetupCategory(deps, id, a.category, user.username);
         return { ok: 'Meetup-Kategorie gespeichert.' };
       case 'consent':
-        await setPhotoConsent(
-          deps,
-          id,
-          Number(s('photoId')),
-          s('consent') as Consent,
-          user.username,
-        );
+        await setPhotoConsent(deps, id, a.photoId, a.consent, user.username);
         return { ok: 'Einwilligung gespeichert.' };
       case 'facts':
         await editFacts(
           deps,
           id,
-          {
-            endTime: s('endTime') || undefined,
-            isWorkshop: form.get('isWorkshop') === 'on',
-          },
+          { endTime: a.endTime, isWorkshop: a.isWorkshop },
           user.username,
         );
         return { ok: 'Angaben gespeichert.' };
       case 'approve': {
         // The version the reviewer saw; a newer version on the server makes
         // the approval "outdated" instead of approving unseen text.
-        const shown = Number(s('version'));
         const d = await approvePost(deps, {
           postId: id,
           approverUsername: user.username,
           approverIsMedienteam: true,
-          version: Number.isInteger(shown) && shown > 0 ? shown : -1,
+          version: a.version,
           via: 'web',
         });
         if (d.kind === 'approve') {
@@ -159,7 +141,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return { error: 'Der Beitrag kann gerade nicht freigegeben werden.' };
       }
       case 'request_change':
-        await requestChange(deps, id, user.username, s('comment') || undefined);
+        await requestChange(deps, id, user.username, a.comment);
         return { ok: 'Änderung angefragt.' };
       case 'resubmit':
         await resubmit(deps, id, user.username);
@@ -168,41 +150,25 @@ export async function action({ request, params }: ActionFunctionArgs) {
         await discardPost(deps, id, user.username);
         return { ok: 'Verworfen.' };
       case 'ask':
-        if (!s('question')) return { error: 'Bitte eine Frage eingeben.' };
-        await askMember(deps, id, s('question'), user.username);
+        await askMember(deps, id, a.question, user.username);
         return { ok: 'Rückfrage ist unterwegs.' };
       case 'retry':
-        await retryChannel(
-          deps,
-          id,
-          channel as 'wordpress' | 'wiki',
-          user.username,
-        );
+        await retryChannel(deps, id, a.channel, user.username);
         return { ok: 'Wird erneut versucht …' };
       case 'retry_texts':
         await retryTexts(deps, id, user.username);
         return { ok: 'Texte werden neu erstellt …' };
       case 'suggestion':
-        await resolveSuggestedFacts(
-          deps,
-          id,
-          s('apply') === 'yes',
-          user.username,
-        );
+        await resolveSuggestedFacts(deps, id, a.apply, user.username);
         return {
-          ok:
-            s('apply') === 'yes'
-              ? 'Änderungen übernommen.'
-              : 'Vorschlag verworfen.',
+          ok: a.apply ? 'Änderungen übernommen.' : 'Vorschlag verworfen.',
         };
       case 'link':
-        await setChannelLink(deps, id, channel, s('url'), user.username);
+        await setChannelLink(deps, id, a.channel, a.url, user.username);
         return { ok: 'Link eingetragen.' };
       case 'skip':
-        await skipChannel(deps, id, channel, user.username);
+        await skipChannel(deps, id, a.channel, user.username);
         return { ok: 'Übersprungen.' };
-      default:
-        return { error: `Unbekannte Aktion ${intent}` };
     }
   } catch (e) {
     return { error: actionError(e) };
