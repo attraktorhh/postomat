@@ -52,9 +52,6 @@ export const CONSENT_ANSWERS = [
 ] as const;
 export type ConsentAnswer = (typeof CONSENT_ANSWERS)[number];
 
-/** Longest instruction / note the AI may return (characters). */
-export const AI_TEXT_MAX = 2000;
-
 // The AI result contract. `packages/ai` asks the model for exactly these
 // schemas; the TypeScript types below are derived from them. Every field is
 // required and nullable, so strict JSON-schema modes accept it.
@@ -100,9 +97,9 @@ export const interpretationSchema = z.object({
   facts: aiFactsSchema,
   consent: z.enum(CONSENT_ANSWERS).nullable(),
   /** request_text_change: what should change. */
-  instruction: z.string().max(AI_TEXT_MAX).nullable(),
+  instruction: z.string().nullable(),
   /** note_for_team: the note. */
-  text: z.string().max(AI_TEXT_MAX).nullable(),
+  text: z.string().nullable(),
 });
 export type Interpretation = z.infer<typeof interpretationSchema>;
 

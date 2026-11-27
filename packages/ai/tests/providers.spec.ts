@@ -164,10 +164,11 @@ describe('provider HTTP round trips', () => {
     expect(r.intent).toBe('provide_info');
     expect(h.requests[0].url).toBe('https://api.anthropic.com/v1/messages');
     expect(JSON.stringify(h.requests[0].body)).toContain('"intent"');
+    // The provider fills in max_tokens (required by Anthropic) itself.
     expect(h.requests[0].body['max_tokens']).toBeGreaterThan(0);
   });
 
-  it('openai-compatible: names the schema and limits the output', async () => {
+  it('openai-compatible: names the schema, sends no maxLength or max_tokens', async () => {
     const h = http(() => ({
       body: chatCompletion(JSON.stringify(interpretation())),
     }));
@@ -181,7 +182,8 @@ describe('provider HTTP round trips', () => {
       json_schema: { name: string };
     };
     expect(rf.json_schema.name).toBe('interpretation');
-    expect(h.requests[0].body['max_tokens']).toBeGreaterThan(0);
+    expect(JSON.stringify(rf)).not.toContain('maxLength');
+    expect(h.requests[0].body['max_tokens']).toBeUndefined();
   });
 
   it.each(['json', 'json_schema'])(

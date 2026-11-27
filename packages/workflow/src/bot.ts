@@ -90,11 +90,10 @@ export function loggableError(e: unknown): string {
     .split('\n')
     .filter((l) => /^\s+at /.test(l))
     .join('\n');
-  const cause = e.cause as { code?: unknown; message?: unknown } | undefined;
+  // Only the SQLSTATE code: Postgres messages can quote the input value.
+  const cause = e.cause as { code?: unknown } | undefined;
   const head = e.message.startsWith('Failed query:')
-    ? `${e.name}: query failed${cause?.code ? ` (${String(cause.code)})` : ''}${
-        typeof cause?.message === 'string' ? `: ${cause.message}` : ''
-      }`
+    ? `${e.name}: query failed${cause?.code ? ` (${String(cause.code)})` : ''}`
     : `${e.name}: ${e.message}`;
   return frames ? `${head}\n${frames}` : head;
 }
@@ -661,6 +660,10 @@ export class BotService {
           // Empty: the member's message itself is the wish ("Was soll anders sein?").
           const instruction = effect.instruction || evt.body.trim();
           await generateTexts(deps, draft.id, { instruction });
+          if (state.summaryPending) {
+            state = { ...state, summaryPending: false };
+            await this.saveConversation(sender, { state });
+          }
           await addHistory(
             deps.db,
             draft.id,
@@ -680,6 +683,12 @@ export class BotService {
           // Not "try again later": the member's message was understood.
           await this.say(roomId, DM.textsPending);
           return;
+        }
+        // A wish that also changed facts: the facts are saved, the texts are
+        // not – block "abschicken" until texts for the new facts exist.
+        if (!sameJson(current.facts, state.facts) && !state.summaryPending) {
+          state = { ...state, summaryPending: true };
+          await this.saveConversation(sender, { state });
         }
         await this.say(roomId, DM.aiUnavailable);
         return;

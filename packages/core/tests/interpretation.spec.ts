@@ -74,9 +74,5 @@ describe('AI result contract', () => {
       text: null,
     };
     expect(interpretationSchema.safeParse(base).success).toBe(true);
-    expect(
-      interpretationSchema.safeParse({ ...base, instruction: 'x'.repeat(2001) })
-        .success,
-    ).toBe(false);
   });
 });

@@ -168,6 +168,8 @@ export async function loadPostView(
       /** Texts written for older facts, rewrite pending (Redaktion only). */
       textsOutdated:
         !forMember &&
+        // In `sammeln` the DM dialog writes the texts; nothing is queued.
+        post.status !== 'sammeln' &&
         !post.textsError &&
         post.textsFacts != null &&
         textsOutdated(post),

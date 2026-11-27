@@ -112,29 +112,26 @@ export interface AiService {
 
 // ---------------------------------------------------------------- schemas
 // Interpretation and candidate schemas live in @postomat/core (the contract
-// shared with the dialog). Texts: limits keep a runaway answer out of the
-// drafts.
+// shared with the dialog). No maxLength in the schemas: OpenAI's strict
+// structured outputs reject it. Text lengths are checked after parsing
+// (`TEXT_LIMITS`), so a runaway answer never reaches the drafts.
 
 const textsSchema = z.object({
   hookDe: z
     .string()
-    .max(300)
     .describe(
       'Instagram-Hook auf Deutsch: eine Frage oder ein Ausruf, mit einem Emoji',
     ),
   bodyDe: z
     .string()
-    .max(2000)
     .describe('2–3 kurze deutsche Sätze, Leser mit "du"/"ihr" ansprechen'),
-  titleEn: z.string().max(200).describe('English title'),
-  bodyEn: z.string().max(2000).describe('2–3 short English sentences'),
+  titleEn: z.string().describe('English title'),
+  bodyEn: z.string().describe('2–3 short English sentences'),
   shortEn: z
     .string()
-    .max(500)
     .describe('One English sentence summary incl. date/time if any'),
   costsEn: z
     .string()
-    .max(200)
     .nullable()
     .describe('The cost note in English, e.g. "€5 for material" or "free"'),
 });
@@ -228,16 +225,28 @@ function classify(e: unknown): AiError {
   });
 }
 
+/** Longest accepted value per text field (characters). */
+const TEXT_LIMITS: Record<string, number> = {
+  hookDe: 300,
+  bodyDe: 2000,
+  titleEn: 200,
+  bodyEn: 2000,
+  shortEn: 500,
+  costsEn: 200,
+};
+
+function checkTextLimits(texts: Record<string, unknown>): void {
+  for (const [key, max] of Object.entries(TEXT_LIMITS)) {
+    const v = texts[key];
+    if (typeof v === 'string' && v.length > max)
+      throw new AiError('schema', `AI texts: ${key} longer than ${max} chars`);
+  }
+}
+
 // ---------------------------------------------------------------- service
 
 /** Names of the structured outputs (sent to the provider as schema name). */
 export type OutputName = 'interpretation' | 'candidate' | 'texts';
-
-/**
- * Upper bound for one answer. The texts are the longest (~5000 chars, ~1500
- * tokens); the rest is headroom for reasoning tokens, which count too.
- */
-const MAX_OUTPUT_TOKENS = 8192;
 
 /** A schema re-try needs at least this much of the deadline left (ms). */
 const MIN_RETRY_MS = 1000;
@@ -263,7 +272,11 @@ export function createAiService(
     output: { name: OutputName; schema: z.ZodType<T> },
     system: string,
     prompt: string,
-    runOpts: { schemaRetry?: boolean } = {},
+    runOpts: {
+      schemaRetry?: boolean;
+      /** Extra checks on the parsed output; throw an AiError('schema') to fail. */
+      check?: (value: T) => void;
+    } = {},
   ): Promise<T> {
     // The AI SDK validates the output against the schema (NoObjectGeneratedError
     // otherwise), retries retryable HTTP errors and enforces the timeout. Both
@@ -278,12 +291,15 @@ export function createAiService(
         output: Output.object(output),
         timeout: Math.max(deadline - Date.now(), 1),
         maxRetries: 1,
-        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        // No maxOutputTokens: reasoning tokens count against it, and the
+        // limits differ per model. The timeout bounds a runaway answer.
         ...(opts.reasoning ? { reasoning: opts.reasoning } : {}),
       });
       if (res.finishReason === 'content-filter')
         throw new AiError('refusal', 'AI provider refused the request');
-      return res.output as T;
+      const value = res.output as T;
+      runOpts.check?.(value);
+      return value;
     };
     try {
       let result: T;
@@ -364,6 +380,7 @@ Gibt es vorherigeTexte, ändere sie nur so weit, wie der Wunsch es verlangt.`,
           vorherigeTexte: previous ?? null,
           aenderungswunsch: instruction ?? null,
         }),
+        { check: (v) => checkTextLimits(v) },
       );
       const t = (v: string | null) => v?.trim() ?? '';
       const texts: AiTexts = {

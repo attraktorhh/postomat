@@ -194,6 +194,15 @@ describe('AiService.writeTexts', () => {
       (await failure(ai.writeTexts({ type: 'event', facts: {} }))).kind,
     ).toBe('schema');
   });
+  it('re-tries once and then fails on a runaway text', async () => {
+    const { model, ai } = service(
+      async () => result({ ...texts, bodyDe: 'x'.repeat(2001) }) as never,
+    );
+    expect(
+      (await failure(ai.writeTexts({ type: 'event', facts: {} }))).kind,
+    ).toBe('schema');
+    expect(model.doGenerateCalls).toHaveLength(2);
+  });
 });
 
 describe('configuration and startup', () => {

@@ -260,10 +260,8 @@ export async function answerMeetupQuestion(
     )
     .limit(1);
   if (!q) return 'no_question';
-  if (text.length > MAX_REPLY_CHARS) {
-    await deps.queue.send('bot.thread', { postId, text: DM.messageTooLong });
-    return 'handled';
-  }
+  // A reply this long is no answer to "which one?": a normal thread reply (U4).
+  if (text.length > MAX_REPLY_CHARS) return 'unrelated';
   const during = opts.during ?? (<T>(fn: () => Promise<T>) => fn());
   let reply: CandidateChoice;
   try {

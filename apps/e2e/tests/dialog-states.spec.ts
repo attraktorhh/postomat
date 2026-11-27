@@ -104,6 +104,28 @@ describe('DM states', () => {
     expect(log.some((e) => e.message.startsWith('Text ändern'))).toBe(false);
   });
 
+  it('a failed text wish that also changed a fact blocks "abschicken" until the texts exist', async () => {
+    h.ai.addRules({
+      match: 'Doch 20 Uhr und lustiger bitte',
+      result: {
+        intent: 'request_text_change',
+        instruction: 'lustiger',
+        facts: { startTime: '20:00' },
+      },
+    });
+    await collectEvent(h);
+    h.ai.failNext('http', 1, 'texts');
+    expect(await h.dm(LENA, 'Doch 20 Uhr und lustiger bitte')).toEqual([
+      'Alles klar, 20:00.',
+      AI_DOWN,
+    ]);
+    expect((await conv()).state?.summaryPending).toBe(true);
+    expect((await h.dm(LENA, 'abschicken'))[0]).toContain(
+      'Super, so schicke ich es ans Medienteam:',
+    );
+    expect((await post()).status).toBe('sammeln');
+  });
+
   it('"abschicken" while the summary is missing builds it instead of submitting', async () => {
     h.ai.failNext('http', 2, 'texts');
     await h.dm(LENA, 'Ich will am 11.12. einen Lötkurs machen');
