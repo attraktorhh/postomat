@@ -104,6 +104,29 @@ describe('decideApproval', () => {
     ).toBe('approve');
   });
 
+  it('points to "Erneut versuchen" when the rewrite failed', () => {
+    const d = decideApproval(
+      input({ post: post({ textsCurrent: false, textsFailed: true }) }),
+    );
+    expect(d.kind === 'blocked' && d.failures[0].label).toBe(
+      'Texte passen noch nicht zu den Angaben – oben „Erneut versuchen“',
+    );
+  });
+
+  it('blocks hand-edited texts the facts changed under', () => {
+    const d = decideApproval(
+      input({
+        channels: [
+          channel({ channel: 'wordpress', mode: 'auto', factsStale: true }),
+          channel({ channel: 'meetup' }),
+        ],
+      }),
+    );
+    expect(d.kind === 'blocked' && d.failures.map((f) => f.id)).toEqual([
+      'hand_edited_stale',
+    ]);
+  });
+
   it('blocks photos without consent or internal only', () => {
     for (const consent of ['einwilligung_fehlt', 'nur_intern'] as const) {
       const d = decideApproval(

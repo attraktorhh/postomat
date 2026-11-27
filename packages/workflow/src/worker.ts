@@ -31,8 +31,8 @@ export async function registerWorkerJobs(
       return;
     await renderBanners(deps, post);
   });
-  await queue.work('texts.generate', async ({ postId, actor }, meta) =>
-    regenerateTextsJob(deps, postId, actor, meta),
+  await queue.work('texts.generate', async ({ postId, actor, force }, meta) =>
+    regenerateTextsJob(deps, postId, actor, { ...meta, force }),
   );
   await queue.work('publish.channel', async ({ postId, channel }, meta) =>
     publishChannel(deps, postId, channel, meta),

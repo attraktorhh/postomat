@@ -108,7 +108,20 @@ export function runChecks(input: CheckInput): CheckResult[] {
       ok: post.textsCurrent,
       label: post.textsCurrent
         ? 'Texte passen zu den Angaben'
-        : 'Texte passen noch nicht zu den Angaben (werden neu erstellt)',
+        : post.textsFailed
+          ? 'Texte passen noch nicht zu den Angaben – oben „Erneut versuchen“'
+          : 'Texte passen noch nicht zu den Angaben (werden neu erstellt)',
+    });
+
+  // Rewrites keep texts the Redaktion edited by hand; someone has to check
+  // them after a fact change (saving the text clears this).
+  const stale = active.filter((c) => c.factsStale);
+  if (stale.length)
+    results.push({
+      id: 'hand_edited_stale',
+      level: 'block',
+      ok: false,
+      label: `Von Hand bearbeitete Texte prüfen, die Angaben wurden danach geändert: ${stale.map((c) => CHANNEL_LABELS[c.channel]).join(', ')}`,
     });
 
   const missingEn = active.filter(

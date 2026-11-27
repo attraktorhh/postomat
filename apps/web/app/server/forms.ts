@@ -85,6 +85,8 @@ export const postActionSchema = z.discriminatedUnion('intent', [
     intent: z.literal('approve'),
     // The version the reviewer saw; anything unusable never matches.
     version: z.coerce.number().int().positive().catch(-1),
+    // Fingerprint of the texts the reviewer saw (always sent by the page).
+    reviewStamp: z.string().catch(''),
   }),
   z.object({
     intent: z.literal('request_change'),

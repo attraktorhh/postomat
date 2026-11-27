@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   and,
   asc,
@@ -132,18 +133,46 @@ export async function updatePost(
     .where(eq(posts.id, id));
 }
 
-const sortKeys = (o: object) =>
+/**
+ * Canonical JSON of facts: key order does not matter, and an unset workshop
+ * flag equals `false` (the Redaktion checkbox always sends one of the two).
+ */
+export const factsKey = (o: object): string =>
   JSON.stringify(
     Object.fromEntries(
       Object.entries(o)
-        .filter(([, v]) => v !== undefined)
+        .filter(([k, v]) => v !== undefined && !(k === 'isWorkshop' && !v))
         .sort(([x], [y]) => x.localeCompare(y)),
     ),
   );
 
 /** True when the facts changed since the AI last wrote the texts. */
-export const textsOutdated = (post: Post): boolean =>
-  sortKeys(post.textsFacts ?? {}) !== sortKeys(post.facts);
+export const textsOutdated = (
+  post: Pick<Post, 'facts' | 'textsFacts'>,
+): boolean => factsKey(post.textsFacts ?? {}) !== factsKey(post.facts);
+
+/**
+ * Fingerprint of what a reviewer sees: facts and every channel text. The web
+ * sends it with "Freigeben", so texts rewritten meanwhile are not approved
+ * unseen.
+ */
+export const reviewStamp = (
+  post: Pick<Post, 'facts'>,
+  channels: Array<
+    Pick<ChannelPost, 'channel' | 'textDe' | 'textEn' | 'fields'>
+  >,
+): string =>
+  createHash('sha256')
+    .update(
+      JSON.stringify([
+        factsKey(post.facts),
+        [...channels]
+          .sort((a, b) => a.channel.localeCompare(b.channel))
+          .map((c) => [c.channel, c.textDe, c.textEn, factsKey(c.fields)]),
+      ]),
+    )
+    .digest('hex')
+    .slice(0, 16);
 
 export const toSnapshot = (p: Post): PostSnapshot => ({
   id: p.id,
@@ -155,6 +184,7 @@ export const toSnapshot = (p: Post): PostSnapshot => ({
   authorUsername: p.authorUsername,
   // Posts from before texts_facts existed (null) count as current.
   textsCurrent: !p.textsError && (p.textsFacts == null || !textsOutdated(p)),
+  textsFailed: !!p.textsError,
 });
 
 export const channelSnapshot = (c: ChannelPost): ChannelPostSnapshot => ({
@@ -165,6 +195,7 @@ export const channelSnapshot = (c: ChannelPost): ChannelPostSnapshot => ({
   textEn: c.textEn,
   fields: c.fields,
   url: c.url,
+  factsStale: c.factsStale,
 });
 
 export const photoSnapshot = (p: Photo): PhotoSnapshot => ({

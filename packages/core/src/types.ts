@@ -80,6 +80,8 @@ export interface PostSnapshot {
    * rewrite failed). Undefined when unknown; then no check is shown.
    */
   textsCurrent?: boolean;
+  /** The last rewrite failed after all retries (Redaktion: "Erneut versuchen"). */
+  textsFailed?: boolean;
 }
 
 export interface PhotoSnapshot {
@@ -96,4 +98,6 @@ export interface ChannelPostSnapshot {
   textEn: string;
   fields: Record<string, string>;
   url?: string | null;
+  /** Edited by hand, then the facts changed: the text may show old facts. */
+  factsStale?: boolean;
 }

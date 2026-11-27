@@ -22,6 +22,16 @@ import type {
   PostType,
 } from '@postomat/core';
 
+/** Same shape as `AiTexts` in @postomat/templates (db does not depend on it). */
+export interface StoredAiTexts {
+  hookDe: string;
+  bodyDe: string;
+  titleEn: string;
+  bodyEn: string;
+  shortEn: string;
+  costsEn?: string;
+}
+
 const ts = (name: string) =>
   timestamp(name, { withTimezone: true, mode: 'date' });
 
@@ -58,6 +68,8 @@ export const posts = pgTable(
     /** When the AI texts were last written, and from which facts. */
     textsGeneratedAt: ts('texts_generated_at'),
     textsFacts: jsonb('texts_facts').$type<PostFacts>(),
+    /** The AI body texts last written (fed back for "Text ändern" wishes). */
+    aiTexts: jsonb('ai_texts').$type<StoredAiTexts>(),
     approvedBy: text('approved_by'),
     approvedAt: ts('approved_at'),
     submittedAt: ts('submitted_at'),
@@ -105,6 +117,11 @@ export const channelPosts = pgTable(
     attempts: integer('attempts').notNull().default(0),
     /** Lease of the publish job working on this channel (one at a time). */
     claimedUntil: ts('claimed_until'),
+    /**
+     * Edited by hand, then the facts changed: the text was kept and may show
+     * old facts. Cleared when the text is saved or written again.
+     */
+    factsStale: boolean('facts_stale').notNull().default(false),
     publishedAt: ts('published_at'),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },

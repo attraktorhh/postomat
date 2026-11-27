@@ -121,6 +121,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           approverUsername: user.username,
           approverIsMedienteam: true,
           version: a.version,
+          reviewStamp: a.reviewStamp,
           via: 'web',
         });
         if (d.kind === 'approve') {
@@ -403,6 +404,22 @@ export default function RedaktionPost() {
           )}
         </Alert>
       )}
+      {p.textsOutdated && editable && (
+        <Alert status="warning">
+          <Alert.Content>
+            <Alert.Description>
+              Die Texte werden an die geänderten Angaben angepasst. Lade die
+              Seite gleich neu.
+            </Alert.Description>
+          </Alert.Content>
+          <Form method="post">
+            <input type="hidden" name="intent" value="retry_texts" />
+            <Button type="submit" size="sm" variant="outline">
+              Jetzt neu erstellen
+            </Button>
+          </Form>
+        </Alert>
+      )}
       {p.suggestedFacts && editable && (
         <div className="grid gap-2 rounded-md border border-[var(--border)] p-2 text-sm">
           <p className="font-semibold">
@@ -649,6 +666,11 @@ export default function RedaktionPost() {
               <Form method="post">
                 <input type="hidden" name="intent" value="approve" />
                 <input type="hidden" name="version" value={p.version} />
+                <input
+                  type="hidden"
+                  name="reviewStamp"
+                  value={p.reviewStamp ?? ''}
+                />
                 <Button
                   type="submit"
                   variant="primary"

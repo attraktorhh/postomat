@@ -5,7 +5,8 @@ import type { Logger } from '@postomat/core';
 export interface JobPayloads {
   'banner.render': { postId: number };
   /** AI texts after "Erneut zur Freigabe" with changed facts, or "Erneut versuchen". */
-  'texts.generate': { postId: number; actor: string };
+  /** `force`: rewrite even when the texts match the facts (explicit retry). */
+  'texts.generate': { postId: number; actor: string; force?: boolean };
   'publish.channel': { postId: number; channel: 'wordpress' | 'wiki' };
   'publish.update': { postId: number; channel: 'wordpress' | 'wiki' };
   'meetup.poll': Record<string, never>;

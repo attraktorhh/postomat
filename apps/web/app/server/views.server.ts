@@ -48,7 +48,9 @@ import {
   getPost,
   linksOf,
   NotFoundError,
+  reviewStamp,
   templateContext,
+  textsOutdated,
 } from '@postomat/workflow';
 import { getDeps } from './deps.server';
 
@@ -163,6 +165,14 @@ export async function loadPostView(
       suggestedFacts: forMember ? null : suggestionLines(post),
       /** Text generation failed after all retries (Redaktion only). */
       textsError: forMember ? null : post.textsError,
+      /** Texts written for older facts, rewrite pending (Redaktion only). */
+      textsOutdated:
+        !forMember &&
+        !post.textsError &&
+        post.textsFacts != null &&
+        textsOutdated(post),
+      /** Sent with "Freigeben": what this page shows (see `reviewStamp`). */
+      reviewStamp: forMember ? null : reviewStamp(post, channels),
       stage: memberStage(post.status),
     },
     channels: channels.map<ChannelView>((c) => ({

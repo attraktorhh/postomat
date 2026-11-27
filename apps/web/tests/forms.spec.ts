@@ -108,15 +108,18 @@ describe('postActionSchema', () => {
     ).toEqual({
       intent: 'approve',
       version: -1,
+      reviewStamp: '',
     });
     expect(
       post([
         ['intent', 'approve'],
         ['version', '3'],
+        ['reviewStamp', 'abc123'],
       ]).data,
     ).toEqual({
       intent: 'approve',
       version: 3,
+      reviewStamp: 'abc123',
     });
   });
 

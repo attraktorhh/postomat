@@ -10,7 +10,10 @@ import {
   overallStatusAfterApproval,
   resolveChannelModes,
   runChecks,
+  validateAiFacts,
+  type RejectReason,
   type ApprovalDecision,
+  type FactKey,
   type BannerColor,
   type ChannelId,
   type Consent,
@@ -43,8 +46,10 @@ import {
   getChannel,
   getChannels,
   getPhotos,
+  factsKey,
   getPost,
   photoSnapshot,
+  reviewStamp,
   textsOutdated,
   toSnapshot,
   updateChannel,
@@ -90,56 +95,73 @@ export async function createDraft(
 /**
  * (Re)creates the channel posts: modes from config, AI-written bodies inside
  * the template frame. Throws `AiError` when the AI fails – there are no
- * template-only bodies. `keepEdited` keeps channels the Redaktion edited
- * after the last generation.
+ * template-only bodies.
+ *
+ * `keepEdited` keeps channels the Redaktion edited by hand; when the facts
+ * changed since, such a channel is flagged `factsStale` (blocking check) so
+ * someone looks at it. `instruction` is a "Text ändern" wish; the AI then
+ * gets the previous texts to edit.
+ *
+ * Returns false when nothing was written: the post left the editable states
+ * or its facts changed while the AI was writing (then a new job is queued).
  */
 export async function generateTexts(
   deps: WorkflowDeps,
   postId: number,
   opts: { instruction?: string; keepEdited?: boolean } = {},
-): Promise<void> {
+): Promise<boolean> {
   const post = await getPost(deps.db, postId);
   const modes = resolveChannelModes(
     deps.config,
     post.type,
     credentialsFromEnv(deps.env),
   );
-  const existing = await getChannels(deps.db, postId);
   const ai = await deps.ai.writeTexts({
     type: post.type,
     facts: post.facts,
     instruction: opts.instruction,
+    ...(opts.instruction && post.aiTexts ? { previous: post.aiTexts } : {}),
   });
   const drafts = buildDrafts(
     { ...templateContext(deps, post), ai },
     modes.filter((m) => m.mode !== 'off').map((m) => m.channel),
   );
-  const editedByHand = (channel: ChannelId) => {
-    if (!opts.keepEdited || !post.textsGeneratedAt) return false;
-    const c = existing.find((x) => x.channel === channel);
-    return !!c && c.updatedAt > post.textsGeneratedAt;
-  };
-  await deps.db.transaction(async (tx) => {
+  const factsChanged = textsOutdated(post);
+  const written = await deps.db.transaction(async (tx) => {
+    // Re-check under the row lock: a job that finishes late must not undo an
+    // approval or write texts for facts that changed meanwhile.
+    const current = await getPost(tx, postId, true);
+    if (!isEditable(current.status)) return 'skipped' as const;
+    if (factsKey(current.facts) !== factsKey(post.facts))
+      return 'requeue' as const;
+    const existing = await getChannels(tx, postId);
+    const editedByHand = (c: ChannelPost) =>
+      !!opts.keepEdited &&
+      (c.factsStale ||
+        (!!post.textsGeneratedAt && c.updatedAt > post.textsGeneratedAt));
     for (const { channel, mode } of modes) {
-      if (editedByHand(channel)) continue;
+      const old = existing.find((x) => x.channel === channel);
+      if (old && editedByHand(old)) {
+        if (factsChanged && !old.factsStale)
+          await updateChannel(tx, postId, channel, { factsStale: true });
+        continue;
+      }
       const d = drafts[channel] ?? { textDe: '', textEn: '', fields: {} };
+      const defaultStatus = mode === 'off' ? 'aus' : 'entwurf';
+      // A copy channel already marked done (link entered, skipped) stays so.
+      const status = old && old.mode === mode ? old.status : defaultStatus;
       await tx
         .insert(channelPosts)
-        .values({
-          postId,
-          channel,
-          mode,
-          status: mode === 'off' ? 'aus' : 'entwurf',
-          ...d,
-        })
+        .values({ postId, channel, mode, status: defaultStatus, ...d })
         .onConflictDoUpdate({
           target: [channelPosts.postId, channelPosts.channel],
           set: {
             mode,
-            status: mode === 'off' ? 'aus' : 'entwurf',
+            status,
             textDe: d.textDe,
             textEn: d.textEn,
             fields: d.fields,
+            factsStale: false,
             updatedAt: new Date(),
           },
         });
@@ -148,6 +170,7 @@ export async function generateTexts(
       .update(posts)
       .set({
         aiUsed: true,
+        aiTexts: ai,
         textsError: null,
         textsErrorAt: null,
         textsFacts: post.facts,
@@ -156,13 +179,32 @@ export async function generateTexts(
         updatedAt: new Date(),
       })
       .where(eq(posts.id, postId));
+    return 'written' as const;
   });
+  if (written === 'requeue') await queueTexts(deps, postId, 'postomat');
+  return written === 'written';
 }
 
 export { textsOutdated };
 
+/** Queues `texts.generate`. Cheap to repeat: the job skips current texts. */
+export async function queueTexts(
+  deps: WorkflowDeps,
+  postId: number,
+  actor: string,
+  force = false,
+): Promise<void> {
+  await deps.queue.send('texts.generate', {
+    postId,
+    actor,
+    ...(force ? { force } : {}),
+  });
+}
+
 /**
- * Worker job `texts.generate`: writes the texts again. pg-boss retries with
+ * Worker job `texts.generate`: writes the texts again when the facts changed
+ * (or on an explicit retry). Several queued jobs for one post are fine: the
+ * first rewrites, the others find the texts current. pg-boss retries with
  * backoff; after the last attempt the Redaktion shows the error and the
  * author is told in the DM.
  */
@@ -170,13 +212,19 @@ export async function regenerateTextsJob(
   deps: WorkflowDeps,
   postId: number,
   actor: string,
-  meta: { isLastAttempt: boolean },
+  meta: { isLastAttempt: boolean; force?: boolean },
 ): Promise<void> {
+  const before = await getPost(deps.db, postId);
+  if (!isEditable(before.status)) return;
+  if (!meta.force && !before.textsError && !textsOutdated(before)) return;
+  let written: boolean;
   try {
-    await generateTexts(deps, postId, { keepEdited: true });
+    written = await generateTexts(deps, postId, { keepEdited: true });
   } catch (e) {
     if (!isAiError(e) || !meta.isLastAttempt) throw e;
     const post = await getPost(deps.db, postId);
+    // Discarded or approved meanwhile: nobody needs these texts any more.
+    if (!isEditable(post.status)) return;
     await updatePost(deps.db, postId, {
       textsError: e.kind,
       textsErrorAt: deps.now(),
@@ -190,10 +238,15 @@ export async function regenerateTextsJob(
     );
     await deps.queue.send('bot.dm', {
       matrixUserId: post.authorMatrixId,
-      text: DM.textsFailed(post.facts.title ?? 'deinen Beitrag'),
+      // Untitled: no quotes around a generic phrase.
+      text: post.facts.title
+        ? DM.textsFailed(post.facts.title)
+        : 'Die Texte für deinen Beitrag konnten gerade nicht neu erstellt werden. Das Medienteam versucht es später noch einmal.',
     });
+    if (post.cardEventId) await deps.queue.send('bot.card', { postId });
     return;
   }
+  if (!written) return;
   await addHistory(deps.db, postId, actor, 'edited', 'Texte neu erstellt');
   await deps.queue.send('bot.card', { postId });
 }
@@ -208,7 +261,7 @@ export async function retryTexts(
   if (!isEditable(post.status))
     throw new WorkflowError('Beitrag kann nicht mehr bearbeitet werden');
   await updatePost(deps.db, postId, { textsError: null, textsErrorAt: null });
-  await deps.queue.send('texts.generate', { postId, actor });
+  await queueTexts(deps, postId, actor, true);
 }
 
 /** Updates facts while collecting. */
@@ -250,6 +303,9 @@ export async function submitPost(
     );
     return getPost(tx, postId);
   });
+  // Texts written for older facts would block approval ("texts_current")
+  // with nothing running to fix them.
+  if (textsOutdated(post)) await queueTexts(deps, postId, actor);
   await deps.queue.send('bot.card', { postId });
   return post;
 }
@@ -260,7 +316,15 @@ export interface ApproveInput {
   approverIsMedienteam: boolean;
   version: number;
   via: 'matrix' | 'web';
+  /**
+   * `reviewStamp` of the page the reviewer saw (web). Texts or facts changed
+   * since (e.g. rewritten by the AI) make the approval fail.
+   */
+  reviewStamp?: string;
 }
+
+export const TEXTS_CHANGED =
+  'Die Texte wurden inzwischen geändert – bitte Seite neu laden.';
 
 /**
  * Approves a post in one transaction with a row lock, so a double 👍 can never
@@ -284,6 +348,11 @@ export async function approvePost(
       meetupCategory: post.meetupCategory,
     });
     if (decision.kind !== 'approve') return decision;
+    if (
+      input.reviewStamp !== undefined &&
+      input.reviewStamp !== reviewStamp(post, channels)
+    )
+      throw new WorkflowError(TEXTS_CHANGED);
     assertTransition(post.status, 'geplant');
     await updatePost(tx, post.id, {
       status: 'geplant',
@@ -392,8 +461,7 @@ export async function resubmit(
     return getPost(tx, postId);
   });
   await deps.queue.send('banner.render', { postId });
-  if (textsOutdated(post))
-    await deps.queue.send('texts.generate', { postId, actor });
+  if (textsOutdated(post)) await queueTexts(deps, postId, actor);
   await deps.queue.send('bot.card', { postId });
   return post;
 }
@@ -428,6 +496,10 @@ export async function editChannelText(
     );
   const current = await getChannel(deps.db, postId, channel);
   if (!current) throw new WorkflowError(`Kanal ${channel} fehlt`);
+  const checked = async (message: string) => {
+    await addHistory(deps.db, postId, actor, 'edited', message, { channel });
+    if (post.cardEventId) await deps.queue.send('bot.card', { postId });
+  };
   const next = {
     textDe: input.textDe ?? current.textDe,
     textEn: input.textEn ?? current.textEn,
@@ -437,21 +509,31 @@ export async function editChannelText(
     next.textDe === current.textDe &&
     next.textEn === current.textEn &&
     JSON.stringify(next.fields) === JSON.stringify(current.fields)
-  )
-    return;
-  await updateChannel(deps.db, postId, channel, next);
-  await addHistory(
-    deps.db,
-    postId,
-    actor,
-    'edited',
-    `${CHANNEL_NAMES[channel]}-Text bearbeitet`,
-    { channel },
-  );
-  if (post.cardEventId) await deps.queue.send('bot.card', { postId });
+  ) {
+    // Saving unchanged confirms a text flagged after a fact change.
+    if (!current.factsStale) return;
+    await updateChannel(deps.db, postId, channel, { factsStale: false });
+    return checked(`${CHANNEL_NAMES[channel]}-Text geprüft`);
+  }
+  await updateChannel(deps.db, postId, channel, { ...next, factsStale: false });
+  await checked(`${CHANNEL_NAMES[channel]}-Text bearbeitet`);
 }
 
-/** Redaktion: facts that the Medienteam may change (end time, workshop flag, …). */
+const FACT_ERRORS: Record<RejectReason, (key: FactKey) => string> = {
+  invalid_date: () => 'Das Datum gibt es nicht.',
+  past_date: () => 'Das Datum liegt in der Vergangenheit.',
+  invalid_time: (key) =>
+    `${key === 'endTime' ? 'Endzeit' : 'Beginn'} bitte als HH:MM angeben, z. B. 21:00.`,
+  end_before_start: () => 'Das Ende muss nach dem Beginn liegen.',
+  invalid_places: () => 'Die Zahl der Plätze muss größer als 0 sein.',
+  too_long: () => 'Der Text ist zu lang.',
+};
+
+/**
+ * Redaktion: facts that the Medienteam may change (end time, workshop flag,
+ * suggestions from a Rückfrage answer). Validated like AI values; a new start
+ * time after the stored end time drops the end time (as in the DM dialog).
+ */
 export async function editFacts(
   deps: WorkflowDeps,
   postId: number,
@@ -461,21 +543,50 @@ export async function editFacts(
   const post = await getPost(deps.db, postId);
   if (!isEditable(post.status))
     throw new WorkflowError('Beitrag kann nicht mehr bearbeitet werden');
-  if (
-    patch.endTime !== undefined &&
-    !/^([01]\d|2[0-3]):[0-5]\d$/.test(patch.endTime)
-  )
-    throw new WorkflowError('Endzeit bitte als HH:MM angeben, z. B. 21:00');
-  const updated = { ...post, facts: { ...post.facts, ...patch } };
-  await updatePost(deps.db, postId, { facts: updated.facts });
-  await addHistory(deps.db, postId, actor, 'edited', 'Angaben bearbeitet', {
-    patch,
+  // Only what really changes (the form always sends every field).
+  const changes = Object.fromEntries(
+    Object.entries(patch).filter(
+      ([k, v]) =>
+        v !== undefined &&
+        factsKey({ [k]: v }) !==
+          factsKey({ [k]: post.facts[k as keyof PostFacts] }),
+    ),
+  ) as PostFacts;
+  if (!Object.keys(changes).length) return;
+  const v = validateAiFacts(changes, {
+    now: deps.now(),
+    type: post.type,
+    known: post.facts,
   });
+  if (v.rejected.length)
+    throw new WorkflowError(
+      v.rejected.map((r) => FACT_ERRORS[r.reason](r.key)).join(' '),
+    );
+  const facts: PostFacts = { ...post.facts, ...changes };
+  let note = '';
+  if (
+    changes.startTime &&
+    !changes.endTime &&
+    facts.endTime &&
+    facts.endTime <= facts.startTime!
+  ) {
+    delete facts.endTime;
+    note = ' (Ende entfernt, lag vor dem neuen Beginn)';
+  }
+  await updatePost(deps.db, postId, { facts });
+  await addHistory(
+    deps.db,
+    postId,
+    actor,
+    'edited',
+    `Angaben bearbeitet${note}`,
+    { patch: changes },
+  );
   await deps.queue.send('banner.render', { postId });
   // Under review the texts must match the facts before anyone can approve
-  // (blocking check "texts_current"); otherwise resubmit rewrites them.
-  if (post.status === 'zur_freigabe' && textsOutdated(updated))
-    await deps.queue.send('texts.generate', { postId, actor });
+  // (blocking check "texts_current"); submit and resubmit queue it otherwise.
+  if (post.status === 'zur_freigabe' && textsOutdated({ ...post, facts }))
+    await queueTexts(deps, postId, actor);
   if (post.cardEventId) await deps.queue.send('bot.card', { postId });
 }
 
@@ -851,9 +962,10 @@ export async function resolveSuggestedFacts(
   const post = await getPost(deps.db, postId);
   const suggested = post.suggestedFacts;
   if (!suggested) return;
-  await updatePost(deps.db, postId, { suggestedFacts: null });
+  // Applied first: a suggestion that fails validation stays visible.
   if (apply) await editFacts(deps, postId, suggested, actor);
-  else
+  await updatePost(deps.db, postId, { suggestedFacts: null });
+  if (!apply)
     await addHistory(
       deps.db,
       postId,
