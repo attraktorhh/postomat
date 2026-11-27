@@ -1,0 +1,183 @@
+{
+  "realm": "attraktor",
+  "displayName": "Attraktor (dev)",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 36000,
+  "ssoSessionMaxLifespan": 86400,
+  "internationalizationEnabled": true,
+  "supportedLocales": ["de", "en"],
+  "defaultLocale": "de",
+  "groups": [
+    {
+      "name": "mitglieder",
+      "path": "/mitglieder",
+      "subGroups": []
+    },
+    {
+      "name": "medienteam",
+      "path": "/medienteam",
+      "subGroups": []
+    },
+    {
+      "name": "postomat-admin",
+      "path": "/postomat-admin",
+      "subGroups": []
+    }
+  ],
+  "users": [
+    {
+      "id": "6b1c1a2e-0001-4c1a-9a00-00000000a001",
+      "username": "lena",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "lena@attraktor.local",
+      "firstName": "Lena",
+      "lastName": "Lorenz",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "postomat-dev",
+          "temporary": false
+        }
+      ],
+      "requiredActions": [],
+      "groups": ["/mitglieder"]
+    },
+    {
+      "id": "6b1c1a2e-0002-4c1a-9a00-00000000a002",
+      "username": "kai",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "kai@attraktor.local",
+      "firstName": "Kai",
+      "lastName": "Kramer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "postomat-dev",
+          "temporary": false
+        }
+      ],
+      "requiredActions": [],
+      "groups": ["/mitglieder", "/medienteam"]
+    },
+    {
+      "id": "6b1c1a2e-0003-4c1a-9a00-00000000a003",
+      "username": "mira",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "mira@attraktor.local",
+      "firstName": "Mira",
+      "lastName": "Meyer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "postomat-dev",
+          "temporary": false
+        }
+      ],
+      "requiredActions": [],
+      "groups": ["/mitglieder", "/medienteam"]
+    },
+    {
+      "id": "6b1c1a2e-0004-4c1a-9a00-00000000a004",
+      "username": "gast",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "gast@attraktor.local",
+      "firstName": "Gast",
+      "lastName": "Gastmann",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "postomat-dev",
+          "temporary": false
+        }
+      ],
+      "requiredActions": [],
+      "groups": []
+    },
+    {
+      "id": "6b1c1a2e-0005-4c1a-9a00-00000000a005",
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin@attraktor.local",
+      "firstName": "Admin",
+      "lastName": "Attraktor",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "postomat-dev",
+          "temporary": false
+        }
+      ],
+      "requiredActions": [],
+      "groups": ["/mitglieder", "/postomat-admin"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "postomat",
+      "name": "Postomat",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "postomat-dev-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "rootUrl": "http://localhost:3000",
+      "baseUrl": "/",
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3000/*",
+        "backchannel.logout.session.required": "true"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "basic",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt",
+        "organization"
+      ],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "false",
+            "claim.name": "groups",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    }
+  ]
+}

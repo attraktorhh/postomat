@@ -1,0 +1,21 @@
+<noinclude>Simplified dev copy of the production template '''Termin''' (no Semantic MediaWiki, no widgets).
+
+Parameters: <code>date</code> (e.g. <code>2026/11/25 07:30:00 PM</code>), <code>enddate</code>, <code>title</code>, <code>url</code>, <code>visible</code>, <code>meetupid</code>.
+</noinclude><includeonly>{| class="wikitable" style="float:right; margin-left:1em"
+! colspan="2" | {{{title|{{PAGENAME}}}}}
+|-
+! Beginn
+| {{{date|}}}
+|-
+! Ende
+| {{{enddate|}}}
+|-
+! Link
+| {{{url|}}}
+|-
+! Sichtbar
+| {{{visible|}}}
+|-
+! Meetup-ID
+| {{{meetupid|}}}
+|}</includeonly>

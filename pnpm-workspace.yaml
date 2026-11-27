@@ -2,3 +2,11 @@ packages:
   - 'apps/*'
   - 'packages/*'
   - 'packages/channels/*'
+allowBuilds:
+  '@parcel/watcher': false
+  unrs-resolver: false
+  '@swc/core': true
+  nx: true
+  esbuild: true
+  sharp: true
+  '@matrix-org/matrix-sdk-crypto-nodejs': true

@@ -1,0 +1,43 @@
+{
+  "name": "@postomat/ai",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "@postomat/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "nx": {
+    "name": "ai",
+    "targets": {
+      "eval": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node --conditions=@postomat/source --env-file-if-exists=.env packages/ai/eval/eval.ts",
+          "cwd": "{workspaceRoot}"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.110",
+    "@ai-sdk/deepseek": "^3.0.91",
+    "@ai-sdk/openai": "^4.0.125",
+    "@ai-sdk/openai-compatible": "^3.0.96",
+    "@ai-sdk/provider-utils": "^5.0.85",
+    "@postomat/core": "workspace:*",
+    "@postomat/templates": "workspace:*",
+    "ai": "^7.0.179",
+    "p-retry": "^9.0.0",
+    "tslib": "^2.3.0",
+    "zod": "^4.6.7"
+  }
+}

@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/build
+**/out-tsc
+**/test-output
+**/.react-router
+.git
+.nx
+.data
+.env
+dev/.generated
+docs/prototyp

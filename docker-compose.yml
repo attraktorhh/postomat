@@ -1,0 +1,315 @@
+# Postomat local development stack. See dev/README.md.
+#
+#   docker compose up -d --wait                       # core: postgres, synapse, element, keycloak, fake-meetup, fake-llm (+ matrix-seed)
+#   docker compose --profile channels up -d --wait    # + wordpress/mariadb, mediawiki, nextcloud
+#   docker compose --profile ai up -d --wait          # + ollama (a real local LLM; pulls OLLAMA_MODEL once)
+#
+# Everything here is LOCAL ONLY and uses throwaway dev credentials.
+name: postomat
+
+x-wordpress-db-env: &wordpress-db-env
+  WORDPRESS_DB_HOST: mariadb
+  WORDPRESS_DB_NAME: wordpress
+  WORDPRESS_DB_USER: wordpress
+  WORDPRESS_DB_PASSWORD: wordpress
+  WORDPRESS_CONFIG_EXTRA: |
+    define('WP_ENVIRONMENT_TYPE', 'local');
+    define('WP_HOME', 'http://localhost:8081');
+    define('WP_SITEURL', 'http://localhost:8081');
+
+services:
+  # ---------------------------------------------------------------- core ---
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: postomat
+      POSTGRES_PASSWORD: postomat
+      POSTGRES_DB: postomat
+    ports: ['55432:5432']
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./dev/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U postomat -d postomat && psql -U postomat -d postomat_test -c "select 1" >/dev/null',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  synapse:
+    image: matrixdotorg/synapse:v1.165.0
+    environment:
+      SYNAPSE_CONFIG_PATH: /config/homeserver.yaml
+    # Generate the signing key into the data volume on first start, then run normally.
+    entrypoint:
+      - sh
+      - -c
+      - python -m synapse.app.homeserver -c /config/homeserver.yaml --generate-keys && chown -R 991:991 /data && exec /start.py
+    ports: ['8008:8008']
+    volumes:
+      - ./dev/synapse:/config:ro
+      - synapse-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:8008/health']
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  matrix-seed:
+    image: node:24-bookworm-slim
+    # Seeds, then stays up (idle) and reports healthy, so `up --wait` waits for the
+    # seed and does not fail on an exited one-shot container. Re-run: `docker compose restart matrix-seed`.
+    command:
+      [
+        'sh',
+        '-c',
+        'rm -f /tmp/seeded && node /seed/matrix-seed.mjs && touch /tmp/seeded && while :; do sleep 3600; done',
+      ]
+    init: true
+    environment:
+      SYNAPSE_URL: http://synapse:8008
+    volumes:
+      - ./dev/seed:/seed:ro
+    depends_on:
+      synapse:
+        condition: service_healthy
+    restart: on-failure:5
+    healthcheck: &seed-healthcheck
+      test: ['CMD', 'test', '-f', '/tmp/seeded']
+      interval: 3s
+      timeout: 3s
+      retries: 100
+
+  element:
+    image: vectorim/element-web:v1.12.35
+    ports: ['8080:80']
+    volumes:
+      - ./dev/element/config.json:/app/config.json:ro
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:80/config.json']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    command: ['start-dev', '--import-realm']
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Browser, host processes and containers all see the same issuer.
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: 'false'
+      KC_HTTP_PORT: '8180'
+      KC_HEALTH_ENABLED: 'true'
+    ports: ['8180:8180']
+    volumes:
+      - ./dev/keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"UP"' <&3
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 15s
+
+  fake-meetup:
+    image: node:24-alpine
+    command: ['node', '/app/server.mjs']
+    environment:
+      PORT: '8084'
+      STATE_FILE: /data/events.json
+      INITIAL_FILE: /app/events.json
+    ports: ['8084:8084']
+    volumes:
+      - ./dev/fake-meetup:/app:ro
+      - fake-meetup-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8084/healthz']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Deterministic OpenAI-compatible stand-in for the LLM (smoke tests, CI-like runs).
+  fake-llm:
+    image: node:24-alpine
+    command: ['node', '/app/server.mjs']
+    environment:
+      PORT: '8085'
+    ports: ['127.0.0.1:8085:8085']
+    volumes:
+      - ./dev/fake-llm:/app:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8085/healthz']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ------------------------------------------------------------- profile: ai
+  # A real local model for manual testing in Element. First start pulls the
+  # model (several GB); later starts reuse the volume.
+  ollama:
+    profiles: [ai]
+    image: ollama/ollama:0.40.18
+    ports: ['127.0.0.1:11434:11434']
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ['CMD', 'ollama', 'list']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Pulls the model, then idles and reports healthy (like matrix-seed), so
+  # `up --wait` waits for the download instead of failing on an exited container.
+  ollama-pull:
+    profiles: [ai]
+    image: ollama/ollama:0.40.18
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+    entrypoint:
+      [
+        'sh',
+        '-c',
+        'rm -f /tmp/pulled && ollama pull "$$OLLAMA_MODEL" && touch /tmp/pulled && while :; do sleep 3600; done',
+      ]
+    init: true
+    restart: on-failure:5
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/tmp/pulled']
+      interval: 10s
+      timeout: 3s
+      retries: 360
+
+  # ------------------------------------------------------- profile: channels
+  mariadb:
+    profiles: [channels]
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: root-dev
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wordpress
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  wordpress:
+    profiles: [channels]
+    image: wordpress:6-apache
+    environment: *wordpress-db-env
+    ports: ['8081:80']
+    volumes:
+      - wordpress-data:/var/www/html
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'php',
+          '-r',
+          'exit(@file_get_contents("http://127.0.0.1/readme.html") === false ? 1 : 0);',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  wordpress-seed:
+    profiles: [channels]
+    image: wordpress:cli
+    user: '33:33' # same uid as www-data in the debian-based wordpress image
+    # Same pattern as matrix-seed. Re-run: `docker compose --profile channels restart wordpress-seed`.
+    command:
+      [
+        'sh',
+        '-c',
+        'rm -f /tmp/seeded && sh /seed/seed.sh && touch /tmp/seeded && while :; do sleep 3600; done',
+      ]
+    init: true
+    environment:
+      <<: *wordpress-db-env
+      HOME: /tmp
+      WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
+    volumes:
+      - wordpress-data:/var/www/html
+      - ./dev/wordpress:/seed:ro
+    depends_on:
+      wordpress:
+        condition: service_healthy
+    restart: on-failure:5
+    healthcheck: *seed-healthcheck
+
+  mediawiki:
+    profiles: [channels]
+    image: mediawiki:1.43
+    entrypoint: ['bash', '/seed/entrypoint.sh']
+    ports: ['8082:80']
+    volumes:
+      - mediawiki-data:/var/www/data
+      - ./dev/mediawiki:/seed:ro
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'php',
+          '-r',
+          'exit(@file_get_contents("http://127.0.0.1/api.php?action=query&meta=siteinfo&format=json") === false ? 1 : 0);',
+        ]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 30s
+
+  nextcloud:
+    profiles: [channels]
+    image: nextcloud:31-apache
+    environment:
+      SQLITE_DATABASE: nextcloud
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD: admin-dev
+      NEXTCLOUD_TRUSTED_DOMAINS: localhost localhost:8083 nextcloud
+      OVERWRITECLIURL: http://localhost:8083
+    ports: ['8083:80']
+    volumes:
+      - nextcloud-data:/var/www/html
+      - ./dev/nextcloud/hooks/before-starting:/docker-entrypoint-hooks.d/before-starting:ro
+      - ./dev/.generated:/generated
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'curl -fsS http://127.0.0.1/status.php | grep -q "\"installed\":true"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+
+volumes:
+  postgres-data:
+  synapse-data:
+  fake-meetup-data:
+  ollama-data:
+  mariadb-data:
+  wordpress-data:
+  mediawiki-data:
+  nextcloud-data:

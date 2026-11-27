@@ -1,0 +1,34 @@
+@import 'tailwindcss';
+@import '@heroui/styles';
+
+@source './app';
+
+:root {
+  --pm-mint: #8ff0cf;
+  --pm-blau: #3d7fc4;
+  --pm-rot: #b8322b;
+  --pm-hellblau: #a9cdea;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.pm-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pm-html {
+  /* long links (Meetup URL) must wrap at phone width */
+  overflow-wrap: anywhere;
+}
+.pm-html p {
+  margin: 0 0 0.6rem;
+}
+.pm-html h3 {
+  font-weight: 700;
+  margin: 0.8rem 0 0.4rem;
+}

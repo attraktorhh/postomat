@@ -48,3 +48,10 @@ Thumbs.db
 .nx/polygraph
 .nx/self-healing
 .nx/migrate-runs
+vitest.config.*.timestamp*
+.vitest
+
+vite.config.*.timestamp*
+# local env and data
+.env
+.data

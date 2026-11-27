@@ -16,8 +16,11 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "es2022",
-    "customConditions": ["@org/source"],
+    "customConditions": ["@postomat/source"],
     "noUncheckedSideEffectImports": false,
-    "types": ["*"]
+    "types": ["*"],
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true
   }
 }

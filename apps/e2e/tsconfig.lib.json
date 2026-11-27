@@ -1,0 +1,61 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/tsconfig.lib.tsbuildinfo",
+    "emitDeclarationOnly": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../../packages/channels/mediawiki/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/channels/wordpress/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/ai/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/render/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/media/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/workflow/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/testing/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/templates/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/db/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/core/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/channels/meetup/tsconfig.lib.json"
+    }
+  ],
+  "exclude": [
+    "vite.config.ts",
+    "vite.config.mts",
+    "vitest.config.ts",
+    "vitest.config.mts",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.tsx",
+    "src/**/*.test.js",
+    "src/**/*.spec.js",
+    "src/**/*.test.jsx",
+    "src/**/*.spec.jsx"
+  ]
+}
