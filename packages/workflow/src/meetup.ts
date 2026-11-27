@@ -223,6 +223,9 @@ export async function pollMeetup(
   return { checked: candidates.length, linked, asked };
 }
 
+/** Longer replies are not sent to the AI (same cap as DMs). */
+const MAX_REPLY_CHARS = 4000;
+
 export type MeetupReplyResult =
   /** No open question: a normal thread reply. */
   | 'no_question'
@@ -241,6 +244,10 @@ export async function answerMeetupQuestion(
   postId: number,
   text: string,
   actor: string,
+  opts: {
+    /** Wraps the AI call (the bot shows "Postomat schreibt …"). */
+    during?: <T>(fn: () => Promise<T>) => Promise<T>;
+  } = {},
 ): Promise<MeetupReplyResult> {
   const [q] = await deps.db
     .select()
@@ -253,19 +260,26 @@ export async function answerMeetupQuestion(
     )
     .limit(1);
   if (!q) return 'no_question';
+  if (text.length > MAX_REPLY_CHARS) {
+    await deps.queue.send('bot.thread', { postId, text: DM.messageTooLong });
+    return 'handled';
+  }
+  const during = opts.during ?? (<T>(fn: () => Promise<T>) => fn());
   let reply: CandidateChoice;
   try {
-    reply = await deps.ai.interpretCandidateReply({
-      text,
-      candidates: q.candidates.map((c) => {
-        const start = new Date(c.start);
-        return {
-          title: c.title,
-          date: localDateOf(start),
-          time: localTimeOf(start),
-        };
+    reply = await during(() =>
+      deps.ai.interpretCandidateReply({
+        text,
+        candidates: q.candidates.map((c) => {
+          const start = new Date(c.start);
+          return {
+            title: c.title,
+            date: localDateOf(start),
+            time: localTimeOf(start),
+          };
+        }),
       }),
-    });
+    );
   } catch (e) {
     if (!isAiError(e)) throw e;
     await deps.queue.send('bot.thread', { postId, text: DM.aiUnavailable });

@@ -3,6 +3,7 @@ import {
   factsLineDm,
   factsLineShort,
   STATUS_LABELS,
+  TEXTS_PENDING,
   type ChannelId,
   type ChannelMode,
   type ChannelPostStatus,
@@ -47,7 +48,8 @@ export const DM = {
     'Postomat ist nur für Attraktor-Mitglieder. Frag gern ein Mitglied, ob es deinen Beitrag einreicht.',
   help:
     'So funktioniert’s: Erzähl mir in einem Satz, was du vorhast (Event) oder gebaut hast (Projekt). Ich frage nach, was fehlt, und schicke es ans Medienteam.\n\n' +
-    'Du kannst mir auch einfach schreiben, was du willst, zum Beispiel:\n• neu – neuen Beitrag starten\n• status – deine Beiträge\n• abbrechen – aktuellen Entwurf verwerfen\n• abschicken – Entwurf ans Medienteam schicken\n• hilfe – diese Hilfe',
+    'Du musst keine Befehle tippen, schreib einfach, was du willst. Zum Beispiel:\n• „neu“ – neuen Beitrag starten\n• „status“ – deine Beiträge\n• „abbrechen“ – aktuellen Entwurf verwerfen\n• „abschicken“ – Entwurf ans Medienteam schicken\n• „hilfe“ – diese Hilfe\n\n' +
+    'Fotos schickst du einfach hier rein. Texte ändern: schreib z. B. „mach den Text kürzer“.',
   submitted: 'Ist beim Medienteam 🙌 Ich melde mich, sobald es online ist.',
   cancelled:
     'Okay, den Entwurf habe ich verworfen. Schreib einfach, wenn du etwas Neues hast.',
@@ -67,8 +69,9 @@ export const DM = {
   /** Any AI failure (timeout, HTTP error, schema mismatch): nothing changed. */
   aiUnavailable:
     'Ich kann deine Nachricht gerade nicht verarbeiten. Bitte versuch es in ein paar Minuten noch mal.',
-  textsPending:
-    'Die Texte fehlen noch. Schreib „nochmal“, dann versuche ich es erneut.',
+  textsPending: TEXTS_PENDING,
+  messageTooLong:
+    'Deine Nachricht ist sehr lang – fass sie bitte kürzer zusammen.',
   textsFailed: (title: string) =>
     `Die Texte für „${title}“ konnten gerade nicht neu erstellt werden. Das Medienteam versucht es später noch einmal.`,
   confirmCancel: (title: string) =>

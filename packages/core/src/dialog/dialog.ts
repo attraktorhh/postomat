@@ -43,6 +43,8 @@ export interface DialogState {
   /** The summary could not be built (AI failure); "nochmal" retries it. */
   summaryPending?: boolean;
   pendingConfirmation?: PendingConfirmation | null;
+  /** "Text ändern" without saying what: the next message is the wish. */
+  awaitingTextChange?: boolean;
 }
 
 export const initialDialogState = (): DialogState => ({
@@ -55,11 +57,14 @@ export const initialDialogState = (): DialogState => ({
   photoDeclined: false,
   summaryPending: false,
   pendingConfirmation: null,
+  awaitingTextChange: false,
 });
 
 export interface DialogDeps {
   now: Date;
   displayName: string;
+  /** Web page of the draft ("im Browser bearbeiten"), when there is one. */
+  postUrl?: string;
 }
 
 export type DialogInput =
@@ -94,8 +99,19 @@ export const THANKS_REPLY =
   'Gern! Antworte „abschicken“, wenn es so ans Medienteam soll.';
 export const NOTE_STORED =
   'Ich habe das als Notiz fürs Medienteam gespeichert.';
-export const NOTE_STORED_REVIEW = `${NOTE_STORED} Texte ändern kannst du mit „Text ändern: …“. Antworte „abschicken“, wenn alles passt.`;
+export const NOTE_STORED_REVIEW = `${NOTE_STORED} Soll sich am Text etwas ändern, schreib es einfach, z. B. „mach den Text kürzer“. Antworte „abschicken“, wenn alles passt.`;
 const GREETING_HINT = 'Erzähl mir erst in einem Satz, was du vorhast.';
+/** The summary could not be built; "nochmal" (in any wording) retries. */
+export const TEXTS_PENDING =
+  'Die Texte fehlen noch. Schreib „nochmal“, dann versuche ich es erneut.';
+export const REVIEW_NOT_YET =
+  'Okay, noch nicht. Schreib mir, was ich ändern soll, oder „abbrechen“, um den Entwurf zu verwerfen.';
+const REVIEW_KEPT =
+  'Ich habe die bisherige Angabe behalten. Schreib mir einen neuen Wert oder antworte „abschicken“.';
+export const TEXT_CHANGE_QUESTION = (url?: string) =>
+  `Was soll anders sein? Schreib es einfach, z. B. „bitte erwähnen, dass Lötkolben da sind“.${
+    url ? ` Oder bearbeite es im Browser ↗ ${url}` : ''
+  }`;
 
 const QUESTIONS: Partial<Record<FactKey, string>> = {
   title: 'Wie soll der Titel lauten?',
@@ -169,8 +185,10 @@ const isRequired = (state: DialogState, key: FactKey | 'photo') =>
   !!state.type && REQUIRED[state.type].includes(key);
 
 /** The next thing to ask, or null when everything is collected. */
-export function nextQuestion(state: DialogState): FactKey | 'photo' | null {
-  if (!state.type) return null;
+export function nextQuestion(
+  state: DialogState,
+): FactKey | 'photo' | 'type' | null {
+  if (!state.type) return 'type';
   for (const key of ORDER[state.type]) {
     if (hasFact(state, key)) continue;
     const required = isRequired(state, key);
@@ -193,6 +211,8 @@ function questionText(state: DialogState, key: FactKey | 'photo'): string {
 
 /** The question the member still has to answer, if any. */
 export function openQuestion(state: DialogState): string | undefined {
+  if (state.summaryPending) return TEXTS_PENDING;
+  if (state.awaitingTextChange) return TEXT_CHANGE_QUESTION();
   if (state.expecting === 'consent') return CONSENT_QUESTION;
   if (state.expecting === 'type') return TYPE_QUESTION;
   if (state.expecting) return questionText(state, state.expecting);
@@ -208,6 +228,11 @@ export function expectedAnswer(state: DialogState): ExpectedAnswer {
   if (state.expecting) return state.expecting;
   if (state.step === 'review') return 'submit';
   return null;
+}
+
+/** Type and every required answer are there: the post can be summarized and submitted. */
+export function isComplete(state: DialogState): boolean {
+  return !!state.type && nextQuestion(state) === null;
 }
 
 /** Builds the AI context for the next message (no IDs, no names). */
@@ -298,6 +323,13 @@ const join = (...parts: string[]) => parts.filter(Boolean).join('\n');
 
 function askNextOrSummarize(state: DialogState, prefix: string): DialogResult {
   const next = nextQuestion(state);
+  if (next === 'type')
+    // Never summarize without a type (e.g. a photo sent before the type answer).
+    return {
+      state: { ...state, step: 'type', expecting: 'type' },
+      replies: [join(prefix, TYPE_QUESTION)],
+      effects: [],
+    };
   if (next === null) {
     return {
       state: { ...state, step: 'review', expecting: null },
@@ -379,6 +411,8 @@ export function advanceDialog(
   if (input.kind === 'photo') return handlePhoto(state, input.photoId);
   const interp = input.interpretation;
   const intent = interp.intent;
+  const awaitingTextChange = !!state.awaitingTextChange;
+  if (awaitingTextChange) state = { ...state, awaitingTextChange: false };
 
   if (state.expecting === 'consent') {
     if (intent === 'answer_consent' && interp.consent) {
@@ -406,8 +440,46 @@ export function advanceDialog(
   }
 
   // A changed fact is a fact change, even when the AI files it as a text change.
-  if (intent === 'request_text_change' && hasAnyFact(interp))
-    return absorbAndContinue(state, interp, deps);
+  if (intent === 'request_text_change' && hasAnyFact(interp)) {
+    const r = absorbAndContinue(state, interp, deps);
+    if (state.step !== 'review') return r;
+    const instruction = interp.instruction?.trim() || '';
+    // The facts changed: rewrite the texts with the wish, not only the facts.
+    if (r.effects.some((e) => e.kind === 'summary'))
+      return instruction
+        ? {
+            ...r,
+            effects: r.effects.map((e) =>
+              e.kind === 'summary'
+                ? { kind: 'change_request', instruction }
+                : e,
+            ),
+          }
+        : r;
+    // Nothing changed (e.g. the fact already was so) and nothing rejected:
+    // it is a plain text wish.
+    if (r.state.expecting === null && !rejectedAny(state, interp, deps))
+      return changeRequest(state, instruction, deps);
+    return r;
+  }
+  // The answer to "Was soll anders sein?" is the wish, however the AI filed it.
+  if (
+    awaitingTextChange &&
+    state.step === 'review' &&
+    [
+      'unclear',
+      'note_for_team',
+      'provide_info',
+      'smalltalk_or_thanks',
+    ].includes(intent) &&
+    !hasAnyFact(interp)
+  )
+    return changeRequest(
+      state,
+      interp.instruction?.trim() || interp.text?.trim() || '',
+      deps,
+      true,
+    );
 
   switch (intent) {
     case 'smalltalk_or_thanks':
@@ -437,22 +509,17 @@ export function advanceDialog(
       };
     case 'request_text_change':
       if (state.step !== 'review') return reask(state, NOT_UNDERSTOOD);
-      return {
-        state,
-        replies: [],
-        effects: [
-          {
-            kind: 'change_request',
-            instruction: interp.instruction?.trim() || '',
-          },
-        ],
-      };
+      return changeRequest(state, interp.instruction?.trim() || '', deps);
+    case 'confirm_no':
+      if (state.step === 'review' && !state.expecting && !state.summaryPending)
+        return { state, replies: [REVIEW_NOT_YET], effects: [] };
+      return skipOrDecline(state, intent);
     case 'decline_photo':
     case 'skip_optional':
-    case 'confirm_no':
       return skipOrDecline(state, intent);
     case 'confirm_yes':
       if (state.expecting === 'photo') return reask(state, 'Super!');
+      // In review the caller takes "ja" as "abschicken" before this.
       if (state.step === 'review')
         return { state, replies: [CONFIRM_SUBMIT], effects: [] };
       return reask(state, NOT_UNDERSTOOD);
@@ -463,9 +530,46 @@ export function advanceDialog(
     default:
       break;
   }
-  if (state.step === 'idle')
-    return reask(state, `${NOT_UNDERSTOOD} ${GREETING_HINT}`);
+  // In idle the open question is the greeting hint.
   return reask(state, NOT_UNDERSTOOD);
+}
+
+/**
+ * A text wish in review. Without a wish ("Text ändern") ask what should
+ * change; the next message is the wish. `verbatim`: the wish is the member's
+ * own message (the caller uses the message text when it is empty).
+ */
+function changeRequest(
+  state: DialogState,
+  instruction: string,
+  deps: DialogDeps,
+  verbatim = false,
+): DialogResult {
+  if (!instruction && !verbatim)
+    return {
+      state: { ...state, awaitingTextChange: true },
+      replies: [TEXT_CHANGE_QUESTION(deps.postUrl)],
+      effects: [],
+    };
+  return {
+    state: { ...state, awaitingTextChange: false },
+    replies: [],
+    effects: [{ kind: 'change_request', instruction }],
+  };
+}
+
+function rejectedAny(
+  state: DialogState,
+  interp: Interpretation,
+  deps: DialogDeps,
+): boolean {
+  return (
+    validateAiFacts(interp.facts, {
+      now: deps.now,
+      type: state.type ?? interp.type ?? undefined,
+      known: state.facts,
+    }).rejected.length > 0
+  );
 }
 
 function hasAnyFact(interp: Interpretation): boolean {
@@ -536,10 +640,14 @@ function absorbAndContinue(
   }
 
   if (state.step === 'review') {
-    const factChanges = a.changed.filter((k) => k !== 'isWorkshop');
+    const factChanges = a.changed;
     const typeChanged = type !== state.type;
     if (factChanges.length || typeChanged) {
-      const got = understood(s.facts, factChanges, false);
+      let got = understood(s.facts, factChanges, false);
+      if (!got && factChanges.includes('isWorkshop'))
+        got = s.facts.isWorkshop
+          ? 'Alles klar, ich schreibe es als Workshop.'
+          : 'Alles klar, kein Workshop.';
       // A changed type may need more answers (e.g. a Projekt needs a photo).
       const next = nextQuestion({ ...s, expecting: null });
       if (next !== null)
@@ -553,7 +661,9 @@ function absorbAndContinue(
         effects: [{ kind: 'summary' }],
       };
     }
-    return reask(s, hints.length ? join(...hints) : NOT_UNDERSTOOD);
+    if (hints.length)
+      return { state: s, replies: [join(...hints, REVIEW_KEPT)], effects: [] };
+    return reask(s, NOT_UNDERSTOOD);
   }
 
   // step === 'collect' (consent was handled before)
@@ -588,10 +698,13 @@ function handlePhoto(state: DialogState, photoId: number): DialogResult {
     pendingConsentPhotoIds: [...state.pendingConsentPhotoIds, photoId],
     expecting: 'consent',
     step: state.step === 'idle' ? 'collect' : state.step,
+    // A photo is no answer to "verwerfen?": the consent answer must not be read as one.
+    pendingConfirmation: null,
+    awaitingTextChange: false,
   };
   if (state.expecting === 'consent') {
     // Several photos in a row: one consent answer covers all of them.
     return { state: s, replies: [], effects: [] };
   }
-  return { state: s, replies: [CONSENT_QUESTION], effects: [] };
+  return { state: s, replies: [`Danke! ${CONSENT_QUESTION}`], effects: [] };
 }
